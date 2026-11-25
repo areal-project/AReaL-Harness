@@ -6,7 +6,9 @@ function resolveNewConversationModel(models, lastAcceptedModel, catalogReady = m
     models.find(
       (item) =>
         (item.providerId ?? null) === (lastAcceptedModel.model?.providerId ?? null) &&
-        item.modelId === lastAcceptedModel.modelId,
+        item.modelId === lastAcceptedModel.modelId &&
+        item.availability !== "unavailable" &&
+        (item.available !== false || item.availability === "checking"),
     );
   const pending = !catalogReady;
   const useRemembered = !!lastAcceptedModel && (!!remembered || pending);
@@ -16,7 +18,7 @@ function resolveNewConversationModel(models, lastAcceptedModel, catalogReady = m
         modelId: lastAcceptedModel.modelId,
         availability: "checking",
       })
-    : models.find((item) => item.isDefault);
+    : undefined;
   const effort = useRemembered ? lastAcceptedModel.reasoningEffort : undefined;
   const supported =
     candidate?.capabilities?.reasoningEffortOptions ??
@@ -30,12 +32,7 @@ function resolveNewConversationModel(models, lastAcceptedModel, catalogReady = m
   return {
     candidate,
     rememberedEffort: unsupportedEffort ? resolveModelEffort(candidate, configuredEffort) : effort,
-    notice:
-      lastAcceptedModel && !useRemembered
-        ? "model-unavailable"
-        : unsupportedEffort
-          ? "effort-unsupported"
-          : undefined,
+    notice: unsupportedEffort ? "effort-unsupported" : undefined,
   };
 }
 

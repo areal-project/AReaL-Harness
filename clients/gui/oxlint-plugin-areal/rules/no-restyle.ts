@@ -2,8 +2,13 @@ import { defineRule } from "@oxlint/plugins";
 
 // 只允许由父级决定的布局类；颜色、字号、间距、圆角、阴影等外观由组件的 variant/size 决定。
 const LAYOUT =
-  /^-?(?:m[trblxyse]?-|w-|h-|size-|min-[wh]-|max-[wh]-|flex|grow|shrink|basis-|order-|self-|justify-self-|place-self-|col-|row-|grid-(?:cols|rows)-|gap-|space-[xy]-|overflow|inset|top-|left-|right-|bottom-|start-|end-|z-|aspect-)|^(?:absolute|relative|fixed|sticky|static|hidden|block|inline|inline-block|inline-flex|contents|isolate|sr-only)$/;
+  /^-?(?:m[trblxyse]?-|w-|h-|size-|min-[wh]-|max-[wh]-|flex|grow|shrink|basis-|order-|self-|justify-self-|place-self-|col-|row-|grid-(?:cols|rows)-|gap-|space-[xy]-|overflow|inset|top-|left-|right-|bottom-|start-|end-|z-|aspect-|translate-[xy]-|pointer-events-)|^(?:absolute|relative|fixed|sticky|static|hidden|block|inline|inline-block|inline-flex|contents|isolate|sr-only|truncate)$/;
 const EXEMPT_MODULES = new Set(["@areal/ui/icons", "@areal/ui/observe-resize", "@areal/ui/theme"]);
+const UI_WRAPPER_IMPORT = /(?:^|\/)components\/ui\/[^/]+$/;
+
+const isOwnedModule = (source: string) =>
+  (source.startsWith("@areal/ui") && !EXEMPT_MODULES.has(source)) ||
+  (UI_WRAPPER_IMPORT.test(source) && !source.endsWith(".css"));
 
 const isLayout = (token: string) => LAYOUT.test(token.replace(/^!/, "").split(":").at(-1) ?? "");
 
@@ -15,6 +20,8 @@ function literals(node: Node | null | undefined): string[] | null {
   switch (node.type) {
     case "Literal":
       return typeof node.value === "string" ? [node.value] : [];
+    case "Identifier":
+      return node.name === "undefined" ? [] : null;
     case "JSXExpressionContainer":
       return literals(node.expression);
     case "TemplateLiteral": {
@@ -63,7 +70,7 @@ export default defineRule({
     return {
       ImportDeclaration(node) {
         const source = String(node.source.value);
-        if (!source.startsWith("@areal/ui") || EXEMPT_MODULES.has(source)) return;
+        if (!isOwnedModule(source)) return;
         if (node.importKind === "type") return;
         for (const specifier of node.specifiers) owned.add(specifier.local.name);
       },

@@ -302,9 +302,7 @@ export function WorkspaceFileTree({
         <div className="review-file-filter-field">
           <Search className="review-file-filter-icon" />
           <Input
-            unstyled
-            data-slot={undefined}
-            className="review-file-filter-input"
+            size="sm"
             placeholder={changedOnly ? "搜索更改…" : "搜索文件…"}
             aria-label="搜索文件"
             value={query}

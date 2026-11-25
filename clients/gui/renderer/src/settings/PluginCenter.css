@@ -85,7 +85,8 @@
 .plugin-center-content {
   width: min(100%, 1160px);
   margin: 0 auto;
-  padding: calc(var(--spacing-inline) * 5) calc(var(--spacing-inline) * 5) 64px;
+  padding: calc(var(--spacing-inline) * 5) calc(var(--spacing-inline) * 5)
+    calc(var(--spacing-inline) * 8);
 }
 .plugin-center-header {
   display: flex;
@@ -95,7 +96,7 @@
   margin-bottom: calc(var(--spacing-inline) * 7 / 2);
 }
 .plugin-center h1 {
-  font-size: var(--text-ui-display);
+  font-size: var(--text-page-title);
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: -0.025em;
@@ -158,7 +159,7 @@
   background: transparent;
   color: inherit;
   padding: calc(var(--spacing-inline) / 4) 0;
-  border-radius: var(--radius-inline);
+  border-radius: var(--radius-compact);
 }
 .plugin-row-info:hover strong,
 .plugin-skill-link:hover {
@@ -219,7 +220,7 @@
 .plugin-skills-compact .plugin-resource-icon {
   width: var(--spacing-control);
   height: var(--spacing-control);
-  border-radius: var(--radius-compact-row);
+  border-radius: var(--radius-compact);
 }
 .plugin-center-settings .plugin-resource-icon svg {
   width: var(--icon-size-control);
@@ -269,7 +270,7 @@
 .plugin-detail-header > .plugin-resource-icon {
   height: 58px;
   width: 58px;
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-dialog);
 }
 .plugin-detail-header > div:first-of-type {
   flex: 1;
@@ -449,14 +450,14 @@
 }
 
 .plugin-center-settings .plugin-row-info small {
-  font-size: var(--text-ui-fine);
+  font-size: var(--text-ui-xs);
 }
 
 .plugin-center-workspace .plugin-center-content {
   max-width: 1000px;
 }
 .plugin-center-workspace h1 {
-  font-size: var(--text-ui-section);
+  font-size: var(--text-ui-xl);
 }
 .plugin-center-sidebar > button > svg {
   width: var(--icon-size-control);
@@ -487,7 +488,7 @@
 .plugin-skill-section-heading small {
   margin-left: calc(var(--spacing-inline) * 3 / 4);
   color: var(--color-foreground-subtle);
-  font-size: var(--text-ui-fine);
+  font-size: var(--text-ui-xs);
   font-weight: 400;
 }
 .plugin-skill-section {
@@ -514,7 +515,7 @@
   line-height: 1.6;
 }
 .plugin-skills-workspace .plugin-row-info small:not(.sr-only) {
-  font-size: var(--text-ui-fine);
+  font-size: var(--text-ui-xs);
   line-height: 1.6;
 }
 .plugin-skills-workspace .plugin-skill-icon {
@@ -537,10 +538,10 @@
   margin: calc(var(--spacing-inline) * 3 / 2) 0 0;
   padding: calc(var(--spacing-inline) * 3 / 4) calc(var(--spacing-inline) / 2);
   border: 0;
-  border-radius: var(--radius-inline);
+  border-radius: var(--radius-compact);
   background: transparent;
   color: var(--color-foreground-subtle);
-  font-size: var(--text-ui-fine);
+  font-size: var(--text-ui-xs);
   text-align: left;
 }
 .plugin-skills-more:hover {
@@ -563,15 +564,6 @@
 }
 .plugin-skill-source-tabs .settings-segmented-tabs {
   margin-bottom: 0;
-}
-.plugin-skill-source-tabs [data-slot="tabs-list"] {
-  flex-wrap: nowrap;
-  max-width: none;
-  width: max-content;
-  gap: var(--spacing-inline);
-}
-.plugin-skill-source-tabs [data-slot="tabs-trigger"] {
-  font-size: var(--text-ui-fine);
 }
 .plugin-skill-empty {
   margin: calc(var(--spacing-inline) * 5 / 2) calc(var(--spacing-inline) / 2);

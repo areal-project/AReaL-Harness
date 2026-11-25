@@ -22,7 +22,7 @@ import {
   userMessageIds,
 } from "./pendingMessage.js";
 import { Input } from "@areal/ui";
-import { ComposerActionButton } from "@areal/ui/experimental";
+import { ComposerActionButton, ComposerRequestStack } from "@areal/ui/compositions";
 import { parseMentionMarkdown } from "./mentions/mentionMarkdown.js";
 import { stopConversationTurn, releaseSettledStops } from "./conversationStop.js";
 import { ConversationSelectionReferences } from "./ConversationSelectionReferences.js";
@@ -35,7 +35,6 @@ import { parseSideSlashCommand } from "./sideSlashCommand.js";
 import { composerDraftStorage, flushComposerDrafts } from "./composerDraftStorage.js";
 import { composerPending } from "./composerPending.js";
 import { useComposerWorkspaceFiles } from "./lib/workspaceFileComposer.js";
-import { stripGenUiModelContext } from "@areal/gen-ui/contract";
 import { UiMessageError, useI18n } from "./i18n/IntlProvider.js";
 import { errorText, presentError, rawText, type PresentedError } from "./errors/errorCopy.js";
 import { FeedbackNotice } from "./FeedbackNotice.js";
@@ -46,8 +45,6 @@ import { useComposerPrediction } from "./useComposerPrediction.js";
 import { ContextMeter } from "./ContextMeter.js";
 import { isOrdinaryConversation, interruptedConversationTurn } from "./ordinaryConversation.js";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
-import { McpComposerAttachments, useMcpDraft } from "./McpComposerAttachments.js";
-import { clearMcpDraft } from "./mcp-app-draft.js";
 import {
   setApplicationPreferences,
   useApplicationPreferences,
@@ -90,9 +87,7 @@ import {
 } from "./ComposerAttachments.js";
 import { useComposerPlugins } from "./ComposerPlugins.js";
 import { useComposerSkills } from "./ComposerSkills.js";
-import { ComposerMcpIcon } from "./ComposerIcons.js";
 import { composerFeatureEntries } from "./composerFeatures.js";
-import { ComposerMcp } from "./ComposerMcp.js";
 import type { ComposerCatalogEntry } from "./prompt-editor/ComposerCatalog.js";
 import {
   conversationReferenceEntries,
@@ -115,6 +110,8 @@ import {
 } from "./reviewComments.js";
 import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
 import type { Data, Action } from "./services.js";
+import { isProjectHibernated } from "./state/userStates.js";
+import { useSilentHibernatePrewarm } from "./state/useSilentHibernatePrewarm.js";
 import {
   recoveredOutcome,
   recoveryMessage,
@@ -149,8 +146,6 @@ export function Composer({
   onPanel,
   onOpenTask,
   onSide,
-  onMcpMention,
-  appEntries = [],
   conversationReferences = [],
   onAnnotate,
   surfaceLayout = "default",
@@ -171,8 +166,6 @@ export function Composer({
   onNew: () => void;
   onOpenTask?: (target: { projectId: string; taskId: string; runId: string }) => void;
   onSide?: (draft: string) => Promise<void>;
-  onMcpMention?: () => void;
-  appEntries?: readonly ComposerCatalogEntry[];
   conversationReferences?: readonly ConversationReference[];
   onAnnotate?: (target: ImageAnnotationTarget) => void;
 }) {
@@ -192,11 +185,11 @@ export function Composer({
   const uploadOwner = composerUploadOwner(project, thread.id);
   const selectionScope = conversationSelectionScope(project.id, thread.id);
   const references = useConversationSelections(selectionScope);
-  const mcpDraft = useMcpDraft(key);
   const reviewKey = reviewCommentKey(project.id, thread.id);
   const reviewDraft = useReviewComments(reviewKey);
   const comments = attachedReviewComments(reviewDraft.draft);
   const api = useRef<LexicalChatInputHandle | null>(null);
+  const clearingPending = useRef(false);
   const [workspaceReferencePending, setWorkspaceReferencePending] = useState(false);
   const upload = useRef<HTMLInputElement>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLDivElement | null>(null);
@@ -289,19 +282,36 @@ export function Composer({
   const approvals = (project.state?.interactions?.[thread.id]?.data ?? []).filter(
     (item: Data) => item.status === "pending" && item.kind === "approval" && !archived,
   );
+  const [requestIndex, setRequestIndex] = useState(0);
+  const pendingRequests = [
+    ...approvals.map((item: Data) => ({ kind: "approval" as const, item })),
+    ...questions.map((item: Data) => ({ kind: "question" as const, item })),
+  ];
+  const safeRequestIndex =
+    pendingRequests.length > 0 ? Math.min(requestIndex, pendingRequests.length - 1) : 0;
+  const activePendingRequest = pendingRequests[safeRequestIndex];
   const hadQuestion = useRef(false);
   useEffect(() => {
     if (hadQuestion.current && !questions.length) api.current?.focus();
     hadQuestion.current = questions.length > 0;
   }, [questions.length]);
-  const baseDisabled =
-    !project.state?.connected ||
-    !!project.observationErrors?.[thread.id] ||
-    archived ||
-    (busy && !configuring) ||
-    pending ||
-    !!unknown ||
-    !!reviewDraft.error;
+  const hibernated = isProjectHibernated(project);
+  const silentWarming = useSilentHibernatePrewarm({
+    project,
+    threadId: thread.id,
+    text,
+    action: readAction,
+    enabled: !readOnly && !conversationSubmitReadOnly && !archived && !thread.cloud,
+  });
+  const connectionUnavailable =
+    (!project.state?.connected &&
+      !hibernated &&
+      !silentWarming &&
+      !("persistedHistory" in thread && thread.persistedHistory === true)) ||
+    !!project.observationErrors?.[thread.id];
+  // 常规消息发送只阻断提交防重入，不把编辑区、权限与模型按钮整块置灰，避免每次发送短暂闪烁。
+  const sendingMessage = busy && !configuring;
+  const baseDisabled = archived || !!reviewDraft.error;
   const queueEditor = useComposerQueueEdit({
     project,
     threadId: thread.id,
@@ -320,8 +330,13 @@ export function Composer({
       uploadComposerFiles(action, project.id, thread.id, selected, undefined, uploadOwner),
   });
   // 配置写入仍占用提交锁，但不把草稿编辑和模型浮层切成消息发送态。
-  const editorDisabled = baseDisabled || (queueEditor.busy && !configuring) || queueEditor.locked;
-  const disabled = editorDisabled || executionBlocked || configuring;
+  const draftDisabled = baseDisabled || (queueEditor.busy && !configuring) || queueEditor.locked;
+  const editorDisabled = draftDisabled || connectionUnavailable || pending || !!unknown;
+  const localExecutionBlocked =
+    (thread.executionLocalReady ?? project.localExecutionReady) === false &&
+    !hibernated &&
+    !silentWarming;
+  const disabled = editorDisabled || executionBlocked || configuring || localExecutionBlocked;
   const compatibilityDescription = useId();
   const desktopUnsupported =
     conversationSubmitReadOnly ||
@@ -338,7 +353,6 @@ export function Composer({
     await queueEditor.save();
   };
   const config = project.configurations?.[thread.id];
-  const [mcpOpen, setMcpOpen] = useState(false);
 
   const skills = useComposerSkills({
     project,
@@ -361,7 +375,6 @@ export function Composer({
     draftKey: key,
     text: input.text,
     action: readAction,
-    onMcpMention,
   });
   const taskManagement =
     config?.options?.appendInstructions?.startsWith("AREAL_TASK_DRAFT_V1\n") === true;
@@ -369,7 +382,6 @@ export function Composer({
   const sideContextCount =
     comments.length +
     skills.selected.length +
-    mcpDraft.length +
     references.length +
     parseMentionMarkdown(input.text).filter(
       (part) => part.type !== "text" && part.type !== "command",
@@ -383,7 +395,6 @@ export function Composer({
     !input.files.length &&
     !comments.length &&
     !skills.selected.length &&
-    !mcpDraft.length &&
     !references.length;
   const nextPrompt = useComposerPrediction({
     project,
@@ -403,10 +414,8 @@ export function Composer({
     !input.files.length &&
     !comments.length &&
     !skills.selected.length &&
-    !mcpDraft.length &&
     !references.length &&
-    !annotationEditing &&
-    !mcpOpen;
+    !annotationEditing;
   const canContinue =
     !readOnly && !!interrupted && emptyDraft && !creatingGoal && !queueEditor.edit;
   const planActive = permissionMode(config ?? {}) === "plan";
@@ -435,10 +444,10 @@ export function Composer({
     if (remaining.length) attachmentDrafts.set(key, remaining);
     else attachmentDrafts.delete(key);
     composerDraftStorage.removeItem(key);
+    window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
     forgetComposerUploads(uploadOwner, files.filter(isComposerFile));
     skills.clear();
     plugins.clear();
-    clearMcpDraft(key);
     consumeConversationSelections(selectionScope, references);
     void consumeSnapShotFiles(files.filter(isComposerFile));
     setAdmissionError("");
@@ -489,6 +498,10 @@ export function Composer({
       JSON.stringify([project.id, thread.id, false]),
     )?.pendingTurnStart;
     if (outcome.accepted === false && turnStart?.requestId === unknown) cancelTurnStart(turnStart);
+    const draftUnchanged =
+      composerDraftStorage.getItem(`${key}:pending-draft-version`) ===
+      (composerDraftStorage.getItem(`${key}:version`) ?? "0");
+    composerDraftStorage.removeItem(`${key}:pending-draft-version`);
     composerDraftStorage.removeItem(`${key}:pending`);
     composerDraftStorage.removeItem(`${key}:pending-operation`);
     window.dispatchEvent(new Event("areal-snapshot-drain"));
@@ -509,17 +522,16 @@ export function Composer({
         detail: outcome.message || undefined,
       });
     else if (wasContinue || wasConfigure) setDeliveryNotice(null);
-    else if (wasGoal) {
+    else if (wasGoal && draftUnchanged) {
       clearText();
       changeGoalMode(false);
-    } else clear();
+    } else if (draftUnchanged) clear();
   }, [unknown, pending, project.outcomes]);
   const reconcileUnknown = async () => {
     await readAction("reconcile", {
       projectId: project.id,
       requestId: unknown ?? undefined,
     }).catch(() => {});
-    await readAction("reconcile", { projectId: project.id }).catch(() => {});
   };
   useAutoReconcile(unknown, project.state?.connected === true, reconcileUnknown, () => {
     // 自动核对结束只提示；原身份和草稿仍由权威回执结算。
@@ -557,7 +569,6 @@ export function Composer({
       !submittedInput.files.length &&
       !comments.length &&
       !skills.selected.length &&
-      !mcpDraft.length &&
       !references.length
     )
       return;
@@ -569,6 +580,7 @@ export function Composer({
     markSending(key, true);
     setGoalError("");
     setDeliveryNotice(null);
+    const submittedDraftVersion = composerDraftStorage.getItem(`${key}:version`) ?? "0";
     let configurationRequestId: string | undefined;
     let sendStarted = false;
     const sideCommand = parseSideSlashCommand(
@@ -580,7 +592,7 @@ export function Composer({
         !creatingGoal &&
         !taskManagement &&
         !matchMedia("(max-width: 640px)").matches,
-      appEntries.map((entry) => entry.value),
+      [],
     );
     const steer = !taskManagement && !!running && shouldSteer(prefs.followUp, invert);
     const enqueue = !taskManagement && !!running && !steer;
@@ -588,12 +600,19 @@ export function Composer({
       !sideCommand && !creatingGoal && !steer && !enqueue
         ? requestTurnStart(project.id, thread.id, thread.turns?.at(-1)?.id)
         : undefined;
-    if (!sideCommand && !creatingGoal && !enqueue)
+    if (!sideCommand && !creatingGoal && !enqueue) {
       setPendingMessage(key, {
         text: submittedInput.text,
         files: submittedInput.files,
         previousUserIds: userMessageIds(thread.turns),
       });
+      // 与待发气泡同一帧清空编辑器，失败时在 catch 中恢复原文；只跳过本次程序清空的空值回写。
+      clearingPending.current = true;
+      api.current?.clear();
+      queueMicrotask(() => {
+        clearingPending.current = false;
+      });
+    }
     try {
       if (sideCommand && onSide) {
         await onSide(sideCommand.text);
@@ -646,6 +665,7 @@ export function Composer({
       } else acceptPendingMessage(key);
     } catch (e) {
       setPendingMessage(key);
+      if (!sideCommand && !creatingGoal && !enqueue && value) api.current?.setText(value);
       const error = e as Error & {
         submissionUnknown?: boolean;
         requestId?: string;
@@ -670,6 +690,7 @@ export function Composer({
         if (configurationRequestId)
           composerDraftStorage.setItem(`${key}:pending-configure`, error.requestId);
         if (creatingGoal) composerDraftStorage.setItem(`${key}:pending-goal`, error.requestId);
+        composerDraftStorage.setItem(`${key}:pending-draft-version`, submittedDraftVersion);
         setUnknown(error.requestId);
         composerDraftStorage.setItem(`${key}:pending`, error.requestId);
       }
@@ -741,48 +762,31 @@ export function Composer({
     !taskManagement &&
     !matchMedia("(max-width: 640px)").matches
       ? // /btw 是 /side 的别名，菜单只列一项，输入 /btw 仍可搜到并照常解析。
-        ["side"]
-          .filter(
-            () => !appEntries.some((entry) => ["side", "btw"].includes(entry.value.toLowerCase())),
-          )
-          .map((name) => ({
-            value: name,
-            label: `/${name}`,
-            keywords: ["btw", t("chat.side.title"), t("chat.side.btw")],
-            description: t("chat.side.newDescription"),
-            icon: <SideChatIcon />,
-            group: "commands" as const,
-            preserveInputUntilAccepted: true,
-            disabled: disabled || !!queueEditor.edit,
-            run: async () => {
-              try {
-                await onSide("");
-              } catch (cause) {
-                showDeliveryNotice(cause);
-                throw cause;
-              }
-            },
-          }))
-      : []),
-    ...(onMcpMention
-      ? [
-          {
-            value: "app-mention",
-            label: "@ 应用引用",
-            description: "搜索应用中的文件、工单或其他资源",
-            icon: <ComposerMcpIcon />,
-            group: "功能" as const,
-            run: onMcpMention,
+        ["side"].map((name) => ({
+          value: name,
+          label: `/${name}`,
+          keywords: ["btw", t("chat.side.title"), t("chat.side.btw")],
+          description: t("chat.side.newDescription"),
+          icon: <SideChatIcon />,
+          group: "commands" as const,
+          preserveInputUntilAccepted: true,
+          disabled: disabled || !!queueEditor.edit,
+          run: async () => {
+            try {
+              await onSide("");
+            } catch (cause) {
+              showDeliveryNotice(cause);
+              throw cause;
+            }
           },
-        ]
+        }))
       : []),
     ...snapShotCommandEntries(snapshotCapture, t, (message) =>
       setDeliveryNotice(message ? { message } : null),
     ),
     ...composerFeatureEntries(t, {
       upload: { run: () => upload.current?.click() },
-      mcp: { run: () => setMcpOpen(true) },
-      files: { run: () => onPanel("文件") },
+      files: { run: () => onPanel("files") },
       plan: {
         active: planActive,
         disabled:
@@ -805,7 +809,7 @@ export function Composer({
       label: "压缩",
       description: "压缩当前上下文",
       icon: <ArchiveChatIcon />,
-      group: "功能",
+      group: "features",
       disabled: !!running,
       run: () => {
         void action("manage", {
@@ -905,7 +909,7 @@ export function Composer({
           project={project}
           thread={thread}
           action={action}
-          onEdit={() => onPanel("编辑目标")}
+          onEdit={() => onPanel("edit-goal")}
         />
       )}
       <Input
@@ -965,29 +969,37 @@ export function Composer({
       )}
       <div className="composer-input-stack">
         <div ref={setMenuAnchor} className="composer-menu-anchor" />
-        {/* 待决定事项在队列与输入框之上；队列仍贴着输入框，不会盖住决定卡。 */}
-        {approvals.map((item: Data) => (
-          <ApprovalRequest
-            key={item.requestId}
-            item={item}
-            projectId={project.id}
-            action={action}
-          />
-        ))}
-        {questions.map((item: Data) => (
-          <AskUserQuestion
-            key={item.requestId}
-            item={item}
-            projectId={project.id}
-            action={action}
-          />
-        ))}
+        {/* 待决定事项在队列与输入框之上；多请求并存时通过 ComposerRequestStack 提供 1 / N 切换。 */}
+        {activePendingRequest && (
+          <ComposerRequestStack
+            index={safeRequestIndex}
+            total={pendingRequests.length}
+            onIndexChange={setRequestIndex}
+            label={t("chat.composer.pendingRequests")}
+          >
+            {activePendingRequest.kind === "approval" ? (
+              <ApprovalRequest
+                key={activePendingRequest.item.requestId}
+                item={activePendingRequest.item}
+                projectId={project.id}
+                action={action}
+              />
+            ) : (
+              <AskUserQuestion
+                key={activePendingRequest.item.requestId}
+                item={activePendingRequest.item}
+                projectId={project.id}
+                action={action}
+              />
+            )}
+          </ComposerRequestStack>
+        )}
         <ComposerQueue
           key={key}
           project={project}
           thread={thread}
           action={action}
-          disabled={readOnly || baseDisabled || queueEditor.busy || executionBlocked}
+          disabled={readOnly || editorDisabled || executionBlocked}
           editingId={queueEditor.edit?.id}
           onEdit={(item) => {
             if (!readOnly && !disabled) void queueEditor.begin(item);
@@ -1026,7 +1038,7 @@ export function Composer({
                     detail: storageKey,
                   }),
                 );
-                onPanel("工作组");
+                onPanel("workgroups");
               }}
             >
               查看关联工作流结果
@@ -1091,7 +1103,6 @@ export function Composer({
             (!!files.length ||
               !!comments.length ||
               !!skills.selected.length ||
-              !!mcpDraft.length ||
               !!references.length ||
               !!queueEditor.edit?.attachments.length)
           }
@@ -1106,10 +1117,11 @@ export function Composer({
                     ? t("chat.composer.approvalPlaceholder")
                     : t("chat.composer.placeholder")
           }
-          disabled={editorDisabled}
+          disabled={draftDisabled}
           submitDisabled={
             workspaceReferencePending ||
             disabled ||
+            sendingMessage ||
             awaitingProjection ||
             (desktopUnsupported && !queueEditor.edit && !creatingGoal) ||
             (readOnly && creatingGoal) ||
@@ -1145,20 +1157,26 @@ export function Composer({
             entries: [
               ...catalogActions.filter((entry) => !readOnly || entry.value !== "plan"),
               ...referenceEntries,
-              ...appEntries,
               ...skills.catalog.entries,
             ].map((entry) => ({
               ...entry,
               disabled:
                 entry.disabled ||
                 (!!queueEditor.edit &&
-                  entry.group !== "会话" &&
-                  !["upload", "files", "mcp"].includes(entry.value)),
+                  entry.group !== "conversations" &&
+                  !["upload", "files"].includes(entry.value)),
             })),
           }}
           onChange={(value) => {
             if (outgoing) return;
+            if (clearingPending.current && !value) {
+              clearingPending.current = false;
+              return;
+            }
+            clearingPending.current = false;
             setText(value);
+            // 恢复编辑器原文也会通知 onChange，只有内容变化才推进草稿版本。
+            if (value === (composerDraftStorage.getItem(key) ?? "")) return;
             composerDraftStorage.scheduleItem(key, value);
             composerDraftStorage.scheduleItem(
               `${key}:version`,
@@ -1181,6 +1199,7 @@ export function Composer({
               : undefined
           }
           onPaste={(event) =>
+            !editorDisabled &&
             composerPaste(event, (pasted) => setFiles((current) => [...current, ...pasted]))
           }
           topContent={
@@ -1313,13 +1332,6 @@ export function Composer({
                     onRemove={() => detachReviewComments(reviewKey)}
                   />
                 )}
-                {!queueEditor.edit && (
-                  <McpComposerAttachments
-                    draftKey={key}
-                    entries={mcpDraft}
-                    disabled={editorDisabled}
-                  />
-                )}
               </div>
             </div>
           }
@@ -1335,12 +1347,10 @@ export function Composer({
                   ),
               )
               .map((i: Data) =>
-                stripGenUiModelContext(
-                  (i.content ?? [])
-                    .filter((p: Data) => p.type === "text")
-                    .map((p: Data) => p.text)
-                    .join("\n"),
-                ),
+                (i.content ?? [])
+                  .filter((p: Data) => p.type === "text")
+                  .map((p: Data) => p.text)
+                  .join("\n"),
               ),
           )}
           leadingActions={
@@ -1424,7 +1434,6 @@ export function Composer({
                     !input.files.length &&
                     !queueEditor.edit.attachments.length)
                 }
-                className="composer-primary-action"
                 onClick={() => void saveQueueEdit()}
               >
                 <SendMessageIcon className="size-5" />
@@ -1434,14 +1443,13 @@ export function Composer({
               !input.files.length &&
               !comments.length &&
               !skills.selected.length &&
-              !mcpDraft.length &&
               !references.length ? (
               <ControlHintTooltip title={ordinary ? "暂停执行" : "停止"} shortcut="Esc">
-                <Button
+                <ComposerActionButton
                   type="button"
                   variant="secondary"
                   size="icon"
-                  className="composer-primary-action composer-stop-action"
+                  mode="stop"
                   aria-label={ordinary ? "暂停执行" : "停止"}
                   disabled={executionBlocked}
                   onClick={() => {
@@ -1450,7 +1458,7 @@ export function Composer({
                   }}
                 >
                   <StopIcon className="size-4" />
-                </Button>
+                </ComposerActionButton>
               </ControlHintTooltip>
             ) : running ? (
               <ControlHintTooltip
@@ -1465,6 +1473,7 @@ export function Composer({
                   aria-describedby={desktopUnsupported ? compatibilityDescription : undefined}
                   disabled={
                     disabled ||
+                    sendingMessage ||
                     awaitingProjection ||
                     desktopUnsupported ||
                     taskManagement ||
@@ -1473,7 +1482,6 @@ export function Composer({
                       !input.files.length &&
                       !comments.length &&
                       !skills.selected.length &&
-                      !mcpDraft.length &&
                       !references.length)
                   }
                   onClick={(event) =>
@@ -1494,7 +1502,6 @@ export function Composer({
                   data-testid="chat-continue-button"
                   aria-describedby={desktopUnsupported ? compatibilityDescription : undefined}
                   disabled={disabled || desktopUnsupported}
-                  className="composer-primary-action"
                   onClick={() => void continueExecution()}
                 >
                   <ContinueExecutionIcon className="size-5" />
@@ -1504,16 +1511,6 @@ export function Composer({
           }
         />
       </div>
-      <ComposerMcp
-        projectId={project.id}
-        action={readAction}
-        open={mcpOpen}
-        anchor={menuAnchor}
-        onClose={() => {
-          setMcpOpen(false);
-          api.current?.focus();
-        }}
-      />
       <div className="composer-caption sr-only">
         {prefs.sendShortcut === "enter" ? "Enter" : "⌘/Ctrl+Enter"} 发送 · Shift+Enter 换行 · / 命令
       </div>

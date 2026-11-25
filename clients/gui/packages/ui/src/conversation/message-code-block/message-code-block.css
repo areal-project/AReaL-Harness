@@ -2,20 +2,21 @@
   min-width: 0;
   width: 100%;
   overflow: hidden;
-  margin-block: 1.25em;
+  margin-block: calc(var(--text-conversation) * 1.25);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-panel);
   background: var(--color-surface-elevated);
 }
 .conversation-markdown > .conversation-code-block:not(:last-child) {
-  margin-bottom: 1.25em;
+  margin-bottom: calc(var(--text-conversation) * 1.25);
 }
 .conversation-code-header {
   display: flex;
   align-items: center;
-  min-height: 48px;
-  gap: 8px;
-  padding: 6px 6px 6px 20px;
+  min-height: calc(var(--spacing-inline) * 6);
+  gap: var(--spacing-inline);
+  padding: calc(var(--spacing-inline) * 3 / 4) calc(var(--spacing-inline) * 3 / 4)
+    calc(var(--spacing-inline) * 3 / 4) calc(var(--spacing-inline) * 5 / 2);
   font-family: var(--font-sans);
   font-size: var(--text-ui-caption);
   font-weight: 500;
@@ -28,24 +29,24 @@
 }
 .conversation-code-actions {
   display: flex;
-  gap: 1px;
+  gap: var(--border-width-default);
   flex-shrink: 0;
 }
 .conversation-code-actions > button {
-  width: 36px;
-  height: 36px;
+  width: calc(var(--spacing-inline) * 9 / 2);
+  height: calc(var(--spacing-inline) * 9 / 2);
   padding: 0;
   border-radius: 50%;
 }
 .conversation-code-content {
-  padding: 0 20px 12px;
+  padding: 0 calc(var(--spacing-inline) * 5 / 2) calc(var(--spacing-inline) * 3 / 2);
 }
 @media (max-width: 767px) {
   .conversation-code-header {
-    padding-left: 16px;
+    padding-left: var(--spacing-field);
   }
   .conversation-code-content {
-    padding-inline: 16px;
+    padding-inline: var(--spacing-field);
   }
 }
 
@@ -81,5 +82,5 @@
 }
 .conversation-code-preview svg {
   width: 100%;
-  max-height: min(28rem, 60vh);
+  max-height: min(calc(var(--spacing-inline) * 56), 60vh);
 }

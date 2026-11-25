@@ -284,12 +284,26 @@ class VerificationTests(unittest.TestCase):
             "Renderer build inputs differ", " ".join(self.doctor("source.json", False)["errors"])
         )
         (self.root / "clients/gui/renderer/input.ts").write_text("source")
-        service = self.root / "services/workbench/src/host-library-store.ts"
+
+    def test_relay_source_does_not_invalidate_renderer_build(self):
+        service = self.root / "services/remote-relay/src/server.ts"
         service.parent.mkdir(parents=True)
         service.write_text("export const revision = 1;\n")
-        self.assertIn(
-            "Renderer build inputs differ", " ".join(self.doctor("workbench.json", False)["errors"])
-        )
+        self.doctor("relay-only.json")
+
+    def test_shared_provider_metadata_invalidates_both_build_inputs(self):
+        core_before = verification.source_input_hash(self.root)
+        gui_before = verification.gui_inputs(self.root)
+        definitions = self.root / "schemas/provider-config/definitions.json"
+        definitions.parent.mkdir(parents=True)
+        definitions.write_text("[]\n")
+        self.assertNotEqual(core_before, verification.source_input_hash(self.root))
+        self.assertNotEqual(gui_before, verification.gui_inputs(self.root))
+        core_before = verification.source_input_hash(self.root)
+        gui_before = verification.gui_inputs(self.root)
+        definitions.write_text('[{"id":"custom-compatible"}]\n')
+        self.assertNotEqual(core_before, verification.source_input_hash(self.root))
+        self.assertNotEqual(gui_before, verification.gui_inputs(self.root))
 
     def test_renderer_snapshot_survives_rebuild_and_refuses_overwrite(self):
         destination = self.root / "private renderer"

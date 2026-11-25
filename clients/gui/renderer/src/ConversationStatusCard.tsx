@@ -1,7 +1,7 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import { errorText } from "./errors/errorCopy.js";
-import { TaskContext } from "@areal/ui/experimental";
-import { DelayedVisible } from "@areal/ui";
+import { TaskContext } from "@areal/ui/compositions";
+import { DelayedVisible, TitleTooltip } from "@areal/ui";
 import "@areal/ui/conversation.css";
 import { Button } from "./components/ui/button.js";
 import { useEffect, useRef, useState } from "react";
@@ -169,16 +169,17 @@ export function ConversationStatusCard({
       title={allSources ? t("chat.context.allSources") : workspaceName}
       onBack={allSources ? () => setAllSources(false) : undefined}
       actions={
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="刷新任务资源"
-          title="刷新任务资源"
-          disabled={!connected || git.loading}
-          onClick={refresh}
-        >
-          <RefreshCwIcon size={14} />
-        </Button>
+        <TitleTooltip title="刷新任务资源">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="刷新任务资源"
+            disabled={!connected || git.loading}
+            onClick={refresh}
+          >
+            <RefreshCwIcon size={14} />
+          </Button>
+        </TitleTooltip>
       }
     >
       <div hidden={allSources}>
@@ -203,7 +204,7 @@ export function ConversationStatusCard({
               title={t("chat.context.changes")}
               aria-label={`${t("chat.context.changes")} · ${t("chat.context.changeScope", { count: files.length })} · +${intl.formatNumber(additions)} −${intl.formatNumber(deletions)}`}
               icon={<ReviewPanelIcon />}
-              onClick={() => onPanel("改动")}
+              onClick={() => onPanel("changes")}
               meta={
                 <span className="diff-count">
                   <b>+{intl.formatNumber(additions)}</b>
@@ -246,7 +247,7 @@ export function ConversationStatusCard({
           {git.info?.branch && (
             <TaskContext.Item
               title={`${t("resources.branch")} · ${git.info.branch}`}
-              onClick={() => onPanel("改动")}
+              onClick={() => onPanel("changes")}
               icon={<ReviewPanelIcon />}
             />
           )}
@@ -262,7 +263,7 @@ export function ConversationStatusCard({
           thread={thread}
           action={action}
           onOpen={onAgent}
-          summary={{ onOpen: onAgents ?? (() => onPanel("子代理")) }}
+          summary={{ onOpen: onAgents ?? (() => onPanel("subagents")) }}
         />
         {entries.length > 0 && (
           <TaskContext.Sources
@@ -319,12 +320,11 @@ export function ConversationStatusCard({
             </h3>
             {processes.map((process) => (
               <Button
-                unstyled
-                data-slot={undefined}
+                variant="row"
+                size="auto"
                 type="button"
                 key={process.id}
-                className="task-resource-row"
-                onClick={() => onPanel("进程")}
+                onClick={() => onPanel("processes")}
                 title={process.id}
               >
                 <TerminalPanelIcon />
@@ -340,7 +340,7 @@ export function ConversationStatusCard({
                       } as Record<string, string>
                     )[process.state] ?? process.state}
                   </span>
-                  <small className="task-resource-description">
+                  <small className="task-resource-description text-ui-xs text-foreground-subtle">
                     {process.argv?.join(" ") || process.id}
                   </small>
                 </span>

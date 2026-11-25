@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover
 import { SettingsSwitch } from "./settings/SettingsPageParts.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { Action, Data } from "./services.js";
-import { WorktreePicker } from "@areal/ui/experimental";
+import { WorktreePicker } from "@areal/ui/compositions";
 import { DelayedVisible } from "@areal/ui";
 import "./Worktree.css";
 
@@ -134,7 +134,6 @@ export function WorktreeStarter({
             disabled={disabled || !project.state?.connected}
             aria-label={t("worktree.configure")}
             title={t("worktree.configure")}
-            className="worktree-picker-trigger"
           />
         }
       >
@@ -144,7 +143,7 @@ export function WorktreeStarter({
         side="top"
         align="end"
         variant="menu"
-        className="worktree-picker"
+        className="w-80"
         aria-label={t("worktree.configure")}
         onKeyDownCapture={(event) => {
           if (event.key === "Escape" && page !== "main" && !event.nativeEvent.isComposing) {
@@ -154,177 +153,180 @@ export function WorktreeStarter({
           }
         }}
       >
-        <WorktreePicker>
-          {page === "main" ? (
-            <>
-              <p className="worktree-picker-heading flex items-center gap-2">
-                {t("worktree.configureLocal")}
-                <DelayedVisible active={loading}>
-                  <LoaderCircle
-                    className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
-                    aria-hidden="true"
-                  />
-                </DelayedVisible>
-              </p>
-              <WorktreePicker.Row
-                icon={<GitFork aria-hidden="true" />}
-                label={t("worktree.new")}
-                control={
-                  <SettingsSwitch
-                    className="worktree-picker-toggle"
-                    aria-label={t("worktree.workInNew")}
-                    checked={enabled}
-                    disabled={busy}
-                    onCheckedChange={(checked) =>
-                      change({
-                        mode: checked ? "worktree" : "source",
-                        ...(checked
-                          ? {}
-                          : { environmentId: undefined, environmentRevision: undefined }),
-                      })
-                    }
-                  />
-                }
-              />
-              <WorktreePicker.Row
-                ref={branchTrigger}
-                icon={<GitBranch aria-hidden="true" />}
-                label={t("worktree.branchLabel")}
-                value={
-                  <TitleTooltip
-                    title={selected.ref === "HEAD" ? (sourceBranch ?? undefined) : selected.ref}
-                  >
-                    <span>
-                      {selected.ref === "HEAD" ? (sourceBranch ?? selected.ref) : selected.ref}
-                    </span>
-                  </TitleTooltip>
-                }
-                disabled={busy}
-                aria-label={`${t("worktree.startBranch")} ${t("worktree.branchLabel")} ${selected.ref === "HEAD" ? (sourceBranch ?? selected.ref) : selected.ref}`}
-                onClick={() => setPage("branch")}
-              />
-              <WorktreePicker.Row
-                ref={environmentTrigger}
-                icon={<Settings aria-hidden="true" />}
-                label={t("worktree.environments")}
-                value={
-                  staleEnvironment
-                    ? t("worktree.selectedUnavailable")
-                    : (selectedEnvironment?.name ?? t("worktree.noEnvironment"))
-                }
-                disabled={busy || !enabled}
-                aria-label={`${t("worktree.environment")} ${t("worktree.environments")} ${staleEnvironment ? t("worktree.selectedUnavailable") : (selectedEnvironment?.name ?? t("worktree.noEnvironment"))}`}
-                onClick={() => setPage("environment")}
-              />
-              {staleEnvironment && enabled && (
-                <p role="alert" className="worktree-picker-feedback">
-                  {t("worktree.selectedUnavailable")}
+        <div className="worktree-picker">
+          <WorktreePicker>
+            {page === "main" ? (
+              <>
+                <p className="worktree-picker-heading flex items-center gap-2">
+                  {t("worktree.configureLocal")}
+                  <DelayedVisible active={loading}>
+                    <LoaderCircle
+                      className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                  </DelayedVisible>
                 </p>
-              )}
-            </>
-          ) : (
-            <>
-              <WorktreePicker.Page
-                label={t(page === "branch" ? "worktree.branchLabel" : "worktree.environments")}
-                backLabel={t("worktree.back")}
-                onBack={back}
-              >
-                {page === "branch" ? (
-                  <>
-                    <SettingsSearchInput
-                      ref={search}
-                      aria-label={t("worktree.searchBranches")}
-                      placeholder={t("worktree.searchBranches")}
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      onClear={() => {
-                        setQuery("");
-                        search.current?.focus();
-                      }}
-                      clearLabel={t("worktree.clearSearch")}
-                      containerClassName="worktree-branch-search"
-                    />
-                    <p className="worktree-picker-note">{t("worktree.commitOnly")}</p>
-                    <WorktreePicker.Options
-                      label={t("worktree.startBranch")}
+                <WorktreePicker.Row
+                  icon={<GitFork aria-hidden="true" />}
+                  label={t("worktree.new")}
+                  control={
+                    <SettingsSwitch
+                      className="worktree-picker-toggle"
+                      aria-label={t("worktree.workInNew")}
+                      checked={enabled}
                       disabled={busy}
-                      heading={t("worktree.branches")}
-                      empty={t("worktree.noBranches")}
-                      items={branches.map((branch) => ({
-                        id: branch,
-                        label:
-                          branch === "HEAD" && sourceBranch
-                            ? `${branch} · ${sourceBranch}`
-                            : branch,
-                        title: branch,
-                        icon: <GitBranch aria-hidden="true" />,
-                        selected: selected.ref === branch,
-                      }))}
-                      onSelect={(ref) => {
-                        change({ ref });
-                        back();
-                      }}
-                    />
-                  </>
-                ) : (
-                  <>
-                    <WorktreePicker.Options
-                      label={t("worktree.environment")}
-                      disabled={busy}
-                      items={[
-                        { id: "none", name: t("worktree.noEnvironment") },
-                        ...environments,
-                      ].map((item) => ({
-                        id: item.id,
-                        label: item.name,
-                        icon: <Settings aria-hidden="true" />,
-                        selected: item.id === (selected.environmentId ?? "none"),
-                      }))}
-                      onSelect={(id) => {
+                      onCheckedChange={(checked) =>
                         change({
-                          environmentId: id === "none" ? undefined : id,
-                          environmentRevision:
-                            id === "none" ? undefined : options?.environmentRevision,
-                        });
-                        back();
-                      }}
+                          mode: checked ? "worktree" : "source",
+                          ...(checked
+                            ? {}
+                            : { environmentId: undefined, environmentRevision: undefined }),
+                        })
+                      }
                     />
-                    {!environments.length && (
-                      <p className="worktree-picker-note">{t("worktree.noEnvironment")}</p>
-                    )}
-                    {onConfigureEnvironments && (
-                      <Button
-                        variant="ghost"
-                        className="worktree-picker-configure"
-                        onClick={() => {
-                          setOpen(false);
-                          setPage("main");
-                          onConfigureEnvironments();
-                        }}
-                      >
-                        <Settings aria-hidden="true" />
-                        {t("worktree.configureEnvironments")}
-                      </Button>
-                    )}
-                  </>
+                  }
+                />
+                <WorktreePicker.Row
+                  ref={branchTrigger}
+                  icon={<GitBranch aria-hidden="true" />}
+                  label={t("worktree.branchLabel")}
+                  value={
+                    <TitleTooltip
+                      title={selected.ref === "HEAD" ? (sourceBranch ?? undefined) : selected.ref}
+                    >
+                      <span>
+                        {selected.ref === "HEAD" ? (sourceBranch ?? selected.ref) : selected.ref}
+                      </span>
+                    </TitleTooltip>
+                  }
+                  disabled={busy}
+                  aria-label={`${t("worktree.startBranch")} ${t("worktree.branchLabel")} ${selected.ref === "HEAD" ? (sourceBranch ?? selected.ref) : selected.ref}`}
+                  onClick={() => setPage("branch")}
+                />
+                <WorktreePicker.Row
+                  ref={environmentTrigger}
+                  icon={<Settings aria-hidden="true" />}
+                  label={t("worktree.environments")}
+                  value={
+                    staleEnvironment
+                      ? t("worktree.selectedUnavailable")
+                      : (selectedEnvironment?.name ?? t("worktree.noEnvironment"))
+                  }
+                  disabled={busy || !enabled}
+                  aria-label={`${t("worktree.environment")} ${t("worktree.environments")} ${staleEnvironment ? t("worktree.selectedUnavailable") : (selectedEnvironment?.name ?? t("worktree.noEnvironment"))}`}
+                  onClick={() => setPage("environment")}
+                />
+                {staleEnvironment && enabled && (
+                  <p role="alert" className="worktree-picker-feedback">
+                    {t("worktree.selectedUnavailable")}
+                  </p>
                 )}
-              </WorktreePicker.Page>
-            </>
-          )}
-          <DelayedVisible active={loading}>
-            <p role="status" className="sr-only">
-              {t("worktree.loading")}
-            </p>
-          </DelayedVisible>
-          {error && (
-            <div className="worktree-picker-feedback">
-              <p role="alert">{error}</p>
-              <Button variant="ghost" size="sm" onClick={() => setRetry((value) => value + 1)}>
-                {t("worktree.retryOptions")}
-              </Button>
-            </div>
-          )}
-        </WorktreePicker>
+              </>
+            ) : (
+              <>
+                <WorktreePicker.Page
+                  label={t(page === "branch" ? "worktree.branchLabel" : "worktree.environments")}
+                  backLabel={t("worktree.back")}
+                  onBack={back}
+                >
+                  {page === "branch" ? (
+                    <>
+                      <SettingsSearchInput
+                        ref={search}
+                        aria-label={t("worktree.searchBranches")}
+                        placeholder={t("worktree.searchBranches")}
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        onClear={() => {
+                          setQuery("");
+                          search.current?.focus();
+                        }}
+                        clearLabel={t("worktree.clearSearch")}
+                        containerClassName="worktree-branch-search"
+                      />
+                      <p className="worktree-picker-note">{t("worktree.commitOnly")}</p>
+                      <WorktreePicker.Options
+                        label={t("worktree.startBranch")}
+                        disabled={busy}
+                        heading={t("worktree.branches")}
+                        empty={t("worktree.noBranches")}
+                        items={branches.map((branch) => ({
+                          id: branch,
+                          label:
+                            branch === "HEAD" && sourceBranch
+                              ? `${branch} · ${sourceBranch}`
+                              : branch,
+                          title: branch,
+                          icon: <GitBranch aria-hidden="true" />,
+                          selected: selected.ref === branch,
+                        }))}
+                        onSelect={(ref) => {
+                          change({ ref });
+                          back();
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <WorktreePicker.Options
+                        label={t("worktree.environment")}
+                        disabled={busy}
+                        items={[
+                          { id: "none", name: t("worktree.noEnvironment") },
+                          ...environments,
+                        ].map((item) => ({
+                          id: item.id,
+                          label: item.name,
+                          icon: <Settings aria-hidden="true" />,
+                          selected: item.id === (selected.environmentId ?? "none"),
+                        }))}
+                        onSelect={(id) => {
+                          change({
+                            environmentId: id === "none" ? undefined : id,
+                            environmentRevision:
+                              id === "none" ? undefined : options?.environmentRevision,
+                          });
+                          back();
+                        }}
+                      />
+                      {!environments.length && (
+                        <p className="worktree-picker-note">{t("worktree.noEnvironment")}</p>
+                      )}
+                      {onConfigureEnvironments && (
+                        <Button
+                          variant="ghost"
+                          align="start"
+                          className="mt-(--spacing-inline) w-full gap-(--spacing-inline)"
+                          onClick={() => {
+                            setOpen(false);
+                            setPage("main");
+                            onConfigureEnvironments();
+                          }}
+                        >
+                          <Settings aria-hidden="true" />
+                          {t("worktree.configureEnvironments")}
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </WorktreePicker.Page>
+              </>
+            )}
+            <DelayedVisible active={loading}>
+              <p role="status" className="sr-only">
+                {t("worktree.loading")}
+              </p>
+            </DelayedVisible>
+            {error && (
+              <div className="worktree-picker-feedback">
+                <p role="alert">{error}</p>
+                <Button variant="ghost" size="sm" onClick={() => setRetry((value) => value + 1)}>
+                  {t("worktree.retryOptions")}
+                </Button>
+              </div>
+            )}
+          </WorktreePicker>
+        </div>
       </PopoverContent>
     </Popover>
   );

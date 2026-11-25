@@ -483,7 +483,7 @@ export function SpecFixture() {
       surface={"surface" in start ? (start.surface as "tasks" | "plugins") : undefined}
       action={action}
       renderPanel={(name, { show }) =>
-        name === "旁路讨论" ? (
+        name === "side-chat" ? (
           <SideChatPane
             project={data}
             source={thread}

@@ -1,4 +1,4 @@
-import { readTurnToolDetails } from "./support/tool-history.mjs";
+import { readCoreThread } from "./support/core-observation.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -8,17 +8,20 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { selectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import { captureSmokeFailure } from "./smoke-navigation.mjs";
+import {
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
+import { applicationFixture } from "./application-fixture.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection, waitForServiceExit } = require(
-  join(gui, "app/src/core/service-client.cjs"),
-);
+
 const scratch = await makeTempDir("areal-browser-loading-");
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
@@ -26,6 +29,7 @@ await mkdir(workspace);
 await mkdir(join(userHome, ".areal"), { recursive: true });
 execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
 let pendingImage,
+  fixture,
   app,
   page,
   projectId,
@@ -86,6 +90,34 @@ const model = createServer(async (request, response) => {
     for await (const chunk of request) raw += chunk;
     const body = JSON.parse(raw);
     if (respondToSessionName(body, response)) return;
+    const system = body.messages
+      .filter((message) => message.role === "system" && typeof message.content === "string")
+      .map((message) => message.content);
+    const review = system.some((content) => content.startsWith("AReaL permission review."));
+    const prediction = system.some((content) =>
+      content.startsWith("Predict the next user prompt from the conversation data."),
+    );
+    if (review || prediction) {
+      assert.ok(!body.tools?.length, "Auxiliary model requests have no tools");
+      let content = "";
+      if (review) {
+        const packet = JSON.parse(
+          body.messages.findLast((message) => message.role === "user").content,
+        );
+        assert.equal(packet.tool, "browser_v1");
+        assert.match(packet.digest, /^[a-f0-9]{64}$/);
+        content = JSON.stringify({
+          decision: "ask",
+          reason: "Fixture requires explicit user approval.",
+          digest: packet.digest,
+        });
+      }
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      response.end(
+        `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+      );
+      return;
+    }
     const last = body.messages.at(-1),
       result = last?.role === "tool" ? last.content : null;
     const description = find(result, (value) => value.protocol === "areal.browser.host.v1");
@@ -167,23 +199,22 @@ await writeFile(
   }),
 );
 const binary = process.env.AREAL_CORE_BIN || join(root, "target/debug/areal");
-const env = {
-  ...process.env,
+const env = { ...process.env };
+for (const key of Object.keys(env))
+  if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
+Object.assign(env, {
+  HOME: userHome,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_CORE_USER_HOME: userHome,
+  AREAL_HARNESS_HOME: join(scratch, "harness"),
   AREAL_CORE_CONFIG: join(userHome, ".areal/config.toml"),
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
   AREAL_CORE_DESKTOP_CONFIG: deployment,
   AREAL_CORE_BIN: binary,
-};
-for (const key of [
-  "AREAL_CORE_WORKSPACE",
-  "AREAL_HARNESS_HOME",
-  "AREAL_HARNESS_CONFIG",
-  "ELECTRON_RUN_AS_NODE",
-])
-  delete env[key];
+  NO_PROXY: [env.NO_PROXY, "127.0.0.1,localhost,.localhost,::1"].filter(Boolean).join(","),
+  no_proxy: [env.no_proxy, "127.0.0.1,localhost,.localhost,::1"].filter(Boolean).join(","),
+});
 const until = async (read, label, timeout = 90000) => {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -202,9 +233,10 @@ const nativeFact = () =>
       : null;
   }, new URL(searchUrl).origin);
 try {
+  fixture = await applicationFixture(gui, join(scratch, "app"));
   app = await electron.launch({
     executablePath: require("electron"),
-    args: [join(gui, "app")],
+    args: [fixture.path],
     env,
     timeout: 120000,
   });
@@ -276,55 +308,38 @@ try {
     },
     { workspace, module: join(gui, "app/src/core/preview.cjs") },
   );
-  await page.evaluate(() => window.arealDesktop.chooseProject());
+  await page.locator(".composer-project").click();
+  await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
   projectId = (
     await until(
       async () => (await state()).projects.find((project) => project.root === workspace),
-      "Project ready",
+      "Workspace registered",
     )
   ).id;
-  const created = await page.evaluate(
-    (projectId) =>
-      window.arealDesktop.command("create", {
-        projectId,
-        browserEnabled: true,
-        profile: { id: "fixture", revision: "v1" },
-      }),
-    projectId,
+  const workbench = page.getByTestId("areal-workbench");
+  await until(
+    async () => (await workbench.getAttribute("data-project-id")) === projectId,
+    "Workspace selected",
   );
-  assert.equal(created.ok, true, JSON.stringify(created));
-  threadId = created.value.threadId;
-  await selectConversation(page, threadId);
+  await page.getByRole("button", { name: "选择模型", exact: true }).click();
+  await page.getByRole("tab", { name: "fixture", exact: true }).click();
+  await page.locator('[data-model-value="fixture/fixture"]').getByRole("radio").click();
+  await page.keyboard.press("Escape");
   await page.getByTestId("chat-input").fill("使用内置浏览器搜索 Agent，读取仍在加载的结果。");
   // 浏览器场景通过可见发送按钮进入；原生 Enter 与 IME 由 Composer 场景独立验收。
   await page.getByTestId("chat-send-button").click();
+  threadId = await until(() => workbench.getAttribute("data-thread-id"), "Thread created");
   facts.turn = await until(async () => {
     if (facts.modelError) throw new Error(facts.modelError);
     const allow = page
       .getByRole("button", { name: "允许一次", exact: true })
       .and(page.locator(":enabled"));
     if (await allow.isVisible()) await allow.click();
-    const turn = (await state()).projects
-      .find((project) => project.id === projectId)
-      .state.threads[threadId]?.turns?.at(-1);
+    const { turns } = await readCoreThread({ binary, env, gui, threadId, workspace });
+    const turn = turns.at(-1);
     return turn && ["completed", "failed"].includes(turn.status) && turn;
-  }, "Search turn settles");
+  }, "Original Core search turn settles");
   facts.nativeBeforeAnnotation = await nativeFact();
-  facts.turn = await readTurnToolDetails({
-    command: async (name, params) => {
-      const result = await page.evaluate(
-        ({ name, params }) => window.arealDesktop.command(name, params),
-        { name, params },
-      );
-      assert.equal(result.ok, true, JSON.stringify(result));
-      return result.value;
-    },
-    readThread: async () =>
-      (await state()).projects.find((project) => project.id === projectId).state.threads[threadId],
-    projectId,
-    threadId,
-    turnId: facts.turn.id,
-  });
   const finalRead = facts.turn.items.filter((item) => item.type === "dynamicToolCall").at(-1);
   facts.read = {
     success: finalRead.success,
@@ -337,16 +352,17 @@ try {
     "The subresource keeps the actual native document loading",
   );
   assert.equal(new URL(facts.nativeBeforeAnnotation.url).searchParams.get("q"), "Agent");
+  const annotationError = page.locator(".preview-panel .preview-viewport-toolbar[role=alert]");
+  const localAnnotationError = annotationError.filter({ hasText: "操作没有完成，请重试。" });
   await page.getByRole("button", { name: "批注", exact: true }).click();
   await until(
     async () =>
-      (await page.locator(".browser-region-annotation").count()) ||
-      (await page.getByText(/页面截图已取消或超时/).count()),
+      (await page.locator(".browser-region-annotation").count()) || (await annotationError.count()),
     "Annotation settles",
     20000,
   );
   facts.nativeAfterAnnotation = await nativeFact();
-  facts.annotationError = await page.getByText(/页面截图已取消或超时/).allTextContents();
+  facts.annotationError = await annotationError.allTextContents();
   facts.nativeVisible = await app.evaluate(
     ({ BrowserWindow }, id) =>
       BrowserWindow.getAllWindows()[0]
@@ -403,10 +419,12 @@ try {
     };
   }, facts.nativeBeforeAnnotation.id);
   await page.getByRole("button", { name: "批注", exact: true }).click();
-  await page
-    .getByRole("alert")
-    .filter({ hasText: "页面截图已取消或超时" })
-    .waitFor({ timeout: 15000 });
+  await until(
+    () => app.evaluate(() => globalThis.__loadingDelay.phase === "firstHeld"),
+    "Initial annotation reaches the held viewport read",
+    5000,
+  );
+  await localAnnotationError.waitFor({ timeout: 15000 });
   facts.timeoutLocal = (await page.getByTestId("browser-load-error").count()) === 0;
   await app.evaluate(() => {
     globalThis.__loadingDelay.phase = "retry";
@@ -427,11 +445,7 @@ try {
   await app.evaluate(() => globalThis.__loadingDelay.restore());
   if (!facts.timeoutLocal || !facts.retrySessionRetained)
     errors.push("A timed-out read must not release the debugger session borrowed by its retry");
-  assert.equal(
-    await page.getByText(/页面截图已取消或超时/).count(),
-    0,
-    "Retry clears the page-owned annotation error",
-  );
+  assert.equal(await annotationError.count(), 0, "Retry clears the page-owned annotation error");
   await page.getByRole("button", { name: "退出标注", exact: true }).click();
   await app.evaluate(
     (_electron, module) => {
@@ -439,15 +453,18 @@ try {
         "./preview-native/human-capture.cjs",
       );
       const captureRegion = HumanPageCapture.prototype.captureRegion;
+      globalThis.__loadingRefusal = false;
       HumanPageCapture.prototype.captureRegion = async function () {
         HumanPageCapture.prototype.captureRegion = captureRegion;
+        globalThis.__loadingRefusal = true;
         throw new Error("Fixture annotation capture refused");
       };
     },
     join(gui, "app/src/core/preview.cjs"),
   );
   await page.getByRole("button", { name: "批注", exact: true }).click();
-  await page.getByText(/Fixture annotation capture refused/).waitFor();
+  await localAnnotationError.waitFor();
+  assert.equal(await app.evaluate(() => globalThis.__loadingRefusal), true);
   facts.refusal = {
     fullPageError: await page.getByTestId("browser-load-error").count(),
     native: await nativeFact(),
@@ -474,7 +491,7 @@ try {
   await page.getByRole("button", { name: "批注", exact: true }).click();
   await page.locator(".browser-region-annotation").waitFor();
   assert.equal(
-    await page.getByText(/Fixture annotation capture refused/).count(),
+    await annotationError.count(),
     0,
     "Explicit retry clears the local annotation refusal",
   );
@@ -558,53 +575,41 @@ try {
       })
       .catch(() => []);
   pendingImage?.end();
-  const home = join(scratch, "core");
-  const metadata = await readFile(join(home, "service.json"), "utf8")
-    .then(JSON.parse)
-    .catch(() => null);
+  let originalHost;
+  try {
+    originalHost = await readFixtureHost(env);
+  } catch (error) {
+    facts.errors.push("Host identity: " + error.message);
+    process.exitCode = 1;
+  }
+  const guiPid = app?.process().pid;
   if (app) {
     await app
       .evaluate(({ dialog }) => {
         dialog.showMessageBox = async () => ({ response: 1 });
       })
       .catch(() => {});
-    await app.close();
+    await closeSmokeApplication(app).catch((error) => {
+      facts.errors.push("Electron cleanup: " + error.message);
+      process.exitCode = 1;
+    });
   }
-  if (metadata) {
-    try {
-      process.kill(metadata.pid, 0);
-      const connection = new ServiceConnection();
-      await connection.connect(metadata);
-      try {
-        await connection.request("hello", {
-          protocol: metadata.protocol,
-          identity: metadata.identity,
-        });
-        const resources = await connection.request("resources", { operation: "inspect" });
-        assert.ok(
-          resources.every(
-            (project) =>
-              !project.activeTurns && !project.unresolvedTools && !project.resources.length,
-          ),
-        );
-        await connection.request(
-          "stopService",
-          { protocol: metadata.protocol, forUpdate: false },
-          true,
-        );
-      } finally {
-        connection.close();
-      }
-      await waitForServiceExit(home, metadata);
-    } catch (error) {
-      if (error.code !== "ESRCH") {
-        facts.cleanupError = error.stack;
-        process.exitCode = 1;
-      }
-    }
+  try {
+    const stop = await settleFixtureHostAfterQuit(binary, env, scratch, {
+      host: originalHost,
+      pid: guiPid,
+    });
+    facts.cleanup = {
+      guiPid,
+      hostPid: originalHost?.pid,
+      stopRequestId: stop?.requestId,
+      serviceExited: true,
+    };
+  } catch (error) {
+    facts.cleanupError = error.stack;
+    process.exitCode = 1;
   }
-  await assertApplicationStopped(binary, env, metadata);
-  facts.cleanup = { pid: metadata?.pid, serviceExited: true };
+  await fixture?.close();
   for (const server of [site, model]) {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));

@@ -1,4 +1,5 @@
 import { Button } from "@areal/ui";
+import { observeResize } from "@areal/ui/observe-resize";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { AppSlashCommand } from "./slashCommandHelpers.js";
 import "./slash-command-menu.css";
@@ -37,11 +38,12 @@ export function SlashCommandMenu({
     const resize = () =>
       setHeight(Math.max(0, Math.min(320, anchor.getBoundingClientRect().bottom - 8 - 12)));
     resize();
-    const observer = new ResizeObserver(resize);
-    if (anchor.parentElement) observer.observe(anchor.parentElement);
+    const stopResize = anchor.parentElement
+      ? observeResize(anchor.parentElement, resize)
+      : undefined;
     window.addEventListener("resize", resize);
     return () => {
-      observer.disconnect();
+      stopResize?.();
       window.removeEventListener("resize", resize);
     };
   }, [anchor]);
@@ -83,10 +85,12 @@ export function SlashCommandMenu({
               id={`${id}-${i}`}
               key={command.value}
               type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full"
               role="option"
               aria-selected={i === index}
               tabIndex={-1}
-              className="slash-command-row"
               onMouseDown={(event) => event.preventDefault()}
               onMouseMove={() => onSelect(i)}
               onClick={() => onChoose(command)}

@@ -168,7 +168,7 @@ export function snapShotCommandEntries(
       label: t("snapshots.capture"),
       description: t("snapshots.shortcutDescription"),
       icon: <Camera size={16} />,
-      group: "功能" as const,
+      group: "features" as const,
       run: () => {
         void bridge.captureSnapShot().catch((cause: Error) => onError(errorText(t, cause)));
       },

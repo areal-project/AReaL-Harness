@@ -23,7 +23,7 @@ exports: ["ActionButton"]
 
 ## 行为
 
-`R-ACTIONBUTTON-002` pending时保留文字、显示转动图标并禁止重复点击，不推断操作已完成。
+`R-ACTIONBUTTON-002` pending时保留文字、显示转动图标并禁止重复点击，不推断操作已完成。**检查：**`clients/gui/packages/ui/src/components/action-button/action-button.test.tsx`
 
 ## 内容
 

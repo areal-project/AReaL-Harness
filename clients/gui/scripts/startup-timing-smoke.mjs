@@ -1,16 +1,23 @@
+import { preparePrivateFixtureDirectories } from "./support/desktop-fixture.mjs";
+import { resolveAcceptanceBinary } from "./support/acceptance-binary.mjs";
 import { artifactHashes } from "./support/performance-profile.mjs";
 import { startupResources, startupEnvironment, summarizeStartup } from "./startup-resources.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile, rm, readdir, chmod } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import { createProjectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
+import {
+  closeSmokeApplication,
+  makeFixtureDirectoriesWritable,
+  stopAndAssertFixtureHost,
+} from "./application-cleanup.mjs";
 import { applicationFixture } from "./application-fixture.mjs";
 import { CoreClient } from "../packages/runtime-client/core.js";
 
@@ -32,7 +39,7 @@ const modelCount = Number(process.env.AREAL_STARTUP_MODEL_COUNT ?? 9);
 const catalogReads = Number(process.env.AREAL_STARTUP_CATALOG_READS ?? 0);
 assert.ok(Number.isInteger(modelCount) && modelCount >= 1 && modelCount <= 128);
 assert.ok(Number.isInteger(catalogReads) && catalogReads >= 0 && catalogReads <= 20);
-const binary = process.env.AREAL_CORE_BIN || join(root, ".local/dev-bin/areal");
+const binary = await resolveAcceptanceBinary(root, process.env.AREAL_CORE_BIN);
 const variants = [
   ...(process.env.AREAL_STARTUP_BASELINE_BIN || process.env.AREAL_STARTUP_BASELINE_GUI
     ? [
@@ -85,6 +92,7 @@ await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
 let app,
   activeApplication,
   activeFixture,
+  activeHost = false,
   seedModelRequestCount = 0,
   passed = false,
   failure = null;
@@ -99,15 +107,38 @@ async function until(predicate, label) {
   throw new Error(`Timeout: ${label}`);
 }
 
-async function launch(fixture, label, hideDuringRestore = false, preShowClose) {
+async function launch(
+  fixture,
+  label,
+  hideDuringRestore = false,
+  preShowClose,
+  settingsGate = false,
+) {
+  activeHost = true;
+  await preparePrivateFixtureDirectories(scratch, [
+    fixture.home,
+    fixture.env.AREAL_GUI_USER_DATA,
+    fixture.env.AREAL_CORE_USER_HOME,
+    fixture.env.AREAL_HARNESS_HOME,
+    fixture.registry,
+  ]);
   const started = performance.now();
   let entry = join(fixture.gui, "app");
-  if (preShowClose) {
+  if (preShowClose || settingsGate) {
     activeApplication = await applicationFixture(
       fixture.gui,
-      join(dirname(fixture.home), `app-${preShowClose}`),
+      join(dirname(fixture.home), `app-${preShowClose ?? "settings"}`),
       `
-if (!process.argv.includes('--areal-core-service')) {
+if (!process.argv.includes('--areal-core-service') && ${JSON.stringify(settingsGate)}) {
+  const { app, ipcMain } = require('electron');
+  let release; const gate = new Promise(resolve => { release = resolve; });
+  app.startupSettingsFixture = { reached: false, release };
+  const handle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = (channel, listener) => handle(channel, channel === 'areal-native:host-ticket'
+    ? async (...args) => { app.startupSettingsFixture.reached = true; await gate; return listener(...args); }
+    : listener);
+}
+if (!process.argv.includes('--areal-core-service') && ${JSON.stringify(Boolean(preShowClose))}) {
   const { app, ipcMain } = require('electron');
   let release; const gate = new Promise(resolve => { release = resolve; });
   app.startupFixture = { closed: false, release };
@@ -157,7 +188,8 @@ if (!process.argv.includes('--areal-core-service')) {
       }, "hidden startup finishes real Core restoration");
       await page
         .getByTestId("chat-view")
-        .getByText("STARTUP_HISTORY_OK", { exact: true })
+        .getByRole("paragraph")
+        .filter({ hasText: /^STARTUP_HISTORY_OK$/ })
         .waitFor();
       assert.equal(
         await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
@@ -247,6 +279,27 @@ if (!process.argv.includes('--areal-core-service')) {
       false,
     );
   }
+  if (settingsGate) {
+    await until(
+      () => app.evaluate(({ app }) => app.startupSettingsFixture.reached),
+      "startup dependency gate reached",
+    );
+    assert.equal(
+      firstView.loading,
+      true,
+      "startup remains incomplete while initialization is gated",
+    );
+    assert.equal(
+      await page.getByTestId("areal-workbench").getAttribute("data-startup-ready"),
+      "false",
+      "renderer has not completed startup before the gate is released",
+    );
+    await page.getByRole("button", { name: "打开设置", exact: true }).click();
+    await page.locator(".startup-settings").getByText("语言", { exact: true }).first().waitFor();
+    await page.getByRole("button", { name: "返回加载界面", exact: true }).click();
+    await page.getByRole("button", { name: "打开设置", exact: true }).waitFor();
+    await app.evaluate(({ app }) => app.startupSettingsFixture.release());
+  }
   const snapshot = await until(async () => {
     const value = await page.evaluate(() => window.arealDesktop.snapshot());
     return (
@@ -257,7 +310,15 @@ if (!process.argv.includes('--areal-core-service')) {
     );
   }, `${label} project connected`);
   if (fixture.threadId)
-    await page.getByTestId("chat-view").getByText("STARTUP_HISTORY_OK", { exact: true }).waitFor();
+    await page
+      .getByTestId("chat-view")
+      .getByRole("paragraph")
+      .filter({ hasText: /^STARTUP_HISTORY_OK$/ })
+      .waitFor();
+  if (settingsGate)
+    lifecycleChecks.push(
+      "settings navigation mounted and returned while Host ticket was held; release restored history",
+    );
   if (hideDuringRestore) {
     assert.equal(
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
@@ -316,19 +377,9 @@ async function stop(fixture, label) {
   }
   const mainPid = app?.process().pid;
   if (app) {
-    let timer;
     try {
-      await Promise.race([
-        app.close(),
-        new Promise((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error("Isolated Electron did not quit within 30 seconds")),
-            30000,
-          );
-        }),
-      ]);
+      await closeSmokeApplication(app);
     } finally {
-      clearTimeout(timer);
       if (activeApplication) {
         await activeApplication.close();
         activeApplication = null;
@@ -340,7 +391,9 @@ async function stop(fixture, label) {
     await activeApplication.close();
     activeApplication = null;
   }
-  await assertApplicationStopped(fixture.binary, fixture.env, metadata);
+  const cleanupEvidence = join(evidence, `${label}-cleanup`);
+  await mkdir(cleanupEvidence, { recursive: true });
+  await stopAndAssertFixtureHost(fixture.binary, fixture.env, cleanupEvidence, metadata);
   if (mainPid)
     await until(() => {
       try {
@@ -355,7 +408,7 @@ async function stop(fixture, label) {
   try {
     servicePids = [
       ...new Set(
-        timingRecords(await readFile(join(fixture.home, "service.log"), "utf8")).map(
+        timingRecords(await readFile(join(fixture.registry, "host.log"), "utf8")).map(
           (record) => record.pid,
         ),
       ),
@@ -374,6 +427,7 @@ async function stop(fixture, label) {
       }
     }, `${label} logged service ${pid} exits`);
   cleanups.push({ label, mainPid, desktopPid: metadata?.pid, servicePids, stopped: true });
+  activeHost = false;
 }
 
 function timingRecords(text) {
@@ -459,13 +513,6 @@ async function measureCatalog(descriptor) {
   }
 }
 
-async function removeFixture(directory) {
-  await chmod(directory, 0o700);
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (entry.isDirectory()) await removeFixture(join(directory, entry.name));
-  }
-}
-
 console.log(`Evidence: ${evidence}`);
 try {
   for (const variant of variants) {
@@ -474,9 +521,8 @@ try {
       registry = join(base, "registry");
     const workspace = join(base, "workspace"),
       user = join(base, "user");
-    await mkdir(workspace, { recursive: true });
-    await mkdir(home);
-    await mkdir(user);
+    await preparePrivateFixtureDirectories(scratch, [home, user]);
+    await mkdir(workspace);
     execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
     const config = join(base, "config.toml");
     await writeFile(
@@ -542,7 +588,10 @@ try {
     variants[variants.indexOf(variant)] = fixture;
     activeFixture = fixture;
     const { page } = await launch(fixture, `${variant.label}-seed`);
-    await page.getByRole("button", { name: "新聊天", exact: true }).click();
+    await createProjectConversation(page, "workspace");
+    await page.getByRole("button", { name: "选择模型", exact: true }).click();
+    await page.getByRole("radio", { name: "fixture-0", exact: true }).click();
+    await page.keyboard.press("Escape");
     await page.getByTestId("chat-input").fill("Confirm startup and persist this conversation");
     await page.getByRole("button", { name: "发送", exact: true }).click();
     await until(async () => {
@@ -559,7 +608,21 @@ try {
   }
   const initialRequests = modelRequests.length;
   seedModelRequestCount = initialRequests;
-  for (let round = 0; round < rounds; round++)
+  if (process.env.AREAL_STARTUP_CHECK_SETTINGS === "1") {
+    activeFixture = variants.at(-1);
+    await launch(activeFixture, "current-settings-during-restoration", false, undefined, true);
+    assert.equal(
+      modelRequests.length,
+      initialRequests,
+      "settings navigation does not replay messages",
+    );
+    await stop(activeFixture, "current-settings-during-restoration");
+  }
+  for (
+    let round = 0;
+    round < (process.env.AREAL_STARTUP_CHECK_SETTINGS === "1" ? 0 : rounds);
+    round++
+  )
     for (const fixture of variants) {
       activeFixture = fixture;
       const label = `${fixture.label}-${round}`;
@@ -593,7 +656,8 @@ try {
       fixture.generation = descriptor.generation;
       await page
         .getByTestId("chat-view")
-        .getByText("STARTUP_HISTORY_OK", { exact: true })
+        .getByRole("paragraph")
+        .filter({ hasText: /^STARTUP_HISTORY_OK$/ })
         .waitFor();
       if (round > 0)
         assert.equal(
@@ -608,7 +672,7 @@ try {
         initialRequests,
         "cold restart does not replay saved messages",
       );
-      const serviceLog = await readFile(join(fixture.home, "service.log"), "utf8");
+      const serviceLog = await readFile(join(fixture.registry, "host.log"), "utf8");
       await writeFile(join(evidence, `${label}-service.log`), serviceLog);
       const metadata = JSON.parse(await readFile(join(fixture.home, "service.json"), "utf8"));
       const records = timingRecords(serviceLog).filter((record) => record.pid === metadata.pid);
@@ -705,11 +769,12 @@ try {
   passed = true;
 } catch (error) {
   failure = { name: error.name, message: error.message };
+  if (app) await captureSmokeFailure(await app.firstWindow(), evidence, error);
   throw error;
 } finally {
   let cleanupFailure = null;
   try {
-    if (activeFixture) await stop(activeFixture, "finally");
+    if (activeFixture && activeHost) await stop(activeFixture, "finally");
   } catch (error) {
     passed = false;
     process.exitCode = 1;
@@ -729,7 +794,7 @@ try {
     );
     if (passed) {
       try {
-        await removeFixture(scratch);
+        await makeFixtureDirectoriesWritable(scratch);
         await rm(scratch, { recursive: true });
       } catch (error) {
         passed = false;

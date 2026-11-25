@@ -1,10 +1,21 @@
 import { ThemeDiffPreview } from "./ThemeDiffPreview.js";
 import { currentErrorText } from "../errors/currentErrorText.js";
-import { TitleTooltip } from "@areal/ui";
-import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
+import { Badge, TitleTooltip } from "@areal/ui";
+import {
+  SettingsGroupCard,
+  SettingsRow,
+  SettingsSection,
+  ShortcutCapture,
+} from "@areal/ui/compositions";
+import {
+  resetWorkspaceShortcut,
+  setWorkspaceShortcut,
+  useWorkspaceShortcuts,
+} from "./workspaceShortcuts.js";
 import { colorContrastRatio } from "@areal/ui/theme";
 import { useI18n, UiMessageError, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
 import { ActionButton } from "../components/ui/action-button.js";
+import { Button } from "../components/ui/button.js";
 import { SettingsSelect } from "./SettingsPageParts.js";
 import { SettingsDisclosure } from "./SettingsDisclosure.js";
 import { DesktopEnvironmentSettings } from "./DesktopEnvironmentSettings.js";
@@ -101,6 +112,7 @@ export function GeneralSettings({
 }) {
   const { t } = useI18n();
   const prefs = useApplicationPreferences();
+  const shortcuts = useWorkspaceShortcuts();
   const [powerSaving, setPowerSaving] = useState(false),
     [powerError, setPowerError] = useState<string | UiMessage>("");
   const powerSavePending = useRef(false);
@@ -220,6 +232,48 @@ export function GeneralSettings({
               {formatUiMessage(t, powerError) || power?.error}
             </p>
           )}
+        </SettingsGroupCard>
+      </SettingsSection>
+      <SettingsSection title={t("settings.displaySettings.shortcuts")}>
+        <SettingsGroupCard>
+          <SettingsRow
+            label={
+              <span className="inline-flex items-center gap-2">
+                {t("settings.displaySettings.pinSummaryTitle")}
+                <Badge tone="neutral" size="sm">
+                  {t("settings.displaySettings.shortcutScopeConversation")}
+                </Badge>
+              </span>
+            }
+            description={t("settings.displaySettings.pinSummaryDescription")}
+            control={
+              <ShortcutCapture
+                label={t("settings.displaySettings.pinSummaryShortcutLabel")}
+                value={shortcuts.pinSummary}
+                onChange={(combo) => setWorkspaceShortcut("pinSummary", combo)}
+                onReset={() => resetWorkspaceShortcut("pinSummary")}
+              />
+            }
+          />
+          <SettingsRow
+            label={
+              <span className="inline-flex items-center gap-2">
+                {t("settings.displaySettings.threadFindTitle")}
+                <Badge tone="neutral" size="sm">
+                  {t("settings.displaySettings.shortcutScopeConversation")}
+                </Badge>
+              </span>
+            }
+            description={t("settings.displaySettings.threadFindDescription")}
+            control={
+              <ShortcutCapture
+                label={t("settings.displaySettings.threadFindShortcutLabel")}
+                value={shortcuts.threadFind}
+                onChange={(combo) => setWorkspaceShortcut("threadFind", combo)}
+                onReset={() => resetWorkspaceShortcut("threadFind")}
+              />
+            }
+          />
         </SettingsGroupCard>
       </SettingsSection>
       <SettingsSection title={t("settings.displaySettings.editor")}>
@@ -402,7 +456,8 @@ export function AppearanceSettings({
         min={min}
         max={max}
         value={value}
-        className="w-16 text-center"
+        align="center"
+        className="w-16"
         onChange={(e) => {
           const n = Number(e.target.value);
           if (n >= min && n <= max) onChange(n);
@@ -452,19 +507,96 @@ export function AppearanceSettings({
         <SettingsGroupCard>
           <SettingsRow
             label={t("settings.displaySettings.interfaceTheme")}
+            description={t("settings.displaySettings.colorModeDescription")}
             control={
-              <SettingsSelect
+              <div
+                role="radiogroup"
                 aria-label={t("settings.displaySettings.interfaceTheme")}
-                value={theme}
-                onValueChange={(value) => {
-                  setTheme(value);
-                  if (value !== "system") setMode(value === "data-dense" ? "dark" : "light");
-                }}
+                className="appearance-mode-cards"
               >
-                <option value="system">{t("settings.displaySettings.system")}</option>
-                <option value="soft-glass">{t("settings.displaySettings.light")}</option>
-                <option value="data-dense">{t("settings.displaySettings.dark")}</option>
-              </SettingsSelect>
+                {(
+                  [
+                    {
+                      value: "system",
+                      label: t("settings.displaySettings.system"),
+                      preview: "split",
+                    },
+                    {
+                      value: "soft-glass",
+                      label: t("settings.displaySettings.light"),
+                      preview: "light",
+                    },
+                    {
+                      value: "data-dense",
+                      label: t("settings.displaySettings.dark"),
+                      preview: "dark",
+                    },
+                  ] as const
+                ).map((option) => {
+                  const selected = theme === option.value;
+                  return (
+                    <div
+                      key={option.value}
+                      className="appearance-mode-card"
+                      data-selected={selected ? "true" : undefined}
+                    >
+                      <Button
+                        unstyled
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        aria-label={option.label}
+                        title={option.label}
+                        className="flex size-full"
+                        onClick={() => {
+                          setTheme(option.value);
+                          if (option.value !== "system")
+                            setMode(option.value === "data-dense" ? "dark" : "light");
+                        }}
+                      >
+                        <span className="appearance-mode-preview" aria-hidden="true">
+                          {option.preview === "split" ? (
+                            <>
+                              <span className="appearance-mode-half appearance-mode-light">
+                                <span className="appearance-mode-sidebar" />
+                                <span className="appearance-mode-lines">
+                                  <span className="appearance-mode-bar" />
+                                  <span className="appearance-mode-bar appearance-mode-bar-accent" />
+                                  <span className="appearance-mode-bar appearance-mode-bar-short" />
+                                </span>
+                              </span>
+                              <span className="appearance-mode-half appearance-mode-dark">
+                                <span className="appearance-mode-sidebar" />
+                                <span className="appearance-mode-lines">
+                                  <span className="appearance-mode-bar" />
+                                  <span className="appearance-mode-bar appearance-mode-bar-accent" />
+                                  <span className="appearance-mode-bar appearance-mode-bar-short" />
+                                </span>
+                              </span>
+                            </>
+                          ) : (
+                            <span
+                              className={`appearance-mode-full ${
+                                option.preview === "dark"
+                                  ? "appearance-mode-dark"
+                                  : "appearance-mode-light"
+                              }`}
+                            >
+                              <span className="appearance-mode-sidebar" />
+                              <span className="appearance-mode-lines">
+                                <span className="appearance-mode-bar" />
+                                <span className="appearance-mode-bar appearance-mode-bar-accent" />
+                                <span className="appearance-mode-bar appearance-mode-bar-short" />
+                              </span>
+                            </span>
+                          )}
+                        </span>
+                        <span className="sr-only">{option.label}</span>
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
             }
           />
           <SettingsRow

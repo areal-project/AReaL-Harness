@@ -72,6 +72,10 @@ export const generalMessages = {
     "zh-CN": "当前由你审批；部署与 Agent 预设的限制仍生效。已入队消息保留原权限。",
     en: "You currently review approvals. Deployment and agent preset limits still apply. Queued messages keep their original permissions.",
   },
+  "chat.permissions.pendingNotice": {
+    "zh-CN": "项目就绪后确认可用权限；当前保留你的默认偏好。",
+    en: "Available permissions will be confirmed once the project is ready; your saved preference is kept.",
+  },
   "chat.permissions.limitsNotice": {
     "zh-CN": "部署与 Agent 预设的限制始终生效；已入队消息保留原权限。",
     en: "Deployment and agent preset limits always apply. Queued messages keep their original permissions.",
@@ -133,7 +137,7 @@ export const generalMessages = {
     en: "Waiting for browser authorization",
   },
   "settings.chatGPTSubscription.refreshToCheckConnectionStatus": {
-    "zh-CN": "请刷新核对连接状态。",
+    "zh-CN": "请刷新以查看最新连接状态。",
     en: "Refresh to check connection status.",
   },
   "settings.chatGPTSubscription.cancelSignIn": {
@@ -335,6 +339,10 @@ export const generalMessages = {
   "settings.displaySettings.interfaceTheme": {
     "zh-CN": "界面主题",
     en: "Interface theme",
+  },
+  "settings.displaySettings.colorModeDescription": {
+    "zh-CN": "使用浅色或深色主题，或跟随系统外观",
+    en: "Use light or dark colors, or follow your system setting",
   },
   "settings.displaySettings.system": {
     "zh-CN": "跟随系统",
@@ -708,8 +716,24 @@ export const generalMessages = {
     en: "Disabled",
   },
   "settings.modelSettings.keychainLocked": {
-    "zh-CN": "钥匙串访问受限，请重新输入并保存密钥",
-    en: "Keychain access restricted; re-enter and save API key",
+    "zh-CN": "系统凭据访问受限，可点击显示密钥按钮授权读取",
+    en: "System credential access is restricted. Use Show API key to authorize access.",
+  },
+  "settings.modelSettings.keychainAuthorizationRequired": {
+    "zh-CN": "旧密钥授权不适用于当前应用，请点击显示密钥授权，或重新输入保存。",
+    en: "The saved key is not authorized for this app identity. Use Show API key to authorize access, or re-enter and save it. The old entry is preserved.",
+  },
+  "settings.modelSettings.credentialCheckUnavailable": {
+    "zh-CN": "凭据检查暂时无法完成，配置已保留。请稍后重试。",
+    en: "Credential checking could not finish. Your configuration is preserved. Try again later.",
+  },
+  "settings.modelSettings.storedCredentialMissing": {
+    "zh-CN": "未找到已保存的密钥，请重新输入并保存",
+    en: "The saved credential entry was not found. Re-enter and save the API key.",
+  },
+  "settings.modelSettings.checkingCredentials": {
+    "zh-CN": "正在检查凭据…",
+    en: "Checking credentials…",
   },
   "settings.modelSettings.credentialMigrating": {
     "zh-CN": "正在恢复凭据",
@@ -878,6 +902,14 @@ export const generalMessages = {
   "settings.modelSettings.connected": {
     "zh-CN": "连接成功",
     en: "Connected",
+  },
+  "settings.modelSettings.connectedViaProxy": {
+    "zh-CN": "已通过代理连接 {value0}",
+    en: "Connected to {value0} through a proxy",
+  },
+  "settings.modelSettings.connectedDirectly": {
+    "zh-CN": "已直连 {value0}",
+    en: "Connected directly to {value0}",
   },
   "settings.modelSettings.connectedToModelValue": {
     "zh-CN": "模型 {value0} 连接成功",
@@ -1148,7 +1180,7 @@ export const generalMessages = {
     en: "Session settings",
   },
   "settings.sessionSettings.theConfigurationResultNeedsCheckingItWill": {
-    "zh-CN": "配置结果待核对，不会自动重发。",
+    "zh-CN": "配置结果待确认，不会自动重发。",
     en: "The configuration result needs checking. It will not be resent automatically.",
   },
   "settings.sessionSettings.sessionSettingsChangedReloadBeforeDecidingWhether": {
@@ -1156,7 +1188,7 @@ export const generalMessages = {
     en: "Session settings changed. Reload before deciding whether to submit. Your draft is retained.",
   },
   "settings.sessionSettings.selectAtLeastOneSkillOrUse": {
-    "zh-CN": "请至少选择一个技能，或改回使用预设全部技能。",
+    "zh-CN": "请至少选择一个 Skills，或改回使用预设全部 Skills。",
     en: "Select at least one skill or use all preset skills.",
   },
   "settings.sessionSettings.sessionSettingsWereSavedButCouldNot": {
@@ -1236,19 +1268,19 @@ export const generalMessages = {
     en: "Additional instructions",
   },
   "settings.sessionSettings.sessionSkills": {
-    "zh-CN": "会话技能",
+    "zh-CN": "会话 Skills",
     en: "Session skills",
   },
   "settings.sessionSettings.chooseSkillsAvailableForFutureExecution": {
-    "zh-CN": "选择之后执行时可用的技能。",
+    "zh-CN": "选择之后执行时可用的 Skills。",
     en: "Choose skills available for future execution.",
   },
   "settings.sessionSettings.skillScope": {
-    "zh-CN": "技能范围",
+    "zh-CN": "Skills 范围",
     en: "Skill scope",
   },
   "settings.sessionSettings.sessionSkillScope": {
-    "zh-CN": "会话技能范围",
+    "zh-CN": "会话 Skills 范围",
     en: "Session skill scope",
   },
   "settings.sessionSettings.allPresetSkills": {
@@ -1256,11 +1288,11 @@ export const generalMessages = {
     en: "All preset skills",
   },
   "settings.sessionSettings.selectedSkills": {
-    "zh-CN": "所选技能",
+    "zh-CN": "所选 Skills",
     en: "Selected skills",
   },
   "settings.sessionSettings.noSelectableSkillsInTheCurrentPreset": {
-    "zh-CN": "当前预设没有可选择的技能。",
+    "zh-CN": "当前预设没有可选择的 Skills。",
     en: "No selectable skills in the current preset.",
   },
   "settings.sessionSettings.modelParameters": {
@@ -1300,7 +1332,7 @@ export const generalMessages = {
     en: "Archived tasks are read-only. Session settings cannot be changed.",
   },
   "settings.sessionSettings.theConfigurationResultNeedsCheckingYourDraft": {
-    "zh-CN": "配置结果待核对。草稿已保留，不会自动重发。",
+    "zh-CN": "配置结果待确认，草稿已保留，不会自动重发。",
     en: "The configuration result needs checking. Your draft is retained and will not be resent automatically.",
   },
   "settings.sessionSettings.saveSessionSettings": {
@@ -1328,7 +1360,7 @@ export const generalMessages = {
     en: "Use latest settings",
   },
   "settings.sessionSettings.reviewSessionSettings": {
-    "zh-CN": "核对会话配置",
+    "zh-CN": "查看会话配置",
     en: "Review session settings",
   },
   "settings.sessionSettings.reloadedSessionSettings": {
@@ -1352,11 +1384,11 @@ export const generalMessages = {
     en: "None",
   },
   "settings.sessionSettings.skills": {
-    "zh-CN": "技能：",
+    "zh-CN": "Skills：",
     en: "Skills: ",
   },
   "settings.sessionSettings.allPresetSkills2": {
-    "zh-CN": "预设全部技能",
+    "zh-CN": "预设全部 Skills",
     en: "All preset skills",
   },
   "settings.sessionSettings.maximumModelCallsPerTurn2": {
@@ -1720,7 +1752,7 @@ export const generalMessages = {
     en: "Signed out",
   },
   "settings.chatGPTSubscription.statusNeedsChecking": {
-    "zh-CN": "状态待核对",
+    "zh-CN": "状态待确认",
     en: "Status needs checking",
   },
   "settings.chatGPTSubscription.activeAccount": {
@@ -1738,5 +1770,34 @@ export const generalMessages = {
   "settings.chatGPTSubscription.authorizationExpired": {
     "zh-CN": "授权失效，请重新登录",
     en: "Authorization expired. Sign in again.",
+  },
+  "settings.displaySettings.shortcuts": { "zh-CN": "快捷键", en: "Shortcuts" },
+  "settings.displaySettings.shortcutScopeConversation": {
+    "zh-CN": "对话流",
+    en: "Conversation",
+  },
+  "settings.displaySettings.pinSummaryTitle": {
+    "zh-CN": "置顶 / 展开会话摘要",
+    en: "Pin / expand thread summary",
+  },
+  "settings.displaySettings.pinSummaryDescription": {
+    "zh-CN": "在活跃对话顶部快速固定或展开 Pin Summary 面板。",
+    en: "Quickly pin or expand the Pin Summary panel at the top of the active conversation.",
+  },
+  "settings.displaySettings.pinSummaryShortcutLabel": {
+    "zh-CN": "置顶或展开会话摘要快捷键",
+    en: "Pin or expand thread summary shortcut",
+  },
+  "settings.displaySettings.threadFindTitle": {
+    "zh-CN": "对话内查找",
+    en: "Find in conversation",
+  },
+  "settings.displaySettings.threadFindDescription": {
+    "zh-CN": "在当前会话消息中打开查找浮条并跳转匹配项。",
+    en: "Open the find bar in the current conversation and jump between matches.",
+  },
+  "settings.displaySettings.threadFindShortcutLabel": {
+    "zh-CN": "对话内查找快捷键",
+    en: "Find in conversation shortcut",
   },
 } as const;

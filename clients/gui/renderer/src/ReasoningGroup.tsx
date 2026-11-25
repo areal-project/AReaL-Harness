@@ -1,4 +1,4 @@
-import { ActivityRowButton, ActivityRowChevron } from "@areal/ui/experimental";
+import { ActivityRowButton, ActivityRowChevron } from "@areal/ui/compositions";
 import { Fragment, useId, useState, type ReactNode } from "react";
 import type { Data } from "./services.js";
 import { readingDisclosure, rememberDisclosure } from "./conversationReading.js";
@@ -30,7 +30,7 @@ export function ReasoningGroup({
   return (
     <div className="reasoning-group" data-testid="reasoning-group">
       <ActivityRowButton
-        className="tool-summary-row reasoning-summary"
+        variant="reasoning"
         aria-label={t("common.turn.reasoning")}
         title={t("common.turn.reasoningCount", { count })}
         aria-expanded={open}

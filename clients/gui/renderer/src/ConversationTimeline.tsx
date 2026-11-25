@@ -40,19 +40,30 @@ export function MessageTime({ createdAt }: { createdAt?: number }) {
   );
   return (
     <ControlHintTooltip title={full}>
-      <Button
-        unstyled
-        data-slot={undefined}
-        type="button"
-        className="message-time"
-        aria-label={t("chat.timeline.messageTime", { time: full })}
-      >
-        <time dateTime={date.toISOString()}>
-          {new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(date)}
-        </time>
-      </Button>
+      <span className="message-time">
+        <Button
+          variant="ghost"
+          size="xs"
+          type="button"
+          aria-label={t("chat.timeline.messageTime", { time: full })}
+        >
+          <time dateTime={date.toISOString()}>
+            {new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(date)}
+          </time>
+        </Button>
+      </span>
     </ControlHintTooltip>
   );
+}
+
+function formatModelChangeSide(side?: Data) {
+  if (!side) return "";
+  const provider =
+    side.providerName ||
+    (typeof side.providerId === "string" && !/^(restored_|app_)/.test(side.providerId)
+      ? side.providerId
+      : undefined);
+  return [provider, side.modelId].filter(Boolean).join(" / ");
 }
 
 export function ModelChanges({ changes, afterTurnId }: { changes?: Data[]; afterTurnId?: string }) {
@@ -66,8 +77,8 @@ export function ModelChanges({ changes, afterTurnId }: { changes?: Data[]; after
         key={change.revision}
       >
         {t("chat.timeline.modelChange", {
-          from: [change.from.providerId, change.from.modelId].filter(Boolean).join(" / "),
-          to: [change.to.providerId, change.to.modelId].filter(Boolean).join(" / "),
+          from: formatModelChangeSide(change.from),
+          to: formatModelChangeSide(change.to),
         })}
       </TimelineNotice>
     ));

@@ -66,10 +66,8 @@ impl Invocation<'_> {
                 ));
             }
             if state.thread.is_read_only_side()
-                && !(matches!(
-                    self.call.name.as_str(),
-                    "side_context_read" | "gen_ui_publish"
-                ) && matches!(self.entry.backend, Backend::Core))
+                && !(self.call.name == "side_context_read"
+                    && matches!(self.entry.backend, Backend::Core))
                 && !(state.thread.side_workspace_read()
                     && super::side_file_tool(&self.call.name, &self.entry.backend))
             {
@@ -107,11 +105,7 @@ impl Invocation<'_> {
                 .is_some_and(|c| c.read_only)
                 && matches!(
                     self.entry.backend,
-                    Backend::Client
-                        | Backend::Page(_)
-                        | Backend::Mcp(_)
-                        | Backend::Plugin(_)
-                        | Backend::Coordination
+                    Backend::Client | Backend::Mcp(_) | Backend::Plugin(_) | Backend::Coordination
                 )
                 && !crate::agents::read_only_tool(&self.call.name, &self.entry.backend)
             {
@@ -301,59 +295,10 @@ impl Invocation<'_> {
         } else {
             None
         };
-        let computer_plan = if self.call.name == "computer_v1"
-            && matches!(self.entry.backend, Backend::Client)
-        {
-            if self
-                .cell
-                .state
-                .lock()
-                .await
-                .thread
-                .parent_thread_id
-                .is_some()
-            {
-                return Err(invalid("computer control is unavailable in child threads"));
-            }
-            let host = self
-                .host
-                .as_ref()
-                .ok_or_else(|| invalid("computer host unavailable"))?;
-            let prepared = host.prepare_computer(json!({"threadId":self.thread_id,"turnId":self.turn_id,
-                "callId":self.call.id,"tool":"computer_v1","arguments":arguments,"hostGeneration":host.id()}),
-                self.cancel.clone()).await.map_err(invalid)?
-                .ok_or_else(|| invalid("computer prepare capability unavailable"))?;
-            if let Some(code) = prepared["error"].as_str() {
-                let mut error = invalid(format!("computer prepare {code}; dispatch is not_sent"));
-                error.details = Some(prepared);
-                return Err(error);
-            }
-            if prepared["preparedActionId"]
-                .as_str()
-                .is_none_or(str::is_empty)
-                || prepared["operation"] != arguments["operation"]
-                || prepared["parameters"] != arguments["parameters"]
-                || prepared["origin"].as_str().is_none()
-                || prepared["fingerprint"].as_str().is_none_or(str::is_empty)
-            {
-                return Err(invalid("computer host returned an invalid plan"));
-            }
-            self.edit(|execution, _| {
-                execution.model_arguments = Some(arguments.clone());
-                execution.effective_arguments =
-                    Some(json!({"arguments":arguments,"plan":prepared}));
-            })
-            .await?;
-            Some(prepared)
-        } else {
-            None
-        };
         let approval_arguments = browser_plan
             .as_ref()
-            .or(computer_plan.as_ref())
             .map(|plan| json!({"arguments":arguments,"plan":plan}));
-        if let Err(error) = self
-            .engine
+        self.engine
             .approval(
                 self.cell,
                 &self.call.id,
@@ -361,15 +306,8 @@ impl Invocation<'_> {
                 approval_arguments.as_ref().unwrap_or(&arguments),
                 self.cancel,
             )
-            .await
-        {
-            self.discard_computer_plan(&arguments, computer_plan.as_ref())
-                .await;
-            return Err(error);
-        }
+            .await?;
         if self.cancel.is_cancelled() {
-            self.discard_computer_plan(&arguments, computer_plan.as_ref())
-                .await;
             return Err(rt::Error::new(
                 rt::ErrorCode::ScopeClosed,
                 "cancelled after approval",
@@ -403,7 +341,7 @@ impl Invocation<'_> {
                     .await?;
             }
         }
-        if browser_plan.is_some() || computer_plan.is_some() {
+        if browser_plan.is_some() {
             let current = self.cell.bindings.read().await.host.clone();
             if self
                 .host
@@ -411,36 +349,27 @@ impl Invocation<'_> {
                 .zip(current.as_ref())
                 .is_none_or(|(prepared, active)| prepared.id() != active.id() || active.is_closed())
             {
-                self.discard_computer_plan(&arguments, computer_plan.as_ref())
-                    .await;
                 return Err(invalid(
                     "desktop host changed after approval; prepare again",
                 ));
             }
         }
-        if self.cancel.is_cancelled() && !matches!(self.entry.backend, Backend::Page(_)) {
-            self.discard_computer_plan(&arguments, computer_plan.as_ref())
-                .await;
+        if self.cancel.is_cancelled() {
             return Err(rt::Error::new(
                 rt::ErrorCode::ScopeClosed,
                 "cancelled before dispatch",
             ));
         }
-        let result = if matches!(
-            self.entry.backend,
-            Backend::Mcp(_) | Backend::Plugin(_) | Backend::Page(_)
-        ) {
+        let result = if matches!(self.entry.backend, Backend::Mcp(_) | Backend::Plugin(_)) {
             // These backends own cancellation and cleanup; do not drop their futures first.
-            self.invoke(&arguments, browser_plan.as_ref().or(computer_plan.as_ref()))
-                .await
+            self.invoke(&arguments, browser_plan.as_ref()).await
         } else if matches!(self.entry.backend, Backend::Builtin)
             && matches!(
                 self.call.name.as_str(),
                 "fs_write" | "fs_create" | "fs_apply_patches"
             )
         {
-            self.invoke(&arguments, browser_plan.as_ref().or(computer_plan.as_ref()))
-                .await
+            self.invoke(&arguments, browser_plan.as_ref()).await
         } else if matches!(self.entry.backend, Backend::Builtin)
             && matches!(
                 self.call.name.as_str(),
@@ -452,8 +381,7 @@ impl Invocation<'_> {
                 .runtime
                 .as_ref()
                 .expect("registered Runtime tool");
-            let mut invocation =
-                Box::pin(self.invoke(&arguments, browser_plan.as_ref().or(computer_plan.as_ref())));
+            let mut invocation = Box::pin(self.invoke(&arguments, browser_plan.as_ref()));
             tokio::select! {
                 biased;
                 result = &mut invocation => result,
@@ -474,7 +402,7 @@ impl Invocation<'_> {
             tokio::select! {
                 biased;
                 _ = self.cancel.cancelled() => Err(unknown("interrupted tool invocation; outcome is UNKNOWN")),
-                result = self.invoke(&arguments, browser_plan.as_ref().or(computer_plan.as_ref())) => result,
+                result = self.invoke(&arguments, browser_plan.as_ref()) => result,
             }
         };
         // Known capture failures still run ordinary failure hooks. A cancelled
@@ -493,20 +421,14 @@ impl Invocation<'_> {
             Ok(result) => result,
             Err(error) => (false, self.failure(&arguments, error)),
         };
-        if matches!(self.entry.backend, Backend::Page(_))
-            && (self.cancel.is_cancelled()
-                || value["status"] == "unknown"
-                || value["status"] == "noEffect")
-        {
-            return Ok((success, value));
-        }
+
         let event = if success {
             HookEvent::PostToolUse
         } else {
             HookEvent::PostToolUseFailure
         };
         let hooks = self.hooks(event);
-        if !hooks.is_empty() && !matches!(self.entry.backend, Backend::Page(_)) {
+        if !hooks.is_empty() {
             // Commit the actual tool outcome before invoking potentially effectful hooks.
             // A hook failure must never turn a successful write into a retryable failure.
             let prepared = self
@@ -540,33 +462,8 @@ impl Invocation<'_> {
                 break;
             }
         }
-        if matches!(self.entry.backend, Backend::Page(_)) {
-            return match self
-                .codex_post(&hook_arguments, success, value.clone())
-                .await
-            {
-                Ok(result) => Ok(result),
-                Err(_) => {
-                    *post_hook_failed = true;
-                    Ok((success, value))
-                }
-            };
-        }
-        self.codex_post(&hook_arguments, success, value).await
-    }
 
-    async fn discard_computer_plan(&self, arguments: &Value, plan: Option<&Value>) {
-        let (Some(host), Some(plan)) = (&self.host, plan) else {
-            return;
-        };
-        let cancel = CancellationToken::new();
-        let _ = tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            host.prepare_computer(json!({"threadId":self.thread_id,"turnId":self.turn_id,
-                "callId":self.call.id,"tool":"computer_v1","arguments":arguments,"hostGeneration":host.id(),
-                "discardPreparedPlan":true,"computerApproval":{"plan":plan}}), cancel.clone()),
-        ).await;
-        cancel.cancel();
+        self.codex_post(&hook_arguments, success, value).await
     }
 
     async fn codex_post(
@@ -577,41 +474,28 @@ impl Invocation<'_> {
     ) -> rt::Result<(bool, Value)> {
         // Persist actual outcome before effectful post handlers; feedback cannot roll back
         // a write or make it replayable. The model projection may be replaced separately.
-        if !matches!(self.entry.backend, Backend::Page(_)) {
-            let prepared = self
-                .engine
-                .prepare_tool_result(self.cell, self.item_id, &self.call.name, &value, None)
-                .await
-                .map_err(unknown)?;
-            self.edit(|execution, content| {
-                execution.outcome = if success {
-                    ToolOutcome::Succeeded
-                } else {
-                    ToolOutcome::Failed
-                };
-                execution.result_snapshot = prepared.snapshot;
-                execution.output_projection = Some(prepared.metrics);
-                *content = Some(content_items(&value));
-            })
-            .await?;
-        }
+
+        let prepared = self
+            .engine
+            .prepare_tool_result(self.cell, self.item_id, &self.call.name, &value, None)
+            .await
+            .map_err(unknown)?;
+        self.edit(|execution, content| {
+            execution.outcome = if success {
+                ToolOutcome::Succeeded
+            } else {
+                ToolOutcome::Failed
+            };
+            execution.result_snapshot = prepared.snapshot;
+            execution.output_projection = Some(prepared.metrics);
+            *content = Some(content_items(&value));
+        })
+        .await?;
+
         let (name, input) = crate::plugin_hooks::tool_input(&self.call.name, args);
         let effects=self.engine.plugin_hook_event(self.cell,areal_plugins::hooks::HookEvent::PostToolUse,
             json!({"tool_name":name,"tool_input":input,"tool_response":value,"tool_use_id":self.call.id,"__areal_caller_admitted":!matches!(self.entry.backend,Backend::Agent|Backend::Coordination|Backend::Core)}),self.cancel).await.map_err(unknown)?;
         if let Some(reason) = effects.block.or(effects.stop) {
-            if matches!(self.entry.backend, Backend::Page(_)) {
-                self.edit(|execution, _| {
-                    execution.hooks.push(HookExecution {
-                        name: "page-post-feedback".into(),
-                        event: "PostToolUse".into(),
-                        operation_id: self.operation.into(),
-                        outcome: ToolOutcome::Succeeded,
-                        result: Some(json!({"hookFeedback":reason})),
-                    })
-                })
-                .await?;
-                return Ok((success, value));
-            }
             return Ok((
                 success,
                 json!({"hookFeedback":reason,"toolOutcomeRetained":true}),
@@ -638,27 +522,7 @@ impl Invocation<'_> {
         if serde_json::to_vec(args).map_err(invalid)?.len() > registry::MAX_ARGUMENT_BYTES {
             return Err(invalid("tool arguments exceed 64 KiB"));
         }
-        if matches!(self.entry.backend, Backend::Page(_)) {
-            if serde_json::to_vec(args).map_err(invalid)?.len()
-                > areal_protocol::plugin_runtime::PAGE_BYTES
-            {
-                return Err(invalid("page arguments exceed 32 KiB"));
-            }
-            if let Backend::Page(tool) = &self.entry.backend
-                && tool.binding.kind == areal_protocol::plugin_runtime::PageToolKind::ApplyPatch
-            {
-                let patch: areal_protocol::plugin_runtime::PagePatch =
-                    serde_json::from_value(args.clone()).map_err(invalid)?;
-                if patch.patch.insert.encode_utf16().count()
-                    > areal_protocol::plugin_runtime::PAGE_TEXT_UNITS
-                    || patch.patch.insert.contains('\r')
-                {
-                    return Err(invalid(
-                        "page replacement exceeds UTF-16 bound or contains CR",
-                    ));
-                }
-            }
-        }
+
         self.entry.validate_input(args).map_err(invalid)
     }
     fn hooks(&self, event: HookEvent) -> Vec<&HookDefinition> {
@@ -687,7 +551,6 @@ impl Invocation<'_> {
             args,
         );
         let mut response = match &self.entry.backend {
-            Backend::Page(tool) => return self.invoke_page(tool, args).await,
             Backend::Agent => {
                 return super::agents::invoke(self.engine, self.cell, &self.call.name, args)
                     .await
@@ -1003,7 +866,7 @@ impl Invocation<'_> {
                 );
                 let key = (tool.server_name().to_owned(), tool.generation());
                 {
-                    let mut calls = self.engine.desktop.mcp_apps.calls.lock().await;
+                    let mut calls = self.engine.desktop.mcp_interactions.calls.lock().await;
                     if calls.contains_key(&key) {
                         return Err(rt::Error::new(
                             rt::ErrorCode::PermissionDenied,
@@ -1020,16 +883,11 @@ impl Invocation<'_> {
                     .active
                     .as_ref()
                     .and_then(|a| a.tool_meta.clone());
-                let cwd = self.cell.state.lock().await.thread.cwd.clone();
-                let source = self
-                    .engine
-                    .mcp_result_source(tool, self.thread_id, &cwd)
-                    .await;
                 let raw = tool
                     .call_raw_owned(args.clone(), meta, call_cancel, Some(&context))
                     .await;
                 {
-                    let mut calls = self.engine.desktop.mcp_apps.calls.lock().await;
+                    let mut calls = self.engine.desktop.mcp_interactions.calls.lock().await;
                     if calls.get(&key).is_some_and(|o| o.token == owner_token) {
                         calls.remove(&key);
                     }
@@ -1068,7 +926,7 @@ impl Invocation<'_> {
                 }
                 let mut value = serde_json::to_value(&response).map_err(unknown)?;
                 value["mcpResult"] = serde_json::to_value(&raw).map_err(unknown)?;
-                value["mcpServer"] = json!({"serverId":tool.server_name(),"generation":tool.generation(),"toolMetadata":tool.metadata(),"source":source});
+                value["mcpServer"] = json!({"serverId":tool.server_name(),"generation":tool.generation(),"toolMetadata":tool.metadata()});
                 if serde_json::to_vec(&value).map_err(unknown)?.len()
                     > areal_protocol::MAX_TOOL_RESULT_BYTES
                 {
@@ -1090,42 +948,8 @@ impl Invocation<'_> {
                     .as_ref()
                     .ok_or_else(|| unknown("dynamic tool client is unavailable"))?;
                 let mut request = json!({"threadId":self.thread_id,"turnId":self.turn_id,"callId":self.call.id,"tool":self.call.name,"arguments":args,"hostGeneration":host.id()});
-                if matches!(self.call.name.as_str(), "js" | "js_reset")
-                    && self
-                        .cell
-                        .state
-                        .lock()
-                        .await
-                        .thread
-                        .desktop
-                        .as_ref()
-                        .is_some_and(|data| data.configuration.options.external_cua)
-                {
-                    let mut state = self.cell.state.lock().await;
-                    if state.thread.parent_thread_id.is_some() || state.thread.is_read_only_side() {
-                        return Err(rt::Error::new(
-                            rt::ErrorCode::PermissionDenied,
-                            "External CUA is available only in a new top-level desktop chat",
-                        ));
-                    }
-                    request["definition"] =
-                        serde_json::to_value(&self.entry.definition).map_err(unknown)?;
-                    request["clientInstructions"] = json!(
-                        state
-                            .thread
-                            .desktop
-                            .as_ref()
-                            .map(|data| &data.configuration.options.append_instructions)
-                    );
-                    state.active.as_mut().unwrap().cua_used = true;
-                }
                 if let Some(plan) = approval_plan {
-                    let field = if self.call.name == "computer_v1" {
-                        "computerApproval"
-                    } else {
-                        "browserApproval"
-                    };
-                    request[field] = json!({"plan":plan});
+                    request["browserApproval"] = json!({"plan":plan});
                 }
                 host.call(request, self.cancel.clone())
                     .await
@@ -1137,7 +961,7 @@ impl Invocation<'_> {
             let parsed = serde_json::from_value(raw.clone()).map_err(unknown)?;
             response = areal_mcp::project_result(&parsed).map_err(unknown)?;
         }
-        if matches!(self.call.name.as_str(), "browser_v1" | "computer_v1")
+        if self.call.name == "browser_v1"
             && response.structured_content.as_ref().is_some_and(|content| {
                 content["code"] == "outcome_unknown" && content["dispatch"] == "unknown"
             })
@@ -1315,8 +1139,7 @@ impl Invocation<'_> {
             if matches!(
                 execution.outcome,
                 ToolOutcome::Succeeded | ToolOutcome::Failed
-            ) || execution.page.as_ref().is_some_and(|p| p.is_terminal())
-            {
+            ) {
                 let succeeded = execution.outcome == ToolOutcome::Succeeded;
                 *success = Some(succeeded);
                 *status = if succeeded {

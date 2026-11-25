@@ -3,9 +3,10 @@ import { resolveNewConversationModel, resolveModelEffort } from "@areal/workbenc
 import type { Data } from "../services.js";
 
 export const modelValue = (item: Data) => `${item.providerId ?? ""}/${item.modelId}`;
+export const defaultReasoningEfforts = ["none", "medium", "low", "high", "xhigh"] as const;
 export function draftModelSelection(
   project: Data,
-  chosenProfile: Data | undefined,
+  _chosenProfile: Data | undefined,
   model: string | null,
   efforts: Record<string, string>,
   requestedServiceTier?: "fast" | "default",
@@ -15,28 +16,23 @@ export function draftModelSelection(
     project.lastAcceptedModel,
     project.state?.connected === true,
   );
-  const initialModel = chosenProfile?.model
-    ? project.models.find(
-        (item: Data) =>
-          item.providerId === chosenProfile.model.providerId &&
-          item.modelId === chosenProfile.model.modelId,
-      )
-    : initialSelection.candidate;
-  const effectiveModel =
-    model ??
-    (chosenProfile?.model
-      ? `${chosenProfile.model.providerId}/${chosenProfile.model.modelId}`
-      : initialModel
-        ? modelValue(initialModel)
-        : "");
+  const initialModel = initialSelection.candidate;
+  const requested = model ?? (initialModel ? modelValue(initialModel) : "");
+  const selected = project.models.find((item: Data) => modelValue(item) === requested);
+  const unavailable =
+    project.state?.connected === true &&
+    requested &&
+    (!selected ||
+      selected.availability === "unavailable" ||
+      (selected.available === false && selected.availability !== "checking"));
+  const effectiveModel = unavailable ? "" : requested;
   const currentModel =
     project.models.find((item: Data) => modelValue(item) === effectiveModel) ??
     (initialModel && modelValue(initialModel) === effectiveModel ? initialModel : undefined);
-  const rememberedEffort =
-    !chosenProfile?.model && model === null ? initialSelection.rememberedEffort : undefined;
+  const rememberedEffort = model === null ? initialSelection.rememberedEffort : undefined;
   const effort = efforts[effectiveModel] ?? resolveModelEffort(currentModel, rememberedEffort);
   const notice =
-    model === null && !chosenProfile?.model
+    model === null
       ? initialSelection.notice === "effort-unsupported"
         ? "effort-unsupported"
         : ""

@@ -6,6 +6,7 @@ import { Switch } from "../components/ui/switch.js";
 import { Feedback } from "../components/ui/feedback.js";
 import { SettingsDialog } from "./common.js";
 import type { Data } from "../services.js";
+import { defaultReasoningEfforts } from "../lib/draftModelSelection.js";
 import "./ModelEditor.css";
 
 const reasoningEfforts = [
@@ -39,7 +40,9 @@ export function ModelEditor({
   const initialTools = model.capabilities?.tools ?? true;
   const initialVision = model.capabilities?.vision ?? true;
   const initialReasoning = model.capabilities?.reasoning ?? true;
-  const initialEfforts: string[] = model.capabilities?.reasoningEffortOptions ?? [];
+  const initialEfforts: string[] = model.capabilities?.reasoningEffortOptions ?? [
+    ...defaultReasoningEfforts,
+  ];
   const [tools, setTools] = useState(initialTools);
   const [vision, setVision] = useState(initialVision);
   const [reasoning, setReasoning] = useState(initialReasoning);

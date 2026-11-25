@@ -66,7 +66,7 @@ async fn blocked_subscription_handoff_keeps_original_receipt_and_survives_discon
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn project_preparation_defers_only_proven_optional_subscription_and_recovers_original_slot() {
+async fn history_preparation_defers_inflight_subscription_and_recovers_original_slot() {
     let root = tempfile::tempdir().unwrap();
     let base = root.path().canonicalize().unwrap();
     let mut host = schedules::tests::fixture(&base);
@@ -204,10 +204,16 @@ async fn project_preparation_defers_only_proven_optional_subscription_and_recove
             .contains("missing activation receipt"),
         "Arena must reach the prepared launch boundary"
     );
-    assert!(
-        waiting_chatgpt.is_err() && waiting_unknown.is_err(),
-        "explicit or unproven subscription dependency must wait"
-    );
+    for prepared in [waiting_chatgpt, waiting_unknown] {
+        assert!(
+            prepared
+                .unwrap()
+                .unwrap_err()
+                .to_string()
+                .contains("missing activation receipt"),
+            "pending execution credentials must not block the history launch boundary"
+        );
+    }
     assert_eq!(pending["state"], "acceptedPending");
     assert_eq!(cached, "do-not-use-cached-token");
     assert!(
@@ -342,7 +348,7 @@ async fn project_preparation_isolates_pending_migration_credentials_without_losi
         explicit.launch_inputs.as_mut().unwrap().options.api_key_env = Some(selected.into());
         let failure = host.ensure_inner(&explicit).await.unwrap_err();
         assert!(
-            failure.to_string().contains("migrationPending"),
+            failure.to_string().contains("missing activation receipt"),
             "{failure:#}"
         );
     }

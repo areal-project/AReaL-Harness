@@ -14,10 +14,9 @@ export function Reasoning({ item }: { item: Data }) {
   return (
     <div className="tool-group reasoning" data-testid="reasoning">
       <Button
-        unstyled
-        data-slot={undefined}
+        variant="ghost"
+        size="sm"
         type="button"
-        className="tool-group-summary"
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen(!open)}

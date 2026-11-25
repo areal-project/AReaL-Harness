@@ -257,11 +257,15 @@ Redaction applies to automatic Browser capture/projection; secrets already suppl
 | areal/thread/tools/attach | requestId, threadId, expectedToolsetRevision, bundleId=areal.browser.v1 | Trusted interact+tools client; idle Thread; atomic append-only deployed bundle and current host binding; conflict on different same-name schema; idempotent |
 | areal/thread/observe | threadId | Atomic snapshot plus deltas with observe permission, without ToolHost rebinding; existing resume semantics unchanged |
 
-`Thread.toolsetRevision` is optional and defaults to 0 for older Threads. Core defines the fixed `areal.browser.v1` bundle; the request carries no tool schema. Attachment returns `threadId`, `toolsetRevision`, and `bundleId`. The same principal, method, `requestId`, and input replay the original durable Thread receipt; changed input conflicts. Busy or archived Threads, stale revisions, a same-name different definition, or another live host conflict. Existing `dynamicTools` entries and history remain intact. Attachment neither ends nor starts a Turn.
+`Thread.toolsetRevision` is optional and defaults to 0 for older Threads. Core defines the fixed `areal.browser.v1` bundle; the request carries no tool schema. Attachment returns `threadId`, `toolsetRevision`, and `bundleId`. The same principal, method, `requestId`, and input replay the original durable Thread receipt; changed input conflicts. Busy or archived Threads, stale revisions, a same-name different definition, or another live host holding existing client tools conflict. An empty client toolset can bind a trusted browser attachment while its shared creation connection remains online. Existing `dynamicTools` entries and history remain intact. Attachment neither ends nor starts a Turn.
 
 After commit, Core emits `areal/thread/tools/attached` with `threadId`, the new `toolsetRevision`, and the complete `dynamicTools` array. The GUI projects that authoritative event onto an open Thread, and an older snapshot cannot undo the newer toolset. Tool callbacks remain checked by the bound Core host and native page claim, not a potentially stale GUI projection.
 
 The current GUI host executes only `browser_v1`. A Thread with other existing client dynamic tools allows attachment only on the same live original host connection. Once that host disconnects, rebinding to a GUI callback that cannot execute those tools is refused. Their definitions and history remain readable.
+
+When Core restores an older Thread, it removes recognized retired desktop computer tools and callbacks marked as external computer control from the active toolset and advances its revision. Original Turns and receipts remain readable.
+
+An executable Side Chat inherits the source Thread's live `browser_v1` connection when it belongs to the same authenticated identity. With no such binding, the Side starts with an empty client toolset and can later attach the browser through the guarded attachment operation. Callbacks carry the Side's own Thread and Turn identities.
 
 Storage version increases from 12 to 13. The new Core reads older Threads with revision 0. Older Core binaries reject version 13 records; back up data and use a Core that understands version 13 rather than editing the version field or dropping tool history. An older Core without the capability reports Browser unavailable.
 

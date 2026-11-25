@@ -1218,9 +1218,11 @@ Before admitting a side effect, durably bind `(transportEpoch, guestRequestId, f
 
 #### UI-03B Limited tools provided by the page
 
+This section retains the historical specification. MCP Apps and page tools are retired and are no longer implementation or acceptance requirements.
+
 **First fixture.** `getSelection()` returns the page document's revision and selection range. `applyPatch({expectedDocumentRevision, patch})` modifies only that page's document. A stale revision returns a conflict. Do not guess a new target location. Pages may declare tools only within the specified schema, size, and count limits. This must not provide arbitrary JS, shell execution, network proxies, or tool name overrides.
 
-**Implementation contract.** Use exactly `areal/mcp/app/tools/register`, `revoke`, `claim`, and `resolve`. Resolve accepts completion, definite no-effect, or UNKNOWN. One settlement interface avoids a separate reject route and an outer tool reply. The [desktop contract](../api/desktop.en.md#finite-page-tools) owns types and budgets. Core reuses ordinary inventory, approval, and the ToolCall journal, without a page execution ledger. Admission freezes the following identity:
+**Implementation contract.** Use exactly `areal/mcp/app/tools/register`, `revoke`, `claim`, and `resolve`. Resolve accepts completion, definite no-effect, or UNKNOWN. One settlement interface avoids a separate reject route and an outer tool reply. Core reuses ordinary inventory, approval, and the ToolCall journal, without a page execution ledger. Admission freezes the following identity:
 
 ```ts
 type AppToolBinding = {

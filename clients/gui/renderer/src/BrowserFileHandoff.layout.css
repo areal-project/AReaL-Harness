@@ -7,7 +7,7 @@
 .preview-file-status [role="listitem"] {
   display: flex;
   align-items: center;
-  gap: var(--browser-file-status-inline-gap);
+  gap: calc(var(--spacing-2) * 0.75);
   overflow-wrap: anywhere;
-  padding: var(--browser-file-status-block-padding) 0;
+  padding: var(--spacing-1) 0;
 }

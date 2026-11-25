@@ -2,13 +2,13 @@
 id: message-attachments
 title: Attachments
 summary: 消息媒体、文件与来源附件。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: composition
 aliases: ["消息媒体、文件与来源附件"]
 related: ["button"]
-exports: ["getMediaCategory", "getAttachmentLabel", "useAttachmentsContext", "useAttachmentContext", "Attachments", "Attachment", "AttachmentPreview", "AttachmentInfo", "AttachmentRemove"]
+exports: ["Attachments", "Attachment", "AttachmentPreview", "AttachmentInfo", "AttachmentRemove"]
 ---
 
 # Attachments 消息媒体、文件与来源附件

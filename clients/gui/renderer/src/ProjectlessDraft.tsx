@@ -5,6 +5,7 @@ import {
   WorkspacePreparationStatus,
   type WorkspacePreparationState,
 } from "./WorkspacePreparationStatus.js";
+import { isProjectHibernated } from "./state/userStates.js";
 import { DraftComposer } from "./DraftComposer.js";
 import type { Action, Data, PlatformServices, Snapshot } from "./services.js";
 import { call } from "./services.js";
@@ -33,9 +34,13 @@ export function ProjectlessDraft({
   const [prepared, setPrepared] = useState<Data>();
   const [error, setError] = useState("");
   const [ownerId, setOwnerId] = useState(() => localStorage.getItem(`${key}:project`));
-  const owner = snapshot.projects.find((p) => p.id === ownerId) ?? prepared;
+  // 冷启动准备失败后，复用 Host 后续发布的就绪目录；已有草稿归属时仍锁定原项目。
+  const adopted = !ownerId
+    ? snapshot.projects.find((p) => p.projectless && p.state?.connected)
+    : undefined;
+  const owner = snapshot.projects.find((p) => p.id === ownerId) ?? adopted ?? prepared;
   const ready = snapshot.connection?.state === "ready";
-  const prepare = async () => {
+  const prepare = async (): Promise<Data> => {
     setPreparing(true);
     setError("");
     try {
@@ -59,15 +64,33 @@ export function ProjectlessDraft({
     }
   };
   useEffect(() => {
+    if (adopted?.id && error) setError("");
+  }, [adopted?.id, error]);
+  useEffect(() => {
     if (ownerId && ready && !owner?.state?.connected)
       void readAction("connect", { projectId: ownerId }).catch(() => {});
   }, [ownerId, ready]);
   useEffect(() => {
     if (!ready || ownerId || deferred) return;
     let active = true;
-    void prepare().catch((cause) => {
-      if (active) setError(currentErrorText(cause));
-    });
+    // 首次进入无项目态时后台可能仍在冷启，静默申请目录并交由 connect effect 拉起，避免误报“连接暂不可用”。
+    void (async () => {
+      try {
+        let requestId = localStorage.getItem(`${key}:workspace-request`);
+        if (!requestId) {
+          requestId = crypto.randomUUID();
+          localStorage.setItem(`${key}:workspace-request`, requestId);
+        }
+        const result = await call(services, "projectless", { operation: "prepare", requestId });
+        if (!active) return;
+        localStorage.setItem(`${key}:project`, result.projectId);
+        setOwnerId(result.projectId);
+        const project = (await services.snapshot()).projects.find((p) => p.id === result.projectId);
+        if (active && project?.state?.connected) setPrepared(project);
+      } catch {
+        // 首次冷启动失败保持静默，用户真正发送时由 prepare() 显式提示。
+      }
+    })();
     return () => {
       active = false;
     };
@@ -96,18 +119,30 @@ export function ProjectlessDraft({
     state: { connected: false },
     outcomes: {},
   };
+  const ownerHibernated = owner ? isProjectHibernated(owner) : false;
+  const ownerSuppressed = owner?.scheduling?.suppressed === true;
+  const ownerUnavailable =
+    ownerSuppressed ||
+    Boolean(error || owner?.error || owner?.state?.error) ||
+    owner?.state?.hostState === "unavailable";
   const preparation: WorkspacePreparationState =
-    ready && owner?.state?.connected
+    ready && owner?.state?.connected && !ownerSuppressed
       ? { kind: "ready" }
       : deferred && catalog && !preparing && !error
         ? { kind: "ready" }
-        : ready && (error || owner?.error || owner?.state?.error)
-          ? { kind: "unavailable", detail: error || owner?.error || owner?.state?.error }
-          : { kind: "preparing" };
+        : ready && ownerUnavailable
+          ? { kind: "unavailable", detail: error || owner?.error || owner?.state?.error || "" }
+          : ownerHibernated
+            ? { kind: "ready" }
+            : { kind: "preparing" };
   const retry = async () => {
     setError("");
     try {
-      if (ownerId) await readAction("connect", { projectId: ownerId });
+      if (ownerId)
+        await readAction("connect", {
+          projectId: ownerId,
+          ...(ownerSuppressed ? { resumeScheduling: true } : {}),
+        });
       else if (deferred) setCatalog(await call(services, "projectless", { operation: "catalog" }));
       else await prepare();
     } catch (cause) {

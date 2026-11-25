@@ -10,11 +10,7 @@ import {
   CommandItem,
   CommandList,
 } from "../components/ui/command.js";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../components/ui/popover.js";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover.js";
 import {
   buildSearchFields,
   filterAndRankSearchItems,
@@ -131,8 +127,7 @@ export function SidePaneTabOverview({
     () => filterAndRankSearchItems(recentClosedItems, queryParts),
     [queryParts, recentClosedItems],
   );
-  const hasAnySearchResult =
-    filteredTabItems.length > 0 || filteredRecentClosedItems.length > 0;
+  const hasAnySearchResult = filteredTabItems.length > 0 || filteredRecentClosedItems.length > 0;
 
   useEffect(() => {
     if (!open) {
@@ -140,10 +135,7 @@ export function SidePaneTabOverview({
     }
 
     setCurrentTime(Date.now());
-    const interval = window.setInterval(
-      () => setCurrentTime(Date.now()),
-      60_000,
-    );
+    const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
     return () => window.clearInterval(interval);
   }, [open]);
 
@@ -157,19 +149,21 @@ export function SidePaneTabOverview({
         }
       }}
     >
-      {!menuEntry && <PopoverTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="ml-auto shrink-0"
-            aria-label={labels.title}
-          >
-            <ChevronsDownIcon className="size-4" />
-          </Button>
-        }
-      />}
+      {!menuEntry && (
+        <PopoverTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="ml-auto shrink-0"
+              aria-label={labels.title}
+            >
+              <ChevronsDownIcon className="size-4" />
+            </Button>
+          }
+        />
+      )}
       <PopoverContent
         aria-label={labels.title}
         anchor={menuEntry?.anchor}
@@ -182,7 +176,7 @@ export function SidePaneTabOverview({
           // 旧搜索菜单手写输入框、标题和列表项，和模型选择菜单的 Command 视觉体系不一致。
           // 这里复用 Command 容器统一搜索框、分组标题、hover 和键盘选中态，同时保留现有 ranking 逻辑。
           shouldFilter={false}
-          className="bg-transparent p-0 text-foreground"
+          variant="embedded"
         >
           <CommandInput
             value={query}
@@ -192,34 +186,22 @@ export function SidePaneTabOverview({
           />
           <CommandList className="max-h-80">
             {!hasAnySearchResult ? (
-              <CommandGroup
-                heading={labels.openTabs}
-                className="border-border border-b p-1 last:border-b-0 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-2 **:[[cmdk-group-heading]]:text-ui-base **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-foreground-subtle"
-              >
-                <CommandEmpty className="px-4 py-5 text-foreground-subtle">
-                  {labels.noResults}
-                </CommandEmpty>
+              <CommandGroup heading={labels.openTabs} divided>
+                <CommandEmpty density="compact">{labels.noResults}</CommandEmpty>
               </CommandGroup>
             ) : null}
 
             {filteredTabItems.length > 0 ? (
-              <CommandGroup
-                heading={labels.openTabs}
-                className="border-border border-b p-1 last:border-b-0 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-2 **:[[cmdk-group-heading]]:text-ui-base **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-foreground-subtle"
-              >
+              <CommandGroup heading={labels.openTabs} divided>
                 {filteredTabItems.map(({ tab, title, openedAtLabel }) => {
                   const isActive = tab.id === activeTabId;
                   return (
-                    <div
-                      key={tab.id}
-                      className="mb-0.5 flex items-center gap-0.5 last:mb-0"
-                    >
+                    <div key={tab.id} className="mb-0.5 flex items-center gap-0.5 last:mb-0">
                       <CommandItem
                         value={tab.id}
-                        className={cn(
-                          "min-h-8 min-w-0 flex-1 cursor-pointer gap-2 px-2 text-ui-base",
-                          isActive && "bg-selected data-selected:bg-selected",
-                        )}
+                        size="md"
+                        active={isActive}
+                        className="min-w-0 flex-1"
                         onSelect={() => {
                           onActivateTab(tab.id);
                           setOpen(false);
@@ -244,7 +226,7 @@ export function SidePaneTabOverview({
                       <CommandItem
                         value={`close:${tab.id}`}
                         aria-label={labels.closeTab(title)}
-                        className="size-6 min-h-6 shrink-0 justify-center p-0 text-foreground-subtle"
+                        size="icon"
                         onSelect={() => onCloseTab(tab.id)}
                       >
                         <XIcon className="size-3" />
@@ -256,38 +238,34 @@ export function SidePaneTabOverview({
             ) : null}
 
             {filteredRecentClosedItems.length > 0 ? (
-              <CommandGroup
-                heading={labels.recentlyClosedTabs}
-                className="border-border border-b p-1 last:border-b-0 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-2 **:[[cmdk-group-heading]]:text-ui-base **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-foreground-subtle"
-              >
-                {filteredRecentClosedItems.map(
-                  ({ item, title, closedAtLabel }) => (
-                    <CommandItem
-                      key={item.tab.id}
-                      value={title}
-                      className="mb-0.5 min-h-8 cursor-pointer gap-2 px-2 text-ui-base last:mb-0"
-                      onSelect={() => {
-                        onReopenClosedTab(item.tab.id);
-                        setOpen(false);
-                        setQuery("");
-                      }}
+              <CommandGroup heading={labels.recentlyClosedTabs} divided>
+                {filteredRecentClosedItems.map(({ item, title, closedAtLabel }) => (
+                  <CommandItem
+                    key={item.tab.id}
+                    value={title}
+                    size="md"
+                    className="mb-0.5 last:mb-0"
+                    onSelect={() => {
+                      onReopenClosedTab(item.tab.id);
+                      setOpen(false);
+                      setQuery("");
+                    }}
+                  >
+                    <span className="flex size-5 shrink-0 items-center justify-center text-foreground-subtle">
+                      <SidePaneTabIcon tab={item.tab} />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-ui-base font-medium text-foreground">
+                      {title}
+                    </span>
+                    <span
+                      className={cn(
+                        "mr-0.5 shrink-0 text-ui-base text-foreground-subtle group-data-selected/command-item:text-foreground",
+                      )}
                     >
-                      <span className="flex size-5 shrink-0 items-center justify-center text-foreground-subtle">
-                        <SidePaneTabIcon tab={item.tab} />
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-ui-base font-medium text-foreground">
-                        {title}
-                      </span>
-                      <span
-                        className={cn(
-                          "mr-0.5 shrink-0 text-ui-base text-foreground-subtle group-data-selected/command-item:text-foreground",
-                        )}
-                      >
-                        {closedAtLabel}
-                      </span>
-                    </CommandItem>
-                  ),
-                )}
+                      {closedAtLabel}
+                    </span>
+                  </CommandItem>
+                ))}
               </CommandGroup>
             ) : null}
           </CommandList>

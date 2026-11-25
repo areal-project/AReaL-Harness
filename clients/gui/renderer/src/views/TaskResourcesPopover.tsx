@@ -41,9 +41,8 @@ export function TaskResourcesPopover({
   onAddSchedule?: () => void;
   onOpenSchedule?: (task: Data) => void;
 }) {
-  const { t, intl } = useI18n();
+  const { t } = useI18n();
   const changes = useWorkspaceChanges(project, thread, action);
-  const changed = changes.files.length > 0;
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const composerHandoff = useRef(false);
@@ -59,6 +58,7 @@ export function TaskResourcesPopover({
       setOpen(false);
       callback(value);
     };
+  const hasChanges = changes.additions > 0 || changes.deletions > 0;
   return (
     <Popover
       open={open}
@@ -73,36 +73,32 @@ export function TaskResourcesPopover({
         setOpen(next);
       }}
     >
-      <TitleTooltip
-        title={
-          changed
-            ? `${t("chat.context.changeScope", { count: changes.files.length })} · +${intl.formatNumber(changes.additions)} −${intl.formatNumber(changes.deletions)}`
-            : undefined
-        }
-      >
+      <TitleTooltip title={t("chat.resources.trigger")}>
         <PopoverTrigger
           render={
             <Button
-              unstyled
+              variant={hasChanges ? "surface" : "ghost-subtle"}
+              size={hasChanges ? "chip" : "icon"}
+              active={open}
               type="button"
               ref={trigger}
-              className={`icon-button task-resources-trigger ${open ? "active" : ""}`}
-              data-variant={changed ? "count" : undefined}
+              data-has-changes={hasChanges || undefined}
               aria-label={t("chat.resources.trigger")}
             />
           }
         >
           <TaskSummaryIcon />
-          {changed && (
-            <span className="diff-count" aria-hidden="true">
-              <b>+{intl.formatNumber(changes.additions)}</b>
-              <em>−{intl.formatNumber(changes.deletions)}</em>
+          {hasChanges && (
+            <span className="task-resources-diff-summary" aria-hidden="true">
+              <span className="added">+{changes.additions}</span>
+              <span className="deleted">-{changes.deletions}</span>
             </span>
           )}
         </PopoverTrigger>
       </TitleTooltip>
       <PopoverContent
         keepMounted
+        variant="flush"
         finalFocus={() => {
           if (composerHandoff.current) {
             composerHandoff.current = false;
@@ -112,46 +108,48 @@ export function TaskResourcesPopover({
         }}
         align="end"
         sideOffset={8}
-        className="task-resources-popup"
+        className="w-[calc(var(--ui-font-size)*22+var(--spacing-inline)/2)] overflow-hidden"
         aria-label={t("chat.resources.panel")}
       >
-        <Activity mode={open ? "visible" : "hidden"}>
-          <ConversationStatusCard
-            changes={changes}
-            fileOpen={fileOpen}
-            onLink={onLink}
-            onAddSource={
-              onAddSource
-                ? () => {
-                    setOpen(false);
-                    onAddSource();
-                  }
-                : undefined
-            }
-            project={project}
-            thread={thread}
-            action={action}
-            scheduledTask={scheduledTask}
-            onAddSchedule={
-              onAddSchedule
-                ? () => {
-                    composerHandoff.current = true;
-                    setOpen(false);
-                    onAddSchedule();
-                  }
-                : undefined
-            }
-            onOpenSchedule={onOpenSchedule ? navigate(onOpenSchedule) : undefined}
-            onAgents={() => {
-              setOpen(false);
-              if (onReadAgents) onReadAgents(() => setOpen(true));
-              else onPanel("子代理");
-            }}
-            onPanel={navigate(onPanel)}
-            onAgent={navigate(onAgent)}
-            onFile={navigate(onFile)}
-          />
-        </Activity>
+        <div className="task-resources-popup">
+          <Activity mode={open ? "visible" : "hidden"}>
+            <ConversationStatusCard
+              changes={changes}
+              fileOpen={fileOpen}
+              onLink={onLink}
+              onAddSource={
+                onAddSource
+                  ? () => {
+                      setOpen(false);
+                      onAddSource();
+                    }
+                  : undefined
+              }
+              project={project}
+              thread={thread}
+              action={action}
+              scheduledTask={scheduledTask}
+              onAddSchedule={
+                onAddSchedule
+                  ? () => {
+                      composerHandoff.current = true;
+                      setOpen(false);
+                      onAddSchedule();
+                    }
+                  : undefined
+              }
+              onOpenSchedule={onOpenSchedule ? navigate(onOpenSchedule) : undefined}
+              onAgents={() => {
+                setOpen(false);
+                if (onReadAgents) onReadAgents(() => setOpen(true));
+                else onPanel("subagents");
+              }}
+              onPanel={navigate(onPanel)}
+              onAgent={navigate(onAgent)}
+              onFile={navigate(onFile)}
+            />
+          </Activity>
+        </div>
       </PopoverContent>
     </Popover>
   );

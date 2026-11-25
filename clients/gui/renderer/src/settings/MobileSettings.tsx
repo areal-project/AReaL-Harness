@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { currentErrorText } from "../errors/currentErrorText.js";
+import { errorCode, presentError } from "../errors/errorCopy.js";
 import { Smartphone } from "lucide-react";
 import { Button } from "@areal/ui";
 import { SettingsGroupCard } from "@areal/ui/compositions";
@@ -7,12 +8,22 @@ import { useI18n, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.j
 import { MobileAdvancedNetwork, networkDiagnostics } from "./MobileAdvancedNetwork.js";
 import { MobileAddDevice, type AddDeviceStep } from "./MobileAddDevice.js";
 import { RelayServicePanel } from "./RelayServicePanel.js";
+import { SettingsDisclosure } from "./SettingsDisclosure.js";
 import { MobileDevices } from "./MobileDevices.js";
 import "./MobileSettings.css";
 
 import type { Action, CommandParams, Data } from "../services.js";
 
 type Tone = "good" | "warning" | "idle";
+const credentialErrors = new Set([
+  "remoteCredentialUnreadable",
+  "storageAuthorizationRequired",
+  "credentialHostRestartRequired",
+  "storageLocked",
+  "storageMissing",
+]);
+
+const connectionStatusErrors = new Set(["DISCONNECTED", "CORE_UNAVAILABLE", "TIMEOUT"]);
 
 /**
  * 手机连接页：一张状态卡回答“手机现在能不能连”，下面是设备列表；
@@ -22,7 +33,11 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
   const { t } = useI18n();
   const [state, setState] = useState<Data>({ deviceGrants: [], pending: [] });
   const [error, setError] = useState<string | UiMessage>(""),
+    [errorDetail, setErrorDetail] = useState(""),
     [busy, setBusy] = useState(false);
+  const [statusError, setStatusError] = useState<string | UiMessage>("");
+  const [statusErrorDetail, setStatusErrorDetail] = useState("");
+  const [credentialError, setCredentialError] = useState("");
   const [invite, setInvite] = useState<Data | null>(null);
   const [inviteExpired, setInviteExpired] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -32,8 +47,12 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
   const run = async (request: CommandParams<"remoteControl">): Promise<Data | undefined> => {
     setBusy(true);
     setError("");
+    setErrorDetail("");
     try {
       const result = await action("remoteControl", request);
+      setStatusError("");
+      setStatusErrorDetail("");
+      setCredentialError("");
       if (request.operation === "pair") {
         setInvite(result);
         setInviteExpired(false);
@@ -49,6 +68,11 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
       return result ?? {};
     } catch (error) {
       const failure = error as Error & { code?: string };
+      const presented = presentError(t, failure);
+      if (credentialErrors.has(failure.code ?? "")) {
+        setCredentialError(presented.message);
+        return undefined;
+      }
       setError(
         request.operation.startsWith("network") && typeof failure.code === "string"
           ? {
@@ -56,8 +80,20 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
                 networkDiagnostics[failure.code] ?? "settings.mobileSettings.networkStatusUnknown",
               values: { code: failure.code },
             }
-          : currentErrorText(failure),
+          : presented.message,
       );
+      setErrorDetail(presented.detail ?? "");
+      // 变更出错后补拉一次权威状态，避免后台已启动或已记录诊断但界面停留在旧状态。
+      if (request.operation !== "status") {
+        void action("remoteControl", { operation: "status" })
+          .then((latest) => {
+            setState(latest);
+            setStatusError("");
+            setStatusErrorDetail("");
+            directUrl.current = latest.directUrl ?? "";
+          })
+          .catch(() => {});
+      }
       return undefined;
     } finally {
       setBusy(false);
@@ -70,14 +106,25 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
         .then((value) => {
           if (!live) return;
           setState(value);
+          setStatusError("");
+          setStatusErrorDetail("");
           directUrl.current = value.directUrl ?? "";
         })
         .catch((error) => {
-          if (live)
-            setError({
-              id: "settings.mobileSettings.theHostIsOfflineOrTheBackground",
-              values: { value0: currentErrorText(error) },
-            });
+          if (!live) return;
+          const code = errorCode(error);
+          const presented = presentError(t, error);
+          setStatusErrorDetail(presented.detail ?? "");
+          setStatusError(
+            code && !connectionStatusErrors.has(code)
+              ? presented.message
+              : credentialErrors.has(code ?? "")
+                ? currentErrorText(error)
+                : {
+                    id: "settings.mobileSettings.theHostIsOfflineOrTheBackground",
+                    values: { value0: presented.message },
+                  },
+          );
         });
     void read();
     const timer = setInterval(() => {
@@ -95,16 +142,31 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
       clearInterval(timer);
       clearTimeout(doneTimer.current);
     };
-  }, [action]);
+  }, [action, t]);
 
   const transport = state.enabled ? "relay" : "direct";
+  const credentialHint = credentialError || state.migrationError;
   const reconnectUrl =
     transport === "relay"
       ? state.relayUrl
       : state.directUrl && state.directHostId
         ? `${state.directUrl}/#host=${encodeURIComponent(state.directHostId)}`
         : "";
-  const entryReady = transport === "relay" ? state.connected : state.directEnabled;
+  const relayConnected = Boolean(state["connected"]);
+  const entryReady = transport === "relay" ? relayConnected : state.directEnabled;
+  const pendingOperation: { requestId?: string; operation?: string } | null =
+    state.pendingOperation && typeof state.pendingOperation === "object"
+      ? state.pendingOperation
+      : null;
+  const localRelay =
+    state.relay?.startsWith("http:") ||
+    state.relayService?.local?.address === state.relay ||
+    (Array.isArray(state.relayService?.profiles) &&
+      state.relayService.profiles.some(
+        (profile: Data) =>
+          profile.kind === "local" && (profile.active || profile.origin === state.relay),
+      ));
+  const localRelayFailed = localRelay && state.relayService?.local?.phase === "failed";
   const pending: Data | undefined = state.pending?.[0];
   const step: AddDeviceStep = pairedName ? "done" : pending ? "review" : "scan";
   const relayHost = (() => {
@@ -116,22 +178,30 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
   })();
 
   const status: { tone: Tone; title: string; description: string } = state.enabled
-    ? state.connected
+    ? relayConnected
       ? {
           tone: "good",
           title: t("settings.mobileConnect.ready"),
           description: t(
-            state.relay?.startsWith("http:")
+            localRelay
               ? "settings.relayService.readyLocal"
               : "settings.mobileConnect.readyViaRelay",
             { host: relayHost },
           ),
         }
-      : {
-          tone: "warning",
-          title: t("settings.mobileConnect.relayOffline"),
-          description: t("settings.mobileConnect.relayOfflineDescription", { host: relayHost }),
-        }
+      : localRelayFailed
+        ? {
+            tone: "warning",
+            title: t("settings.mobileConnect.relayOffline"),
+            description:
+              state.relayService?.local?.error ||
+              t("settings.mobileConnect.relayOfflineDescription", { host: relayHost }),
+          }
+        : {
+            tone: "warning",
+            title: t("settings.mobileConnect.relayOffline"),
+            description: t("settings.mobileConnect.relayOfflineDescription", { host: relayHost }),
+          }
     : state.directEnabled
       ? reconnectUrl.startsWith("https://")
         ? {
@@ -199,7 +269,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
           </Button>
         </div>
       )}
-      <SettingsGroupCard className="remote-status-card">
+      <SettingsGroupCard layout="grid">
         <div className="remote-status" data-tone={status.tone}>
           <span className="remote-status-icon" aria-hidden>
             {status.tone === "idle" ? <Smartphone size={18} /> : <span className="remote-dot" />}
@@ -208,31 +278,73 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
             <strong>{status.title}</strong>
             <small>{status.description}</small>
           </div>
-          {(state.enabled || state.directEnabled) && (
+          {state.enabled || state.directEnabled ? (
             <Button disabled={busy || !entryReady} onClick={startAdding}>
               {t("settings.mobileConnect.addDevice")}
+            </Button>
+          ) : (
+            <Button
+              disabled={busy}
+              onClick={() => void run({ operation: "relayServiceStartLocal" })}
+            >
+              {t("settings.relayService.startLocal")}
             </Button>
           )}
         </div>
         {state.enabled ? (
           <p className="remote-muted" role="status">
             {t(
-              state.relay?.startsWith("http:")
+              localRelay
                 ? "settings.relayService.localSelected"
                 : "settings.mobileConnect.enrolled",
               { host: relayHost },
             )}
           </p>
-        ) : (
-          <Button disabled={busy} onClick={() => void run({ operation: "relayServiceStartLocal" })}>
-            {t("settings.relayService.startLocal")}
-          </Button>
+        ) : state.directEnabled ? (
+          <div className="flex">
+            <Button
+              disabled={busy}
+              onClick={() => void run({ operation: "relayServiceStartLocal" })}
+            >
+              {t("settings.relayService.startLocal")}
+            </Button>
+          </div>
+        ) : null}
+        {!adding && pendingOperation?.requestId && (
+          <div className="remote-status" data-tone="warning" role="status">
+            <div className="remote-status-text">
+              <strong>{t("settings.mobileConnect.pendingOperationTitle")}</strong>
+              <small>
+                {t("settings.mobileConnect.pendingOperationDescription", {
+                  requestId: String(pendingOperation.requestId).slice(0, 8),
+                })}
+              </small>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => void run({ operation: "status" })}
+            >
+              {t("settings.mobileConnect.checkPendingOperation")}
+            </Button>
+          </div>
+        )}
+        {!adding && credentialHint && (
+          <p className="remote-error" role="alert">
+            {credentialHint}
+          </p>
         )}
       </SettingsGroupCard>
-      {!adding && (error || state.directError || state.migrationError) && (
-        <p className="remote-error" role="alert">
-          {formatUiMessage(t, error) || state.directError || state.migrationError}
-        </p>
+      {!adding && !credentialHint && (error || state.directError || statusError) && (
+        <div className="remote-error" role="alert">
+          <p>{formatUiMessage(t, error) || state.directError || formatUiMessage(t, statusError)}</p>
+          {(errorDetail || (!error && !state.directError && statusErrorDetail)) && (
+            <SettingsDisclosure title={t("recovery.details")}>
+              <code className="remote-muted">{errorDetail || statusErrorDetail}</code>
+            </SettingsDisclosure>
+          )}
+        </div>
       )}
       <RelayServicePanel state={state} busy={busy} run={run} />
       <MobileDevices
@@ -241,7 +353,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
         busy={busy}
         run={run}
         reconnectUrl={reconnectUrl ?? ""}
-        error={formatUiMessage(t, error)}
+        error={credentialHint || formatUiMessage(t, error)}
       />
       <MobileAdvancedNetwork
         state={state}

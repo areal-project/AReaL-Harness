@@ -2,38 +2,6 @@
 
 use super::*;
 
-use crate::history::APP_REFERENCE_PREFIX;
-
-fn app_reference_message(
-    history: &[model::Message],
-    context: &[Value],
-    compacted_reference_seen: bool,
-) -> anyhow::Result<Option<model::Message>> {
-    let previous = history.iter().rev().find(|message| {
-        message.role == "areal_context" && message.text_content().starts_with(APP_REFERENCE_PREFIX)
-    });
-    // 没有 App 的会话不新增消息；已见快照的清空要明确交付，不能沿用旧引用。
-    if context.is_empty() && previous.is_none() && !compacted_reference_seen {
-        return Ok(None);
-    }
-    let current = json!(context);
-    if previous
-        .and_then(|message| {
-            serde_json::from_str::<Value>(
-                message.text_content().strip_prefix(APP_REFERENCE_PREFIX)?,
-            )
-            .ok()
-        })
-        .is_some_and(|value| value == current)
-    {
-        return Ok(None);
-    }
-    Ok(Some(model::Message::text(
-        "areal_context",
-        format!("{APP_REFERENCE_PREFIX}{}", serde_json::to_string(&current)?),
-    )))
-}
-
 // 已完整交给本次请求的结算回执，不应仅因自动汇总重复出现而使有效最终答复失效。
 // 只忽略等待与调用额度元数据；制品、交付、错误或正文有变化时仍须再次交给模型。
 fn execution_receipts_observed(
@@ -434,7 +402,6 @@ impl Engine {
                 .then_some("Built-in Browser guidance: Invoke browser_v1 only when the current user task requires browser interaction. For ordinary chat and tasks that do not need a browser, do not call browser_v1 merely because it is available. Every new browser task must start with describe and empty parameters, then a fresh observe for an existing page. Never reuse snapshotId or refs from an earlier turn, even if history says they were fresh. Start with describe even when no page exists or Human previously took control; Core approval can create or reclaim the current page after a new user request. For an existing page, obtain a fresh observe before navigate; only a newly created about:blank page can navigate without an observation. Then navigate using pageId, observe again for current refs, fill the search field and press Enter to perform an approved public search. Do not ask the user to enable Browser manually or use development_service_inspect to create a Browser page. After creating a local HTML deliverable, display it in the current chat with openDocument using pageId and the full HTML path. Workspace documents allow same-directory static assets; documents outside the workspace allow only the exact HTML, so use self-contained HTML there. openDocument requires approval of its file scope. Reads and actions require Core approval. Respect denied, stale and UNKNOWN results without replay.");
             let task_instructions = self.task_context(cell).await?;
             let goal_instructions = self.goal_instructions(cell).await?;
-            let app_context = self.app_model_context(&cell.id).await;
             let reference_thread = cell.state.lock().await.thread.clone();
             let conversation_reference = self
                 .conversation_reference_reminder(&reference_thread)
@@ -464,16 +431,6 @@ impl Engine {
                 let history_tokens = context::estimate_tokens(&messages);
                 // 已发送提示仍与其输出一起保留；未接受的新提示不能先挡住已结算尾轮的压缩边界。
                 let mut live_context = Vec::new();
-                let compacted_reference_seen = state
-                    .thread
-                    .context_checkpoint
-                    .as_ref()
-                    .is_some_and(|checkpoint| checkpoint.app_reference_seen == Some(true));
-                if let Some(reference) =
-                    app_reference_message(&messages, &app_context, compacted_reference_seen)?
-                {
-                    live_context.push(reference);
-                }
                 if let Some(reference) = &conversation_reference {
                     live_context.push(Message::text("system", reference.clone()));
                 }
@@ -1942,89 +1899,6 @@ async fn complete_reasoning(
 ) {
     for item_id in items.values() {
         complete_item(cell, thread_id, turn_id, item_id).await;
-    }
-}
-
-#[cfg(test)]
-mod app_context_tests {
-    use super::*;
-
-    fn reference(value: &str) -> Vec<Value> {
-        vec![json!({"instanceId":"instance","serverId":"server","context":{"selected":value}})]
-    }
-
-    #[test]
-    fn app_snapshots_append_changes_without_rewriting_or_repeating_history() {
-        let mut history = vec![
-            model::Message::text("system", "fixed instructions"),
-            model::Message::text("user", "continue the same task"),
-        ];
-        assert!(
-            app_reference_message(&history, &[], false)
-                .unwrap()
-                .is_none()
-        );
-        for selected in ["A", "B", "A"] {
-            let before = history.clone();
-            let snapshot = app_reference_message(&history, &reference(selected), false)
-                .unwrap()
-                .unwrap();
-            assert_eq!(snapshot.role, "areal_context");
-            history.push(snapshot);
-            assert_eq!(&history[..before.len()], before.as_slice());
-            assert!(
-                app_reference_message(&history, &reference(selected), false)
-                    .unwrap()
-                    .is_none()
-            );
-            history.push(model::Message::text("assistant", "observed"));
-        }
-        let clear = app_reference_message(&history, &[], false)
-            .unwrap()
-            .unwrap();
-        assert_eq!(clear.text_content(), format!("{APP_REFERENCE_PREFIX}[]"));
-        history.push(clear);
-        assert!(
-            app_reference_message(&history, &[], false)
-                .unwrap()
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn app_snapshot_deduplication_uses_semantics_and_only_trusted_context_records() {
-        let text = format!("{APP_REFERENCE_PREFIX}{{}}");
-        for role in ["system", "user", "assistant", "tool"] {
-            let history = vec![model::Message::text(role, text.clone())];
-            assert!(
-                app_reference_message(&history, &[], false)
-                    .unwrap()
-                    .is_none()
-            );
-            assert!(
-                app_reference_message(&history, &reference("A"), false)
-                    .unwrap()
-                    .is_some()
-            );
-        }
-        let reordered = model::Message::text(
-            "areal_context",
-            format!(
-                "{APP_REFERENCE_PREFIX}[{{\"context\":{{\"selected\":\"A\"}},\"serverId\":\"server\",\"instanceId\":\"instance\"}}]"
-            ),
-        );
-        assert!(
-            app_reference_message(&[reordered], &reference("A"), false)
-                .unwrap()
-                .is_none()
-        );
-        let malformed =
-            model::Message::text("areal_context", format!("{APP_REFERENCE_PREFIX}partial"));
-        assert!(
-            app_reference_message(&[malformed], &reference("A"), false)
-                .unwrap()
-                .is_some()
-        );
     }
 }
 

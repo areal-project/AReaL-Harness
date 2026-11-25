@@ -87,11 +87,12 @@ export function BrowserVerificationCard({
   const recentService = services.at(-1);
   const itemLink = (item: Data, label: string) => (
     <Button
-      size="sm"
+      size="xs"
       variant="ghost"
+      align="start"
       onClick={() => onTool(item.id)}
       title={`Core Item ${item.id}`}
-      className="h-auto max-w-full justify-start truncate px-1"
+      className="max-w-full truncate"
     >
       {label} · {item.id}
     </Button>

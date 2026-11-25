@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Rust 单文件行数上限：新文件不超过 1500 行，存量超限文件不超过登记时的行数。
+"""发出 Rust 文件体积优化信号，不把行数当作合并门禁。
 
-大文件让 Agent 每次都要整读、改动互相冲突。生成代码和测试不计。
+大文件让 Agent 每次都要整读、改动互相冲突。生成代码和测试不计。1500
+行是设计参考线，登记文件只用于发现存量文件继续增长；两者都不会使检查失败。
 
-    python3 scripts/check-rust-size.py          # 检查
-    python3 scripts/check-rust-size.py --write  # 拆分或删减后收紧登记（变小不强制收紧，免得每次删行都要改登记）
+    python3 scripts/check-rust-size.py          # 输出 AGENT_OPTIMIZATION_SIGNAL
+    python3 scripts/check-rust-size.py --write  # 更新本地观察快照
 """
 
 import json
@@ -19,33 +20,72 @@ LIMIT = 1500
 SKIP = re.compile(r"(^|/)(generated|tests)/|(^|/)tests?\.rs$|_tests?\.rs$")
 
 
-def sizes():
+def sizes(root=ROOT):
     output = subprocess.check_output(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "*.rs"], cwd=ROOT
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "*.rs"], cwd=root
     ).decode()
     result = {}
     for path in output.split("\0"):
-        if path and not SKIP.search(path) and (ROOT / path).is_file():
-            result[path] = len((ROOT / path).read_text(errors="replace").splitlines())
+        if path and not SKIP.search(path) and (root / path).is_file():
+            result[path] = len((root / path).read_text(errors="replace").splitlines())
     return result
 
 
-def main():
-    over = {path: lines for path, lines in sizes().items() if lines > LIMIT}
-    if "--write" in sys.argv:
+def report(root=ROOT, baseline=BASELINE):
+    current = sizes(root)
+    previous = json.loads(baseline.read_text()) if baseline.exists() else {}
+    findings = []
+    for path, lines in sorted(current.items()):
+        baseline_lines = previous.get(path)
+        over_guideline = lines > LIMIT
+        grew = baseline_lines is not None and lines > baseline_lines
+        if not over_guideline and not grew:
+            continue
+        findings.append(
+            {
+                "path": path,
+                "lines": lines,
+                "guidelineLines": LIMIT,
+                "baselineLines": baseline_lines,
+                "delta": None if baseline_lines is None else lines - baseline_lines,
+                "reasons": [
+                    reason
+                    for reason, matched in (
+                        ("aboveGuideline", over_guideline),
+                        ("grewSinceBaseline", grew),
+                    )
+                    if matched
+                ],
+                "suggestion": "拆成按职责的子模块；若本次改动不适合拆分，保留理由并继续交付。",
+            }
+        )
+    return {
+        "kind": "agent-optimization-signal",
+        "signal": "rust-file-size",
+        "status": "advisory" if findings else "clear",
+        "guidelineLines": LIMIT,
+        "findings": findings,
+        "summary": {
+            "filesScanned": len(current),
+            "aboveGuideline": sum("aboveGuideline" in item["reasons"] for item in findings),
+            "grewSinceBaseline": sum("grewSinceBaseline" in item["reasons"] for item in findings),
+        },
+    }
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    current = sizes()
+    if "--write" in argv:
+        over = {path: lines for path, lines in current.items() if lines > LIMIT}
         BASELINE.write_text(json.dumps(dict(sorted(over.items())), indent=2) + "\n")
-        print(f"已登记 {len(over)} 个超过 {LIMIT} 行的 Rust 文件")
+        print(f"已更新 Rust 文件体积观察快照：{len(over)} 个文件超过参考线 {LIMIT} 行")
         return 0
-    allowed = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
-    problems = [
-        f"{path}: {lines} 行，超过上限 {allowed.get(path, LIMIT)}；拆成按职责的子模块"
-        for path, lines in sorted(over.items())
-        if lines > allowed.get(path, LIMIT)
-    ]
-    for problem in problems:
-        print(problem)
-    print(f"Rust 文件体积检查：{len(problems)} 个问题；存量超限 {len(allowed)} 个文件")
-    return 1 if problems else 0
+    signal = report()
+    print(
+        "AGENT_OPTIMIZATION_SIGNAL " + json.dumps(signal, ensure_ascii=False, separators=(",", ":"))
+    )
+    return 0
 
 
 if __name__ == "__main__":

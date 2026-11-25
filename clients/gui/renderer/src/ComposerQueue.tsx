@@ -245,10 +245,9 @@ export function ComposerQueue({
                 {index + 1}
               </span>
               <Button
-                unstyled
-                data-slot={undefined}
-                type="submit"
-                className="composer-queue-grip"
+                variant="ghost"
+                size="icon-xs"
+                type="button"
                 disabled={locked}
                 aria-label={`调整顺序 ${queueLabel(item)}`}
                 title="拖动调整顺序，或按上下方向键"
@@ -298,10 +297,9 @@ export function ComposerQueue({
             {editingId === item.id && <small>编辑中</small>}
             <div className="composer-queue-actions">
               <Button
-                unstyled
-                data-slot={undefined}
-                type="submit"
-                className="composer-queue-steer"
+                variant="ghost"
+                size="xs"
+                type="button"
                 disabled={locked || !running}
                 aria-label={t("chat.queue.sendNowItem", { item: queueLabel(item) })}
                 title={t("chat.queue.sendNowHint")}
@@ -342,7 +340,7 @@ export function ComposerQueue({
                   }
                 />
                 <DropdownMenuContent
-                  className="composer-queue-menu"
+                  className="w-50"
                   side="top"
                   align="end"
                   aria-label="排队消息操作"

@@ -185,7 +185,7 @@ Host 的远程管理、配对批准、配置、终端与权限记忆不属于这
 | session.list | observe | cursor?, limit? | thread/list |
 | session.open | observe | threadId | areal/thread/observe；返回有界原子基线、归属并订阅 |
 | session.history | observe | threadId, cursor?, limit? | thread/read 可取得历史的有界投影分页；不假定已有原生分页方法 |
-| session.create | submit | 无路径/模型设置参数；仅普通 Session | areal/thread/start + Host 默认 Profile |
+| session.create | submit | 普通会话，可携带 firstMessage 及其授权范围内的设置 | areal/thread/start + Host 默认 Profile |
 | session.send | submit | threadId, expectedConfigRevision, text | areal/turn/start；仅空闲准入，新增可选 admissionGuard 原子条件 |
 | turn.stop | interrupt | threadId, expectedTurnId | turn/interrupt 指定 turnId |
 | interaction.respond | answer | threadId, turnId, interactionId，审批还需 argumentsDigest + decision；allowOnce/问题还需完整 reviewToken，问题需 answers | areal/interaction/respond |
@@ -340,7 +340,7 @@ HTTP 仅接受当前 loopback 或已配置 HTTPS 来源的精确 Host；WebSocke
 
 首次部署先异步检查 SSH 与既有实例；只读检查失败不创建待受理记录，用户可纠正输入。`deployment.canReconfigure` 只在独立检查确认程序、unit 和数据均不存在后为 true，允许更改 SSH 目标；保留数据的实例仍绑定原目标和 owner。已核对的失败或移除实例可纠正 HTTPS 地址并重新部署。
 
-本机模式以 `local:true` 独立于生产 HTTPS 模式，只接受 RFC1918 IPv4 或 ULA IPv6 的 HTTP origin。本机 Host 使用 loopback WS 和精确 Host 头；网卡来源不能注册 Host，HTTP `/enroll` 被拒绝。服务数据库通过 `provision --room <sha256>` 幂等登记公开 room，不接收 capability，也不恢复已撤销 room。主人 capability 先保存在加密 `remote.json`。手机配对链接额外携带 `local=1`，原生 socket 只接受私有数字 IP 和 `/remote/socket`，固定 App Origin；网页和外部服务的 HTTPS/WSS 校验不放宽。
+本机模式以 `local:true` 独立于生产 HTTPS 模式，接受 RFC1918 IPv4、ULA IPv6 和分配给本机网卡的同网段 IPv4 HTTP origin。旧非 RFC1918 IPv4 HTTP 入口仅接收同网段客户端。新启用的非 RFC1918 IPv4 入口在选定地址监听 WSS，使用本机持久证书，并在配对和重连链接的片段中携带 `local=1&cert=<sha256>`。Host 通过同一中继实例独立的 loopback WS 注册。本机 Host 使用 loopback WS 和精确 Host 头；网卡来源不能注册 Host，HTTP `/enroll` 被拒绝。服务数据库通过 `provision --room <sha256>` 幂等登记公开 room，不接收 capability，也不恢复已撤销 room。主人 capability 先保存在加密 `remote.json`。手机配对链接额外携带 `local=1`，原生 socket 使用数字 IP、`/remote/socket` 和固定 App Origin，WSS 本机入口用扫码指纹验证服务端证书；网页和外部服务的 HTTPS/WSS 校验不放宽。
 
 托管 Linux 入口 `managed-serve --config <path>` 共享独占服务锁，启动 loopback 后端与自动证书 TLS 代理。证书与私钥原子存储为 `tls/material.json`，权限 0600。证书最后三分之一寿命内续期，每小时检查并热更新。SSH 安装核对实例 owner，升级保留数据，移除需显式指定是否删除数据。客户端仍验证 HTTPS 链、域名与有效期；服务端提供证书不会自动建立客户端信任。
 

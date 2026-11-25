@@ -44,12 +44,12 @@ export function SnapShotAttachment({
         aria-hidden={animating || undefined}
       >
         <Button
-          unstyled
           type="button"
-          data-slot={undefined}
+          variant="media-trigger"
+          size="none"
           aria-label={t("snapshots.preview")}
           disabled={disabled || animating}
-          className="h-full w-full cursor-zoom-in"
+          className="h-full w-full"
           onClick={() => setPreview(true)}
         >
           <img
@@ -76,9 +76,10 @@ export function SnapShotAttachment({
                 <PopoverTrigger
                   render={
                     <Button
-                      unstyled
                       type="button"
-                      className="pointer-events-auto flex size-5 items-center justify-center rounded-sm bg-media-overlay/30 text-media-overlay-foreground"
+                      variant="media-overlay"
+                      size="icon-xs"
+                      className="pointer-events-auto size-5"
                       aria-label={t("snapshots.source")}
                       disabled={disabled || animating}
                     />
@@ -104,11 +105,13 @@ export function SnapShotAttachment({
         </div>
         {onRemove && (
           <Button
-            unstyled
             type="button"
+            variant="media-overlay"
+            size="icon-xs"
+            shape="pill"
             aria-label={t("snapshots.remove")}
             disabled={disabled || animating}
-            className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-media-overlay/65 text-media-overlay-foreground"
+            className="absolute right-1 top-1 size-5"
             onClick={onRemove}
           >
             <X size={12} />

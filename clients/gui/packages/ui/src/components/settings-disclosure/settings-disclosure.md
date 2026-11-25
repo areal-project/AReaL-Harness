@@ -2,7 +2,7 @@
 id: settings-disclosure
 title: SettingsDisclosure
 summary: 高级与详情分组的原地展开，默认收起，右侧文字按钮。
-status: experimental
+status: stable
 entry: compositions
 layer: core
 category: composition

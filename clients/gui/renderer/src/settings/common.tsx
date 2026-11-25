@@ -1,7 +1,9 @@
-import { SettingsDialog as DialogView, SettingsToolbar as Toolbar } from "@areal/ui/experimental";
+import { SettingsDialog as DialogView, SettingsToolbar as Toolbar } from "@areal/ui/compositions";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Action, Data } from "../services.js";
+import { errorCode } from "../errors/errorCopy.js";
+import { currentErrorText } from "../errors/currentErrorText.js";
 export type SettingsProps = { project: Data; thread?: Data; action: Action };
 export function useResource(load: () => Promise<Data>, identity: string) {
   const loader = useRef(load);
@@ -24,7 +26,10 @@ export function useResource(load: () => Promise<Data>, identity: string) {
         setState((s) => ({
           ...s,
           loading: false,
-          error: (error as Error).message,
+          error:
+            errorCode(error) === "DISCONNECTED"
+              ? currentErrorText(error)
+              : (error as Error).message,
         }));
       return undefined;
     }
@@ -43,7 +48,7 @@ export function useResource(load: () => Promise<Data>, identity: string) {
   return { ...state, refresh, accept };
 }
 export { Feedback } from "../components/ui/feedback.js";
-export { EmptySettings } from "@areal/ui/experimental";
+export { EmptySettings } from "@areal/ui/compositions";
 export function SettingsToolbar(props: import("react").ComponentProps<typeof Toolbar>) {
   const { t } = useI18n();
   return (

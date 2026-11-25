@@ -3,7 +3,6 @@ import {
   createHostSnapshotProjector,
   shellSnapshot,
   type ShellSnapshot,
-  windowIdentity,
   hostCommandOutcome,
   closedSidePublisher,
   settleHostCommand as settled,
@@ -12,9 +11,16 @@ import {
   type ReadingWindow,
 } from "./host-snapshot.js";
 export type { ReadingTarget, ReadingWindow } from "./host-snapshot.js";
-import { cacheHistoryPages, pinnedPage, retainTarget, encodedBytes } from "./host-history-cache.js";
+import {
+  cacheHistoryPages,
+  pinnedPage,
+  retainTarget,
+  encodedBytes,
+  refreshReadingWindow,
+} from "./host-history-cache.js";
 import {
   HostClient,
+  sessionLoadTiming,
   sessionReadKey,
   SESSION_READ_CACHE_MS,
   SESSION_READ_CACHE_LIMIT,
@@ -30,17 +36,18 @@ import {
   readInheritedHistoryPage,
 } from "@areal/workbench/desktop-contract/conversation-history";
 import { pageTopology } from "@areal/workbench/history-projection";
-import { hostCommandError } from "./desktop-response.js";
+import { hostCommandError, isFileOpenTargets } from "./desktop-response.js";
 import {
   createWorkbenchRoutes,
   hostDesktopCommand,
   jsonObject,
   object,
   openInBrowser,
+  outcomeUnknown,
   hostPlatformCapabilities,
   desktopWindowCommand,
 } from "./host-workbench.js";
-import { createHostPages } from "./host-pages.js";
+import { createHostBots } from "./host-bots.js";
 import { createWatchedHistory } from "./host-watched-history.js";
 import {
   chooseHostProject,
@@ -48,13 +55,34 @@ import {
   reviewToken,
   refreshModelCatalogs,
 } from "./host-auxiliary-reads.js";
-import type { PlatformServices, PlatformReadServices, Snapshot } from "./services.js";
+import type {
+  CommandParams,
+  PlatformServices,
+  PlatformReadServices,
+  Snapshot,
+} from "./services.js";
+import { markRendererStartup } from "./state/startupTiming.js";
 
+export { readObservationResult };
 export type Observation = ReturnType<typeof readObservationResult>;
 export type HostHistoryPage = ReturnType<typeof readInheritedHistoryPage>;
 export type HistoryEntry = ReturnType<typeof readHistoryEntry>;
 export type HistoryPage = ReturnType<typeof readHistoryPage> & { pageId: string; cursor: string };
+
+function taskDraftTimeZone(configuration: unknown) {
+  if (!object(configuration) || !object(configuration.options)) return;
+  const instructions = configuration.options.appendInstructions;
+  if (typeof instructions !== "string") return;
+  const [kind, zone] = instructions.split("\n", 2);
+  if (kind === "AREAL_TASK_DRAFT_V1" && zone?.startsWith("Time zone: "))
+    return zone.slice("Time zone: ".length);
+}
 export type PageRecord = { id: string; cursor: string; items: ReturnType<typeof pageTopology> };
+
+const serviceDisposers = new WeakMap<PlatformServices, () => void>();
+export function disposeHostReadServices(services: PlatformServices | undefined) {
+  if (services) serviceDisposers.get(services)?.();
+}
 
 export function createHostReadServices(
   desktop: PlatformServices | undefined,
@@ -63,13 +91,19 @@ export function createHostReadServices(
   },
 ): PlatformServices {
   const client = new HostClient({ ...options, writes: true });
-  const pages = createHostPages(client);
+  const hostBots = createHostBots(client);
+  let desktopSnapshot: Snapshot | undefined;
+  let verifiedDesktopHost: Snapshot["verifiedDesktopHost"];
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let shellExtras: ShellSnapshot | undefined;
-  const { watchedThreads, resolveWatched, reservedBytes, watch } = createWatchedHistory(
-    client,
-    readObservationResult,
-  );
+  const {
+    watchedThreads,
+    resolveWatched,
+    reservedBytes,
+    watch,
+    current: watchedCurrent,
+    find: findWatched,
+  } = createWatchedHistory(client, readObservationResult);
   let librarySourceId: string | undefined;
   let snapshot: Snapshot = { projects: [], connection: { state: "connecting" } };
   let session: SessionRead | undefined;
@@ -115,13 +149,17 @@ export function createHostReadServices(
       cacheTimer = setTimeout(pruneWindows, Math.max(0, expires - Date.now()));
   }
   function requireWindow(generation?: string) {
-    if (
-      !readingWindow ||
-      (generation !== undefined && readingWindow.viewGeneration !== generation) ||
-      client.readsSnapshot().session.state !== "fresh"
-    )
-      throw new Error("Conversation unavailable");
-    return readingWindow;
+    const owner =
+      generation === undefined || readingWindow?.viewGeneration === generation
+        ? readingWindow
+        : findWatched(generation);
+    if (!owner || !windowCurrent(owner)) throw new Error("Conversation unavailable");
+    return owner;
+  }
+  function windowCurrent(owner: ReadingWindow) {
+    return readingWindow === owner
+      ? client.readsSnapshot().session.state === "fresh"
+      : watchedCurrent(owner);
   }
   function pruneStalePages(owner: ReadingWindow) {
     const pages = owner.stalePages.filter((page) => pinnedPage(owner, page));
@@ -132,8 +170,11 @@ export function createHostReadServices(
   }
   async function readOwnPage(owner: ReadingWindow, cursor: string): Promise<HistoryPage> {
     const subscription = owner.session.subscriptionId;
-    const page = readHistoryPage(await history({ view: "own", cursor, maxBytes: 131072 }));
-    if (readingWindow !== owner || owner.session.subscriptionId !== subscription)
+    const target = owner === readingWindow ? undefined : owner.session;
+    const page = readHistoryPage(
+      await client.history({ view: "own", cursor, maxBytes: 131072 }, target),
+    );
+    if (!windowCurrent(owner) || owner.session.subscriptionId !== subscription)
       throw new Error("History read cancelled");
     if (page.snapshotId !== owner.observation.history?.snapshotId)
       throw new Error("History snapshot changed");
@@ -181,40 +222,7 @@ export function createHostReadServices(
         const cached = windows.get(key);
         if (readingWindow && readingWindow !== cached)
           readingWindow.expires = Date.now() + SESSION_READ_CACHE_MS;
-        const identity = windowIdentity(nextObservation);
-        if (cached?.identity === identity) {
-          readingWindow = cached;
-          if (readingWindow.session.subscriptionId !== currentSession.subscriptionId)
-            readingWindow.viewGeneration = crypto.randomUUID();
-          readingWindow.session = currentSession;
-          readingWindow.observation = nextObservation;
-          readingWindow.expires = undefined;
-        } else {
-          readingWindow = {
-            session: currentSession,
-            observation: nextObservation,
-            identity,
-            viewGeneration: crypto.randomUUID(),
-            pages: [],
-            stalePages: cached
-              ? [
-                  ...cached.stalePages,
-                  ...[...cached.pages].sort(
-                    (a, b) =>
-                      cached.pageRecords.findIndex((record) => record.id === b.pageId) -
-                      cached.pageRecords.findIndex((record) => record.id === a.pageId),
-                  ),
-                ].filter((page) => pinnedPage(cached, page))
-              : [],
-            pageRecords: [],
-            targets: new Map(cached?.targets),
-            items: new Map(),
-            loading: new Map(),
-            nextCursor: nextObservation.history?.nextCursor ?? undefined,
-            complete: nextObservation.history?.complete ?? true,
-            baselineFirstItemId: nextObservation.thread.turns.flatMap((turn) => turn.items)[0]?.id,
-          };
-        }
+        readingWindow = refreshReadingWindow(cached, currentSession, nextObservation);
         windows.delete(key);
         windows.set(key, readingWindow);
         pruneWindows();
@@ -235,31 +243,57 @@ export function createHostReadServices(
       observation,
       {
         shellExtras,
-        watched: watchedThreads(),
+        desktopSnapshot,
+        watched: watchedThreads(historyVersion),
         tasks: taskState.tasks,
         readingWindow,
-        observation,
         session,
         historyVersion,
         commandOutcomes,
       },
     );
     snapshot = projection.snapshot;
+    if (projection.snapshot.connection?.state === "ready") markRendererStartup("shell_fresh");
+    if (currentSession) sessionLoadTiming(currentSession.threadId)?.mark("projection");
     librarySourceId = projection.sourceId;
     for (const listener of listeners) listener(snapshot);
-    if (client.writable("project.models"))
-      refreshModelCatalogs(client, shell?.snapshot.projects ?? [], catalogs, publish);
-    if (librarySourceId && client.writable("tasks.read"))
-      refreshTaskDirectory(client, shell?.snapshot.projects ?? [], ids, taskState, publish);
-    if (librarySourceId && client.writable("desktop.command"))
-      refreshInspections(client, snapshot.projects as ReadProject[], inspections, publish);
+    // 延后目录、任务和环境巡检等次级刷新，让主线程和 Host 连接先完成首屏与会话恢复。
+    setTimeout(() => {
+      if (client.writable("project.models")) {
+        markRendererStartup("aux_refresh_start");
+        refreshModelCatalogs(
+          client,
+          shell?.snapshot.projects ?? [],
+          catalogs,
+          publish,
+          snapshot.providerRevision,
+        );
+      }
+      if (librarySourceId && client.writable("tasks.read"))
+        refreshTaskDirectory(client, shell?.snapshot.projects ?? [], ids, taskState, publish);
+      if (librarySourceId && client.writable("desktop.command"))
+        refreshInspections(client, snapshot.projects as ReadProject[], inspections, publish);
+    }, 0);
   }
-  async function history(options: Parameters<PlatformReadServices["history"]>[0]) {
-    return readInheritedHistoryPage(await client.history(options));
+  async function history(
+    options: Parameters<PlatformReadServices["history"]>[0],
+    target?: Parameters<PlatformReadServices["history"]>[1],
+  ) {
+    const { watchedTarget } = resolveWatched(target, session, ids, threadTargets);
+    return readInheritedHistoryPage(await client.history(options, watchedTarget));
   }
   const reads: PlatformReadServices = {
     status: client.snapshot,
+    canPrewarm: () => {
+      const connection = client.snapshot();
+      return (
+        connection.connection === "ready" &&
+        verifiedDesktopHost?.hostId === connection.identity.hostId &&
+        verifiedDesktopHost?.generation === connection.identity.hostGeneration
+      );
+    },
     subscribe: client.subscribe,
+    refreshProjects: () => client.refreshShell(),
     watch: (target) => watch(target, ids, threadTargets),
     async selectSession(target) {
       if (!target) return client.selectSession(null);
@@ -267,12 +301,29 @@ export function createHostReadServices(
         threadTargets.get(`${target.projectId}:${target.threadId}`) ??
         [...ids].find(([, alias]) => alias === target.projectId)?.[0] ??
         target.projectId;
+      const shellState = client.readsSnapshot().shell;
+      const shell = "value" in shellState ? shellState.value : shellState.previous;
+      const execution = shell?.snapshot.projects.find((project) => project.projectId === canonical);
+      if (
+        execution?.summaries.items.some(
+          (summary) => summary.id === target.threadId && summary.cloud,
+        ) &&
+        execution.state !== "ready"
+      ) {
+        const activated = await client.query("project.activate", canonical, {});
+        if (!object(activated) || activated.state !== "ready")
+          throw new Error("Cloud 连接尚未恢复");
+        await client.refreshShell();
+      }
       await client.selectSession({ ...target, projectId: canonical });
     },
     history,
-    media: (source, signal) => client.media(source, signal),
-    async loadOlder(pageId) {
-      const owner = requireWindow();
+    async media(source, signal, target) {
+      const { watchedTarget } = resolveWatched(target, session, ids, threadTargets);
+      return client.media(source, signal, watchedTarget);
+    },
+    async loadOlder(pageId, generation) {
+      const owner = requireWindow(generation);
       if (owner.olderRead) return owner.olderRead;
       const oldest = Math.max(
         -1,
@@ -293,7 +344,7 @@ export function createHostReadServices(
             throw new Error("History pages pinned by other reading views");
         } finally {
           owner.olderRead = undefined;
-          if (readingWindow === owner) {
+          if (windowCurrent(owner)) {
             ++historyVersion;
             publish();
           }
@@ -308,7 +359,9 @@ export function createHostReadServices(
       requireWindow(generation);
     },
     async release(viewId, generation) {
-      const owner = [...windows.values()].find((value) => value.viewGeneration === generation);
+      const owner =
+        [...windows.values()].find((value) => value.viewGeneration === generation) ??
+        findWatched(generation);
       if (!owner) return;
       owner.targets.delete(viewId);
       pruneStalePages(owner);
@@ -324,7 +377,7 @@ export function createHostReadServices(
       if (!intent) return "cancelled";
       const subscription = owner.session.subscriptionId;
       const current = () =>
-        readingWindow === owner &&
+        windowCurrent(owner) &&
         owner.session.subscriptionId === subscription &&
         owner.targets.get(viewId) === intent;
       const matches = (entry: HistoryEntry) =>
@@ -388,7 +441,7 @@ export function createHostReadServices(
         threadTargets,
       );
       const reading = auxiliary ?? requireWindow();
-      const olderEntry = ("pages" in reading ? [...reading.pages, ...reading.stalePages] : [])
+      const olderEntry = [...reading.pages, ...reading.stalePages]
         .flatMap((page) => page.data)
         .find((entry) => entry.item.id === itemId);
       const observed = watchedObservation ?? observation;
@@ -422,10 +475,7 @@ export function createHostReadServices(
               ? await client.history({ view: "own", cursor, maxBytes: 131072 }, watchedTarget)
               : await history({ view: "own", cursor, maxBytes: 131072 }),
           );
-          if (
-            !watchedTarget &&
-            (readingWindow !== reading || owner?.subscriptionId !== session?.subscriptionId)
-          )
+          if (!windowCurrent(reading) || owner?.subscriptionId !== reading.session.subscriptionId)
             throw new Error("History read cancelled");
           for (const entry of page.data) {
             const fragment = entry.fragment;
@@ -493,11 +543,15 @@ export function createHostReadServices(
     }
   });
   client.subscribe(() => {
-    if (client.snapshot().connection !== "ready") publish();
+    const status = client.snapshot();
+    if (status.connection === "ready") markRendererStartup("host_client_ready");
+    else publish();
   });
   if (desktop) {
     // 外壳只提供窗口、电源、菜单栏、生命周期和代理设置；项目、会话、任务与其余设置都从 Host 读。
     const accept = (value: Snapshot) => {
+      desktopSnapshot = value;
+      verifiedDesktopHost = value.verifiedDesktopHost;
       shellExtras = shellSnapshot(value);
       publish();
     };
@@ -508,16 +562,32 @@ export function createHostReadServices(
       .catch(() => {});
   }
   client.retry();
+  const dispose = () => {
+    clearTimeout(cacheTimer);
+    windows.clear();
+    hostBots.dispose();
+    client.close();
+  };
   if (typeof window !== "undefined")
     window.addEventListener("pagehide", (event) => {
       if (event.persisted) return;
-      clearTimeout(cacheTimer);
-      windows.clear();
-      pages?.dispose();
-      client.close();
+      dispose();
     });
   // A2：停止与审批/回答在写开关下走 Host 回执；Host 明确不接管的会话退回桌面原路径。
   const HOST_DECLINED = new Set(["TASK_CONTROL_REQUIRED"]);
+  function shouldActivatePersisted(name: string, params: Record<string, unknown>) {
+    if (["send", "configure", "media", "fork", "editMessage", "steer", "continue"].includes(name))
+      return true;
+    if (name !== "side") return false;
+    return (
+      params.operation === undefined || ["create", "recover"].includes(String(params.operation))
+    );
+  }
+  function executionProjectId(project: ReadProject, threadId?: string) {
+    return threadId
+      ? (threadTargets.get(`${project.id}:${threadId}`) ?? project.hostProjectId)
+      : project.hostProjectId;
+  }
   function hostTarget(params: Record<string, unknown>) {
     const projectId = params.projectId;
     const threadId = params.threadId;
@@ -525,16 +595,170 @@ export function createHostReadServices(
     const project = snapshot.projects.find((value) => value.id === projectId) as
       | ReadProject
       | undefined;
-    const hostProjectId = threadTargets.get(`${projectId}:${threadId}`) ?? project?.hostProjectId;
+    const hostProjectId = project ? executionProjectId(project, threadId) : undefined;
     return project && hostProjectId ? { project, hostProjectId, threadId } : undefined;
+  }
+  async function activateProject(
+    projectId: string,
+    intent: "connect" | "submit",
+    resume?: { projectId: string; threadId?: string },
+  ) {
+    const activation = resume
+      ? await client.workbench("desktop.command", {
+          sourceId: librarySourceId ?? "",
+          command: "connect",
+          request: { ...resume, resumeScheduling: true },
+        })
+      : await client.query("project.activate", projectId, {});
+    if (!object(activation) || activation.projectId !== projectId)
+      throw new Error("Invalid project activation response");
+    if (activation.state !== "ready")
+      throw Object.assign(
+        new Error(
+          activation.reason === "explicitlyStopped"
+            ? "项目已停止，请先恢复项目。"
+            : intent === "submit"
+              ? "项目启动尚未完成，消息尚未提交，草稿已保留。"
+              : "项目仍在启动中，请稍后重试。",
+        ),
+        {
+          code: activation.state === "pending" ? "ACTIVATION_PENDING" : "ACTIVATION_BLOCKED",
+          activationState: activation.state,
+          activationReason: activation.reason,
+          activationId: activation.activationId,
+        },
+      );
+    return activation;
   }
   const writes: NonNullable<PlatformServices["writes"]> = {
     async route(name, params) {
+      if (name === "open") {
+        const target = hostTarget(params);
+        if (!target) throw new Error("Conversation unavailable");
+        const selected = client.readsSnapshot().session;
+        if (
+          selected.state === "fresh" &&
+          selected.value.projectId === target.hostProjectId &&
+          selected.value.threadId === target.threadId &&
+          target.project.state.threads[target.threadId]
+        )
+          return { routed: true, snapshot };
+        const value = await client.captureWatchedSession(
+          { projectId: target.hostProjectId, threadId: target.threadId },
+          () => {
+            const current = hostTarget(params);
+            if (
+              current?.hostProjectId !== target.hostProjectId ||
+              !current.project.state.threads[target.threadId]
+            )
+              throw new Error("Conversation owner changed");
+            return snapshot;
+          },
+        );
+        return { routed: true, snapshot: value };
+      }
+      if (name === "list") {
+        const original = client.snapshot();
+        if (original.connection !== "ready") throw new Error("Project list unavailable");
+        await client.refreshShell();
+        if (client.snapshot() !== original || client.readsSnapshot().shell.state !== "fresh")
+          throw new Error("Project list unavailable");
+        return { routed: true, snapshot };
+      }
       if (client.snapshot().connection !== "ready") return undefined;
-      const project = snapshot.projects.find((value) => value.id === params.projectId) as
+      if (
+        name === "projectless" &&
+        (params.operation === "prepare" || params.operation === "scratch")
+      ) {
+        const original = client.snapshot();
+        const prepared = await command(name, params as CommandParams<"projectless">);
+        if (!prepared.ok) throw Object.assign(new Error(prepared.error.message), prepared.error); // raw-error-ok: 传输层解码，不上屏
+        const projectId =
+          object(prepared.value) && typeof prepared.value.projectId === "string"
+            ? prepared.value.projectId
+            : undefined;
+        if (projectId) {
+          // 预热失败不得掩盖已受理的 prepare/scratch 结果，也不得跨连接误激活。
+          try {
+            await client.refreshShell();
+            const current = client.snapshot();
+            const owner = snapshot.projects.find((value) => value.id === projectId) as
+              | ReadProject
+              | undefined;
+            if (
+              owner &&
+              !owner.state?.connected &&
+              original.connection === "ready" &&
+              current.connection === "ready" &&
+              current.identity.connectionId === original.identity.connectionId
+            ) {
+              await activateProject(owner.hostProjectId, "connect");
+              await client.refreshShell();
+            }
+          } catch {}
+        }
+        return { routed: true, value: prepared.value };
+      }
+      let project = snapshot.projects.find((value) => value.id === params.projectId) as
         | ReadProject
         | undefined;
+      if (!project && name === "create" && typeof params.projectId === "string") {
+        await client.refreshShell().catch(() => {});
+        project = snapshot.projects.find((value) => value.id === params.projectId) as
+          | ReadProject
+          | undefined;
+      }
+      if (project && name === "connect") {
+        const original = client.snapshot();
+        if (original.connection !== "ready") throw new Error("Host unavailable");
+        const activationProjectId = executionProjectId(
+          project,
+          typeof params.threadId === "string" ? params.threadId : undefined,
+        );
+        const activation = await activateProject(
+          activationProjectId,
+          "connect",
+          params.resumeScheduling === true
+            ? {
+                projectId: project.id,
+                ...(typeof params.threadId === "string" ? { threadId: params.threadId } : {}),
+              }
+            : undefined,
+        );
+        await client.refreshShell();
+        const current = client.snapshot();
+        const shell = client.readsSnapshot().shell;
+        if (
+          current.connection !== "ready" ||
+          current.identity.connectionId !== original.identity.connectionId ||
+          shell.state !== "fresh" ||
+          shell.value.snapshot.projects.find((value) => value.projectId === activationProjectId)
+            ?.serviceGeneration !== activation.serviceGeneration
+        )
+          throw Object.assign(new Error("Original project activation changed"), {
+            code: "RESYNC_REQUIRED",
+          });
+        return { routed: true };
+      }
       if (project && name === "create" && client.writable("session.create")) {
+        if (!project.state?.connected) {
+          const original = client.snapshot();
+          if (original.connection !== "ready") throw new Error("Host unavailable");
+          const activation = await activateProject(project.hostProjectId, "connect");
+          await client.refreshShell();
+          const current = client.snapshot();
+          const shell = client.readsSnapshot().shell;
+          if (
+            current.connection !== "ready" ||
+            current.identity.connectionId !== original.identity.connectionId ||
+            shell.state !== "fresh" ||
+            shell.value.snapshot.projects.find((value) => value.projectId === project.hostProjectId)
+              ?.serviceGeneration !== activation.serviceGeneration
+          )
+            throw Object.assign(new Error("Original project activation changed"), {
+              code: "RESYNC_REQUIRED",
+            });
+        }
         const { projectId: _projectId, ...input } = params;
         const commandId =
           typeof params.requestId === "string" ? params.requestId : crypto.randomUUID();
@@ -561,15 +785,11 @@ export function createHostReadServices(
             : project.hostProjectId;
         creationTargets.set(`${project.id}:${result.threadId}`, execution);
         threadTargets.set(`${project.id}:${result.threadId}`, execution);
-        try {
-          await client.refreshShell();
-        } catch (error) {
-          throw Object.assign(new Error("创建已受理，目录尚未同步，请核对原请求。"), {
-            cause: error,
-            requestId: commandId,
-            submissionUnknown: true,
-          });
-        }
+        const refresh = client.refreshShell().catch(() => {
+          // 目录读取失败不改变已确认的原创建结果。
+        });
+        // 新工作树要先获得执行项目的代际；源目录已就绪，首条消息可以继续提交。
+        if (execution !== project.hostProjectId) await refresh;
         return {
           routed: true,
           value: { threadId: result.threadId, requestId: result.nativeRequestId ?? commandId },
@@ -579,31 +799,193 @@ export function createHostReadServices(
         project &&
         name === "reconcile" &&
         typeof params.requestId === "string" &&
+        params.executionProjectId === undefined &&
         client.writable("command.read")
       ) {
         const connection = client.snapshot();
         if (connection.connection !== "ready") throw new Error("Host unavailable");
+        const requestId = params.requestId;
+        const gatewayOwner = commandOwners.get(
+          JSON.stringify([connection.identity.hostId, requestId]),
+        );
         const owner =
-          commandOwners.get(JSON.stringify([connection.identity.hostId, params.requestId])) ??
+          gatewayOwner ??
           (session && threadTargets.get(`${project.id}:${session.threadId}`) === session.projectId
             ? session.projectId
             : project.hostProjectId);
-        const result = await client.commandStatus(owner, params.requestId);
+        const result = await client.commandStatus(owner, requestId);
         if (client.snapshot() !== connection) throw new Error("Host command read cancelled");
-        const outcome = hostCommandOutcome(result, params.requestId);
+        let outcome = hostCommandOutcome(result, requestId);
+        const draftThreads = Object.entries(project.configurations)
+          .filter(([, configuration]) => taskDraftTimeZone(configuration))
+          .map(([id]) => id);
+        if (
+          outcome.admissionState === "notFound" &&
+          draftThreads.length &&
+          client.writable("tasks.read")
+        ) {
+          const draft = await client.workbench("tasks.read", {
+            operation: "receipt",
+            projectId: project.id,
+            requestId,
+          });
+          if (client.snapshot() !== connection) throw new Error("Host command read cancelled");
+          if (
+            object(draft) &&
+            draft.requestId === requestId &&
+            draft.submissionUnknown === false &&
+            object(draft.receipt) &&
+            typeof draft.receipt.threadId === "string" &&
+            draftThreads.includes(draft.receipt.threadId) &&
+            typeof draft.receipt.turnId === "string"
+          ) {
+            outcome = hostCommandOutcome(
+              {
+                ...draft.receipt,
+                method: "session.send",
+                commandId: requestId,
+                admissionState: "accepted",
+              },
+              requestId,
+            );
+          }
+        }
+        if (
+          outcome.admissionState === "notFound" &&
+          !gatewayOwner &&
+          client.writable("desktop.command")
+        ) {
+          // 配置等原生提交由 Host 工作台日志保存，按同一编号核对原回执。
+          const native = await client.workbench("desktop.command", {
+            command: "reconcile",
+            request: { projectId: project.id, requestId },
+          });
+          if (client.snapshot() !== connection) throw new Error("Host command read cancelled");
+          const original =
+            object(native) && object(native.outcomes) ? native.outcomes[requestId] : undefined;
+          if (
+            object(original) &&
+            object(original.operation) &&
+            original.operation.requestId === requestId
+          )
+            outcome = jsonObject(original);
+        }
         const key = JSON.stringify([connection.identity.hostId, owner]);
-        commandOutcomes.set(key, { ...commandOutcomes.get(key), [params.requestId]: outcome });
+        commandOutcomes.set(key, { ...commandOutcomes.get(key), [requestId]: outcome });
         publish();
         return {
           routed: true,
           value: {
-            outcomes: { [params.requestId]: outcome },
+            outcomes: { [requestId]: outcome },
           },
         };
+      }
+      const persistedThreadId =
+        typeof params.threadId === "string"
+          ? params.threadId
+          : typeof params.sourceThreadId === "string"
+            ? params.sourceThreadId
+            : undefined;
+      if (
+        project &&
+        persistedThreadId !== undefined &&
+        (project.state.threads[persistedThreadId]?.persistedHistory === true ||
+          (!project.state.connected &&
+            (project.state.hostState === "stopped" || project.state.hostState === "stopping"))) &&
+        shouldActivatePersisted(name, params)
+      ) {
+        const original = readingWindow?.session;
+        const connection = client.snapshot();
+        const requireOriginal = () => {
+          const selected = client.readsSnapshot().sessionTarget;
+          const current = client.snapshot();
+          if (
+            !original ||
+            connection.connection !== "ready" ||
+            current.connection !== "ready" ||
+            current.identity.connectionId !== connection.identity.connectionId ||
+            selected?.projectId !== original.projectId ||
+            selected?.threadId !== persistedThreadId
+          )
+            throw Object.assign(new Error("会话已切换，输入已保留。"), {
+              code: "STALE_CONNECTION",
+            });
+        };
+        // 历史读取不等原生连接；恢复执行前须让 Main 完成工具 owner 握手。
+        if (desktop) {
+          await new Promise<void>((resolve, reject) => {
+            let unsubscribe = () => {};
+            let finished = false;
+            const finish = (error?: unknown) => {
+              if (finished) return;
+              finished = true;
+              clearTimeout(timer);
+              unsubscribe();
+              if (error) reject(error);
+              else resolve();
+            };
+            const timer = setTimeout(
+              () =>
+                finish(
+                  Object.assign(new Error("桌面工具连接尚未就绪，输入已保留。"), {
+                    code: "DESKTOP_UNAVAILABLE",
+                  }),
+                ),
+              15_000,
+            );
+            const check = (value: Snapshot) => {
+              if (finished) return;
+              try {
+                requireOriginal();
+                if (
+                  value.connection?.state === "ready" &&
+                  connection.connection === "ready" &&
+                  value.verifiedDesktopHost?.hostId === connection.identity.hostId &&
+                  value.verifiedDesktopHost?.generation === connection.identity.hostGeneration
+                )
+                  finish();
+                else if (value.connection?.state === "unavailable")
+                  finish(
+                    Object.assign(new Error("桌面工具连接不可用，输入已保留。"), {
+                      code: "DESKTOP_UNAVAILABLE",
+                    }),
+                  );
+              } catch (error) {
+                finish(error);
+              }
+            };
+            unsubscribe = desktop.onState(check);
+            void desktop.snapshot().then(check, finish);
+          });
+          requireOriginal();
+        }
+        const activationProjectId = executionProjectId(project, persistedThreadId);
+        const activation = await activateProject(activationProjectId, "submit");
+        requireOriginal();
+        await client.refreshShell();
+        requireOriginal();
+        const refreshedShell = client.readsSnapshot().shell;
+        if (
+          refreshedShell.state !== "fresh" ||
+          refreshedShell.value.snapshot.projects.find(
+            (value) => value.projectId === activationProjectId,
+          )?.serviceGeneration !== activation.serviceGeneration
+        )
+          throw Object.assign(new Error("Original project activation changed"), {
+            code: "RESYNC_REQUIRED",
+          });
+        await reads.selectSession({ projectId: project.id, threadId: persistedThreadId });
+        requireOriginal();
       }
       const target = hostTarget(params);
       if (!target) return undefined;
       try {
+        if (name === "media" && params.operation === "read" && typeof params.uri === "string") {
+          return {
+            routed: true,
+            value: await client.attachment(target.hostProjectId, target.threadId, params.uri),
+          };
+        }
         if (
           name === "media" &&
           params.operation === "upload" &&
@@ -645,11 +1027,59 @@ export function createHostReadServices(
               ? { conversationQuotes: params.conversationQuotes }
               : {}),
             ...(params.mcpContent !== undefined ? { mcpContent: params.mcpContent } : {}),
+            ...(params.contextParts !== undefined ? { contextParts: params.contextParts } : {}),
+            ...(name === "send" && params.command !== undefined ? { command: params.command } : {}),
           });
           const commandId =
             typeof params.requestId === "string" ? params.requestId : crypto.randomUUID();
           const owner = client.snapshot();
           if (owner.connection !== "ready") throw new Error("Host unavailable");
+          const timeZone = taskDraftTimeZone(config);
+          if (name === "send" && timeZone) {
+            if (params.command !== undefined) throw new Error("定时任务配置草稿不支持插件命令");
+            if (!client.writable("desktop.command")) throw new Error("Host unavailable");
+            const operation = {
+              method: "turn/start",
+              requestId: commandId,
+              target: { kind: "thread", threadId: target.threadId },
+            } as const;
+            let result;
+            try {
+              result = await client.workbench("desktop.command", {
+                command: "manage",
+                request: {
+                  ...input,
+                  operation: "taskDraftSend",
+                  projectId: target.project.id,
+                  threadId: target.threadId,
+                  timeZone,
+                  requestId: commandId,
+                },
+              });
+            } catch (error) {
+              if (!outcomeUnknown(error)) throw error;
+              return {
+                routed: true,
+                value: admitted(
+                  { admissionState: "unknown", commandId, transportError: "" },
+                  operation,
+                ),
+              };
+            }
+            if (
+              !object(result) ||
+              result.threadId !== target.threadId ||
+              typeof result.turnId !== "string"
+            )
+              return {
+                routed: true,
+                value: admitted(
+                  { admissionState: "unknown", commandId, transportError: "" },
+                  operation,
+                ),
+              };
+            return { routed: true, value: result };
+          }
           const command = await client.command(
             name === "send" ? "session.send" : "session.control",
             target.hostProjectId,
@@ -691,12 +1121,30 @@ export function createHostReadServices(
           };
         }
         if (name === "stop" && client.writable("turn.stop") && typeof params.turnId === "string") {
-          settled(
-            await client.command("turn.stop", target.hostProjectId, {
+          const commandId =
+            typeof params.requestId === "string" ? params.requestId : crypto.randomUUID();
+          const owner = client.snapshot();
+          if (owner.connection !== "ready") throw new Error("Host unavailable");
+          const result = await client.command(
+            "turn.stop",
+            target.hostProjectId,
+            {
               threadId: target.threadId,
               expectedTurnId: params.turnId,
-            }),
+            },
+            commandId,
           );
+          if (result.admissionState === "unknown" || result.admissionState === "pending") {
+            commandOwners.set(
+              JSON.stringify([owner.identity.hostId, commandId]),
+              target.hostProjectId,
+            );
+          }
+          admitted(result, {
+            method: "turn/interrupt",
+            requestId: commandId,
+            target: { kind: "thread", threadId: target.threadId },
+          });
           return { routed: true };
         }
         if (
@@ -741,6 +1189,8 @@ export function createHostReadServices(
         if (
           error !== null &&
           typeof error === "object" &&
+          name !== "stop" &&
+          !(name === "send" && params.command !== undefined) &&
           HOST_DECLINED.has(String((error as { code?: unknown }).code))
         )
           return undefined;
@@ -769,15 +1219,47 @@ export function createHostReadServices(
     () => librarySourceId,
     closedSidePublisher(client, commandOutcomes, hostTarget, publish),
   ) as PlatformServices["command"];
-  return {
+  const nativeFileOpen = desktop?.fileOpen;
+  let selectedThemeId = "system";
+  const resolveBrowserTheme = (id = selectedThemeId) => {
+    const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
+    const dark = id === "data-dense" ? true : id === "soft-glass" ? false : prefersDark;
+    return {
+      dark,
+      id: id === "system" ? (dark ? "data-dense" : "soft-glass") : id,
+    };
+  };
+  const result: PlatformServices = {
     ...(desktop ?? {
       chooseProject: () => chooseHostProject(client),
-      theme: async () => ({
-        dark: matchMedia("(prefers-color-scheme: dark)").matches,
-        id: "system",
-      }),
-      onTheme: () => () => {},
+      theme: async (id) => {
+        selectedThemeId = id || "system";
+        return resolveBrowserTheme(selectedThemeId);
+      },
+      onTheme: (listener) => {
+        const media = matchMedia("(prefers-color-scheme: dark)");
+        const handleChange = () => {
+          if (selectedThemeId === "system") listener(resolveBrowserTheme("system"));
+        };
+        media.addEventListener?.("change", handleChange);
+        return () => media.removeEventListener?.("change", handleChange);
+      },
       preview: unavailable,
+    }),
+    ...(nativeFileOpen && {
+      async fileOpen(request) {
+        if (request.operation !== "setDefault") return nativeFileOpen(request);
+        const catalog = await nativeFileOpen({ operation: "targets" });
+        if (!isFileOpenTargets(catalog)) throw new Error("所选打开应用不可用，请重新选择");
+        const target = catalog.targets.find(({ id }) => id === request.target);
+        if (!target) throw new Error("所选打开应用不可用，请重新选择");
+        await workbench.call("library", {
+          operation: "settings",
+          key: "fileOpenTarget",
+          value: request.target,
+        });
+        return { ...catalog, preferred: target.id, preferredLabel: target.label };
+      },
     }),
     command,
     openExternal,
@@ -787,8 +1269,7 @@ export function createHostReadServices(
     reads,
     writes,
     workbench,
-    mcpApp: pages.mcpApp,
-    onMcpAppEvent: pages.onMcpAppEvent,
+    bots: hostBots.bots,
     snapshot: async () => snapshot,
     onState(listener) {
       listeners.add(listener);
@@ -797,4 +1278,6 @@ export function createHostReadServices(
       };
     },
   };
+  serviceDisposers.set(result, dispose);
+  return result;
 }

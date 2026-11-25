@@ -188,39 +188,27 @@ try {
         sections: [],
       },
     };
-    let projectionListener,
-      projectionSequence = 0;
-    const emitSnapshot = (requestId) =>
-      projectionListener?.({
-        requestId,
-        frame: {
-          projection: 1,
-          stream: "trajectory-fixture",
-          sequence: ++projectionSequence,
-          kind: "full",
-          snapshot: structuredClone(snapshot),
-        },
-      });
+    let nativeStateListener;
+    const emitSnapshot = () => nativeStateListener?.(structuredClone(snapshot));
     window.setTestState = (value) => {
       snapshot = value;
       emitSnapshot();
     };
     window.setConnection = (state) => window.setTestState({ ...snapshot, connection: { state } });
     window.arealDesktop = {
-      onProjection: (listener) => {
-        projectionListener = listener;
+      nativeState: async () => structuredClone(snapshot),
+      onNativeState: (listener) => {
+        nativeStateListener = listener;
         return () => {
-          projectionListener = undefined;
+          nativeStateListener = undefined;
         };
       },
-      requestProjection: emitSnapshot,
       theme: async () => ({ platform: "darwin", dark: false, id: "light" }),
       onTheme: (listener) => {
         window.setTestTheme = listener;
         return () => {};
       },
       setInterfaceLocale: () => {},
-      onMcpAppEvent: () => () => {},
       onPreviewEvent: () => () => {},
       onUpdate: () => () => {},
       updateState: async () => ({ enabled: false, status: "idle" }),
@@ -614,9 +602,9 @@ try {
     for (const record of window.fixture.records) delete record.model_call_duration_ms;
   });
   await advance(2600);
-  await page.getByText("当前 Core 未提供模型调用耗时汇总，耗时未知。", { exact: true }).waitFor();
+  await page.getByText("当前版本未提供模型调用耗时汇总，耗时未知。", { exact: true }).waitFor();
   assert.equal(await page.getByText(/^模型调用耗时（含网络\/重试）/).count(), 0);
-  assert.equal(await page.getByText("0毫秒 / 0毫秒 / 0毫秒", { exact: true }).count(), 0);
+  assert.equal(await page.getByText(/^0毫秒 \/ 0毫秒 \/ 0毫秒$/).count(), 0);
   checks.push("legacy missing model durations remain unknown instead of becoming zero");
 
   // 修改桌面侧状态而不点击刷新，确认页内轮询实际更新队列与失败提示。

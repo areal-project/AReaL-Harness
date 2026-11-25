@@ -1,5 +1,9 @@
-import { DEFAULT_CODE_PREVIEW_SETTINGS, type CodePreviewSettings } from "../../lib/code-preview-settings.js";
 "use client";
+
+import {
+  DEFAULT_CODE_PREVIEW_SETTINGS,
+  type CodePreviewSettings,
+} from "../../lib/code-preview-settings.js";
 
 import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 import { memo, useMemo } from "react";
@@ -43,6 +47,12 @@ export type DiffViewerProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> &
     darkTheme?: CodePreviewTheme;
     themeType?: "light" | "dark";
     selectedLines?: DiffViewerSelectedLineRange | null;
+    expandLabels?: {
+      all?: string;
+      up?: string;
+      down?: string;
+      both?: string;
+    };
   };
 
 export interface DiffViewerSelectedLineRange {
@@ -51,7 +61,11 @@ export interface DiffViewerSelectedLineRange {
   side: "additions" | "deletions";
 }
 
-function DiffViewerComponent({ preferences: prefs = DEFAULT_CODE_PREVIEW_SETTINGS, diffMarkers = "color", ...props }: DiffViewerProps & { preferences?: CodePreviewSettings; diffMarkers?: "signs" | "color" }) {
+function DiffViewerComponent({
+  preferences: prefs = DEFAULT_CODE_PREVIEW_SETTINGS,
+  diffMarkers = "color",
+  ...props
+}: DiffViewerProps & { preferences?: CodePreviewSettings; diffMarkers?: "signs" | "color" }) {
   const rendersPatch = isPatchDiffProps(props);
   const {
     options: optionsOverride,
@@ -63,6 +77,7 @@ function DiffViewerComponent({ preferences: prefs = DEFAULT_CODE_PREVIEW_SETTING
     fontSizePx = prefs.fontSizePx,
     selectedLines,
     annotations,
+    expandLabels,
     className,
     style,
   } = props;
@@ -105,19 +120,41 @@ function DiffViewerComponent({ preferences: prefs = DEFAULT_CODE_PREVIEW_SETTING
       onPostRender: (node, instance, phase) => {
         // Pierre owns hunk identities and pointer expansion. Its icon-only
         // div controls need names/focus and the same click action for keys.
-        if (phase !== "unmount") for (const control of (node.shadowRoot ?? node).querySelectorAll<HTMLElement>("[data-expand-button]")) {
-          control.setAttribute("aria-label", control.hasAttribute("data-expand-all-button") ? "展开全部未改动行"
-            : control.hasAttribute("data-expand-up") ? "展开上方未改动行"
-            : control.hasAttribute("data-expand-down") ? "展开下方未改动行" : "展开两侧未改动行");
-          control.tabIndex = 0;
-          control.onkeydown = event => {
-            if (event.key === "Enter" || event.key === " ") { event.preventDefault(); control.click(); }
-          };
-        }
+        if (phase !== "unmount")
+          for (const control of (node.shadowRoot ?? node).querySelectorAll<HTMLElement>(
+            "[data-expand-button]",
+          )) {
+            control.setAttribute(
+              "aria-label",
+              control.hasAttribute("data-expand-all-button")
+                ? (expandLabels?.all ?? "展开全部未改动行")
+                : control.hasAttribute("data-expand-up")
+                  ? (expandLabels?.up ?? "展开上方未改动行")
+                  : control.hasAttribute("data-expand-down")
+                    ? (expandLabels?.down ?? "展开下方未改动行")
+                    : (expandLabels?.both ?? "展开两侧未改动行"),
+            );
+            control.tabIndex = 0;
+            control.onkeydown = (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                control.click();
+              }
+            };
+          }
         return optionsOverride?.onPostRender?.(node, instance, phase);
       },
     }),
-    [darkTheme, lightTheme, optionsOverride, rendersPatch, themeType, prefs, diffMarkers],
+    [
+      darkTheme,
+      lightTheme,
+      optionsOverride,
+      rendersPatch,
+      themeType,
+      prefs,
+      diffMarkers,
+      expandLabels,
+    ],
   );
 
   const diffNode = rendersPatch ? (
@@ -127,7 +164,7 @@ function DiffViewerComponent({ preferences: prefs = DEFAULT_CODE_PREVIEW_SETTING
       disableWorkerPool={disableWorkerPool}
       selectedLines={selectedLines}
       lineAnnotations={annotations}
-      renderAnnotation={annotation => annotation.metadata}
+      renderAnnotation={(annotation) => annotation.metadata}
       className={cn("min-h-full w-full", diffClassName)}
       style={viewerStyle}
     />
@@ -139,7 +176,7 @@ function DiffViewerComponent({ preferences: prefs = DEFAULT_CODE_PREVIEW_SETTING
       disableWorkerPool={disableWorkerPool}
       selectedLines={selectedLines}
       lineAnnotations={annotations}
-      renderAnnotation={annotation => annotation.metadata}
+      renderAnnotation={(annotation) => annotation.metadata}
       className={cn("min-h-full w-full", diffClassName)}
       style={viewerStyle}
     />

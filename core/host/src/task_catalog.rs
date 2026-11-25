@@ -1,5 +1,5 @@
 //! 跨项目任务目录只聚合 Core 读模型；停止项目的 published 快照不代表实时执行状态。
-use super::{Ensure, Host};
+use super::Host;
 use anyhow::{Context, Result, bail, ensure};
 use areal_local_service::storage;
 use serde_json::{Value, json};
@@ -139,196 +139,6 @@ async fn owners(host: &Host, params: &Value) -> Result<Vec<Owner>> {
 fn owner_home(host: &Host, params: &Value) -> Result<std::path::PathBuf> {
     super::library_store::source_home(host, params["sourceId"].as_str().unwrap_or("host"))
 }
-fn owner_file(home: &std::path::Path, project: &str) -> Result<std::path::PathBuf> {
-    ensure!(
-        !project.is_empty()
-            && project.len() <= 512
-            && project
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_')),
-        "TASK_WORKSPACE_UNAVAILABLE"
-    );
-    Ok(home.join("task-owners").join(format!("{project}.json")))
-}
-fn owner_records(home: &std::path::Path) -> Result<BTreeMap<String, Vec<Value>>> {
-    let directory = home.join("task-owners");
-    let mut result = BTreeMap::new();
-    if !directory.try_exists()? {
-        return Ok(result);
-    }
-    for entry in std::fs::read_dir(directory)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|x| x.to_str()) != Some("json") {
-            continue;
-        }
-        let project = path
-            .file_stem()
-            .and_then(|x| x.to_str())
-            .context("TASK_WORKSPACE_UNAVAILABLE")?;
-        ensure!(
-            owner_file(home, project)? == path,
-            "TASK_WORKSPACE_UNAVAILABLE"
-        );
-        let rows: Vec<Value> = storage::read(&path)?;
-        ensure!(
-            rows.len() <= 65536 && result.len() < 65536,
-            "LIMIT_EXCEEDED"
-        );
-        let rows = rows
-            .into_iter()
-            .map(|row| {
-                let value = if row.is_string() {
-                    json!({"id":row})
-                } else {
-                    row
-                };
-                ensure!(
-                    value["id"]
-                        .as_str()
-                        .is_some_and(|s| !s.is_empty() && s.len() <= 512 && !s.contains('\0'))
-                        && value.get("threadId").is_none_or(|v| v
-                            .as_str()
-                            .is_some_and(|s| !s.is_empty() && s.len() <= 512 && !s.contains('\0')))
-                        && value.get("ambiguous").is_none_or(Value::is_boolean),
-                    "TASK_WORKSPACE_UNAVAILABLE"
-                );
-                Ok(value)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        result.insert(project.into(), rows);
-    }
-    Ok(result)
-}
-fn remember_owner(host: &Host, params: &Value, project: &str, tasks: &[Value]) -> Result<()> {
-    let source = params["sourceId"].as_str().unwrap_or("host");
-    if source != "host"
-        && !host.gateway.workbench.backend_has_source(source)
-        && !host.gateway.workbench.backend_has_source(source)
-    {
-        // 读取仍可用，归属索引只交给当前领域开关指定的唯一写者。
-        return Ok(());
-    }
-    let home = owner_home(host, params)?;
-    let file = owner_file(&home, project)?;
-    let mut records: Vec<Value> = storage::read_optional(&file)?.unwrap_or_default();
-    for task in tasks {
-        let id = task.get("taskId").unwrap_or(&task["id"]);
-        if !id.is_string() {
-            continue;
-        }
-        let index = records.iter().position(|row| row == id || row["id"] == *id);
-        let previous = index
-            .map(|index| records[index].clone())
-            .unwrap_or(Value::Null);
-        let mut record = json!({"id":id});
-        if let Some(thread) = task["threadId"]
-            .as_str()
-            .or_else(|| previous["threadId"].as_str())
-        {
-            record["threadId"] = json!(thread);
-        }
-        if previous["ambiguous"] == true
-            || (previous["threadId"].is_string()
-                && task["threadId"].is_string()
-                && previous["threadId"] != task["threadId"])
-        {
-            record["ambiguous"] = json!(true);
-        }
-        if let Some(index) = index {
-            records[index] = record;
-        } else {
-            records.push(record);
-        }
-    }
-    ensure!(records.len() <= 65536, "LIMIT_EXCEEDED");
-    storage::private_dir(file.parent().unwrap())?;
-    storage::write(&file, &records)
-}
-
-/// 归属索引只提供原身份约束；没有唯一证据时逐候选向 Core 核对，离线不等于不存在。
-pub(super) async fn owner_read(host: &Rc<Host>, params: &Value) -> Result<Value> {
-    let task = params["taskId"].as_str().context("INVALID_PARAMS")?;
-    ensure!(
-        !task.is_empty() && task.len() <= 512 && !task.contains('\0'),
-        "INVALID_PARAMS"
-    );
-    let candidates = owners(host, params).await?;
-    let home = owner_home(host, params)?;
-    let records = owner_records(&home)?;
-    let indexed: Vec<_> = records
-        .iter()
-        .filter_map(|(project, rows)| rows.iter().find(|r| r["id"] == task).map(|r| (project, r)))
-        .collect();
-    ensure!(indexed.len() <= 1, "TASK_WORKSPACE_UNAVAILABLE");
-    let selected: Vec<_> = if let Some((project, record)) = indexed.first() {
-        ensure!(record["ambiguous"] != true, "TASK_WORKSPACE_UNAVAILABLE");
-        let owner = candidates
-            .iter()
-            .find(|o| o.execution.as_deref().unwrap_or(&o.public) == project.as_str())
-            .context("TASK_WORKSPACE_UNAVAILABLE")?;
-        if params["execution"] != true && record["threadId"].is_string() {
-            return Ok(json!({"projectId":project,"threadId":record["threadId"]}));
-        }
-        vec![owner]
-    } else {
-        candidates.iter().collect()
-    };
-    let found = tokio::time::timeout(Duration::from_secs(5), async {
-        let mut found = Vec::new();
-        for owner in selected {
-            ensure_project(host, &owner.id).await?;
-            match rpc(host, &owner.id, "areal/task/read", json!({"taskId":task})).await {
-                Ok(value) => {
-                    ensure!(value["id"] == task, "TASK_WORKSPACE_UNAVAILABLE");
-                    found.push((owner, value));
-                }
-                Err(error)
-                    if error
-                        .downcast_ref::<super::schedule_connection::RpcFailure>()
-                        .is_some_and(|failure| failure.0["code"] == -32004) => {}
-                Err(_) => bail!("TASK_WORKSPACE_UNAVAILABLE"),
-            }
-        }
-        Ok::<_, anyhow::Error>(found)
-    })
-    .await
-    .context("TASK_WORKSPACE_UNAVAILABLE")??;
-    ensure!(found.len() == 1, "TASK_WORKSPACE_UNAVAILABLE");
-    let (owner, value) = &found[0];
-    let alias = owner.execution.as_deref().unwrap_or(&owner.public);
-    ensure!(
-        owners(host, params)
-            .await?
-            .iter()
-            .any(|current| current.id == owner.id
-                && current.execution.as_deref().unwrap_or(&current.public) == alias),
-        "TASK_WORKSPACE_UNAVAILABLE"
-    );
-    remember_owner(host, params, alias, std::slice::from_ref(value))?;
-    let latest = owner_records(&home)?;
-    let matches: Vec<_> = latest
-        .iter()
-        .flat_map(|(p, rows)| {
-            rows.iter()
-                .filter(move |r| r["id"] == task)
-                .map(move |r| (p, r))
-        })
-        .collect();
-    ensure!(
-        matches.len() == 1 && matches[0].0 == alias && matches[0].1["ambiguous"] != true,
-        "TASK_WORKSPACE_UNAVAILABLE"
-    );
-    let mut result = json!({"projectId":alias});
-    if value["threadId"].is_string() {
-        result["threadId"] = value["threadId"].clone();
-    }
-    if params["execution"] == true {
-        result["mode"] = value["mode"].clone();
-    }
-    Ok(result)
-}
-
 pub(super) async fn resolve_project(host: &Host, params: &Value) -> Result<String> {
     let requested = params["executionProjectId"]
         .as_str()
@@ -352,32 +162,27 @@ pub(super) async fn rpc(host: &Host, id: &str, method: &str, params: Value) -> R
         .remote_request(host, id, (&scope.0, &scope.1, &scope.2), method, params)
         .await
 }
-async fn ensure_project(host: &Host, id: &str) -> Result<()> {
+async fn ensure_project(host: &Rc<Host>, id: &str) -> Result<()> {
     if host.schedules.connections.shared_identity(host, id).is_ok() {
         return Ok(());
     }
-    host.ensure(Ensure {
-        request_id: uuid::Uuid::new_v4().to_string(),
-        expected_generation: host.identity.generation.clone(),
-        project_id: id.into(),
-        no_auto_restart: false,
-        resume_scheduling: false,
-        launch_inputs: None,
-        credentials: BTreeMap::new(),
-    })
-    .await?;
-    tokio::time::timeout(Duration::from_secs(15), async {
-        loop {
-            let changed = host.schedules.connections.changed.notified();
-            if host.schedules.connections.shared_identity(host, id).is_ok() {
-                return Ok(());
-            }
-            host.admission()?;
-            changed.await;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    match host.activate_project_normal(id, deadline).await? {
+        super::ActivationOutcome::Ready { .. } => Ok(()),
+        super::ActivationOutcome::Blocked {
+            reason: "explicitlyStopped",
+            ..
+        } => Err(crate::wire::error(
+            "schedulingSuppressed",
+            "project scheduling was stopped",
+        )),
+        super::ActivationOutcome::Pending { .. } | super::ActivationOutcome::Blocked { .. } => {
+            Err(crate::wire::error(
+                "scheduleHostUnavailable",
+                "scheduled preparation connection is unavailable",
+            ))
         }
-    })
-    .await
-    .context("scheduleHostUnavailable")?
+    }
 }
 async fn published(host: &Host, id: &str, source_thread: Option<&str>) -> Result<Value> {
     let registration = host
@@ -515,10 +320,10 @@ fn scoped(mut row: Value, owner: &Owner) -> Value {
     row
 }
 /// list/preview/observe 从不唤醒停止的 Core；已连接项目在 observe 时注册目录观察。
-pub(super) async fn read(host: &Rc<Host>, params: &Value) -> Result<Value> {
+pub(super) async fn read(host: &Rc<Host>, principal: &str, params: &Value) -> Result<Value> {
     let operation = params["operation"].as_str().unwrap_or("list");
     if operation == "receipt" {
-        return native_receipt(host, "local", params).await;
+        return native_receipt(host, principal, params).await;
     }
     if !matches!(operation, "list" | "preview" | "observe" | "inbox") {
         return manage_read(host, params).await;
@@ -530,23 +335,77 @@ pub(super) async fn read(host: &Rc<Host>, params: &Value) -> Result<Value> {
     let mut errors = Vec::new();
     let mut owner_states = BTreeMap::<String, Value>::new();
     let mut has_more = false;
-    for owner in owners(host, params).await? {
-        let result:Result<(Vec<Value>,bool,Value)>=async{
-            let live=operation!="preview"&&host.schedules.connections.shared_identity(host,&owner.id).is_ok();
-            if live{
-                if operation=="observe"{watch_owner(host,&owner.id).await?;}
-                let scope=host.schedules.connections.shared_identity(host,&owner.id)?;
-                let value=if operation=="inbox"{rpc(host,&owner.id,"areal/inbox/list",json!({"limit":limit.min(100)})).await?}else{directory(host,&owner.id).await?};
-                if operation=="observe" {
-                    super::library_service::record_scheduled_baseline(host,&owner.id,value["data"].as_array().context("INVALID_RESPONSE")?).await?;
-                    ensure!(host.schedules.connections.shared_identity(host,&owner.id)?==scope,"RESYNC_REQUIRED");
+    // 多项目/多工作树并发读取目录并保持输入顺序，避免按项目串行叠加延迟。
+    let results = futures_util::future::join_all(owners(host, params).await?.into_iter().map(
+        |owner| async move {
+            let result: Result<(Vec<Value>, bool, Value)> = async {
+                let live = operation != "preview"
+                    && host.schedules.connections.shared_identity(host, &owner.id).is_ok();
+                if live {
+                    if operation == "observe" {
+                        watch_owner(host, &owner.id).await?;
+                    }
+                    let scope = host.schedules.connections.shared_identity(host, &owner.id)?;
+                    let value = if operation == "inbox" {
+                        rpc(
+                            host,
+                            &owner.id,
+                            "areal/inbox/list",
+                            json!({"limit":limit.min(100)}),
+                        )
+                        .await?
+                    } else {
+                        directory(host, &owner.id).await?
+                    };
+                    if operation == "observe" {
+                        super::library_service::record_scheduled_baseline(
+                            host,
+                            &owner.id,
+                            value["data"].as_array().context("INVALID_RESPONSE")?,
+                        )
+                        .await?;
+                        ensure!(
+                            host.schedules.connections.shared_identity(host, &owner.id)? == scope,
+                            "RESYNC_REQUIRED"
+                        );
+                    }
+                    let rows = value["data"]
+                        .as_array()
+                        .context("INVALID_RESPONSE")?
+                        .iter()
+                        .filter(|row| {
+                            operation == "inbox"
+                                || (row["mode"] == "scheduled"
+                                    && (row["deletedAt"].is_null()
+                                        || row["hasUnsettledWork"] == true)
+                                    && source_thread
+                                        .is_none_or(|thread| row["sourceThreadId"] == thread))
+                        })
+                        .cloned()
+                        .collect();
+                    let scope = host.schedules.connections.shared_identity(host, &owner.id)?;
+                    Ok((
+                        rows,
+                        value["hasMore"] == true || value["nextCursor"].is_string(),
+                        json!({"projectId":owner.public,"status":"ready","source":"live","coverage":{"kind":"complete"},"readAt":now(),"connectionGeneration":connection_generation(host,&owner.id,&scope.2)?}),
+                    ))
+                } else {
+                    ensure!(operation != "inbox", "TASK_CATALOG_READ_FAILED");
+                    let value = published(host, &owner.id, source_thread).await?;
+                    require_published_catalog(&value)?;
+                    Ok((
+                        value["data"].as_array().cloned().unwrap_or_default(),
+                        value["hasMore"] == true,
+                        json!({"projectId":owner.public,"status":"unobserved","source":"published","coverage":{"kind":value["kind"]},"readAt":now()}),
+                    ))
                 }
-                remember_owner(host,params,owner.execution.as_deref().unwrap_or(&owner.public),value["data"].as_array().context("INVALID_RESPONSE")?)?;
-                let rows=value["data"].as_array().context("INVALID_RESPONSE")?.iter().filter(|row|operation=="inbox"||(row["mode"]=="scheduled"&&(row["deletedAt"].is_null()||row["hasUnsettledWork"]==true)&&source_thread.is_none_or(|thread|row["sourceThreadId"]==thread))).cloned().collect();
-                let scope=host.schedules.connections.shared_identity(host,&owner.id)?;
-                Ok((rows,value["hasMore"]==true||value["nextCursor"].is_string(),json!({"projectId":owner.public,"status":"ready","source":"live","coverage":{"kind":"complete"},"readAt":now(),"connectionGeneration":connection_generation(host,&owner.id,&scope.2)?})))
-            }else{ensure!(operation!="inbox","TASK_CATALOG_READ_FAILED");let value=published(host,&owner.id,source_thread).await?;require_published_catalog(&value)?;Ok((value["data"].as_array().cloned().unwrap_or_default(),value["hasMore"]==true,json!({"projectId":owner.public,"status":"unobserved","source":"published","coverage":{"kind":value["kind"]},"readAt":now()})))}
-        }.await;
+            }
+            .await;
+            (owner, result)
+        },
+    ))
+    .await;
+    for (owner, result) in results {
         match result {
             Ok((rows, more, state)) => {
                 if operation != "inbox"
@@ -624,6 +483,23 @@ pub(super) fn mutation(operation: &str) -> Option<&'static str> {
     })
 }
 fn mutation_params(operation: &str, mut params: Value) -> Result<Value> {
+    if operation == "taskDraftSend" && params.get("input").is_none() {
+        let text = params["text"].as_str().unwrap_or("");
+        let input = super::gateway_owner::rich_message_input_with_command(text, &params, false)
+            .context("INVALID_PARAMS")?;
+        params["input"] = serde_json::to_value(input)?;
+        if let Some(fields) = params.as_object_mut() {
+            for field in [
+                "text",
+                "attachments",
+                "mcpContent",
+                "conversationQuotes",
+                "contextParts",
+            ] {
+                fields.remove(field);
+            }
+        }
+    }
     let object = params.as_object_mut().context("INVALID_PARAMS")?;
     for field in [
         "sourceId",
@@ -1145,7 +1021,7 @@ pub(super) async fn native_receipt(
     host.journal.native_replace(&scope, revision, latest)?;
     Ok(json!({"requestId":request,"submissionUnknown":false,"receipt":receipt}))
 }
-async fn watch_owner(host: &Host, project: &str) -> Result<Value> {
+pub(super) async fn watch_owner(host: &Host, project: &str) -> Result<Value> {
     let scope = host.schedules.connections.shared_identity(host, project)?;
     if let Some((connection, barrier)) = host.schedules.task_watches.borrow().get(project)
         && connection == &scope.2
@@ -1199,55 +1075,13 @@ pub(super) async fn library_baseline(
     Ok(())
 }
 
-/// 私有页面投影读取完整有界目录；公开分页上限不随内部通知观察扩大。
-pub(super) async fn observe(host: &Rc<Host>, params: &Value) -> Result<Value> {
-    let project = resolve_project(host, params).await?;
-    // 私有通知投影只跟随 Host 已有连接；停止期间的在途读不能重新启动项目。
-    let scope = host.schedules.connections.shared_identity(host, &project)?;
-    let barrier = watch_owner(host, &project).await?;
-    let value = directory(host, &project).await?;
-    let group = owners(host, params).await?;
-    let owner = group
-        .iter()
-        .find(|owner| owner.id == project)
-        .context("TASK_WORKSPACE_UNAVAILABLE")?;
-    remember_owner(
-        host,
-        params,
-        owner.execution.as_deref().unwrap_or(&owner.public),
-        value["data"].as_array().context("INVALID_RESPONSE")?,
-    )?;
-    ensure!(
-        host.schedules.connections.shared_identity(host, &project)? == scope,
-        "RESYNC_REQUIRED"
-    );
-    ensure!(
-        value["generation"] == barrier["generation"],
-        "RESYNC_REQUIRED"
-    );
-    super::library_service::record_scheduled_baseline(
-        host,
-        &project,
-        value["data"].as_array().context("INVALID_RESPONSE")?,
-    )
-    .await?;
-    ensure!(
-        host.schedules.connections.shared_identity(host, &project)? == scope,
-        "RESYNC_REQUIRED"
-    );
-    Ok(
-        json!({"projectId":params["projectId"],"generation":barrier["generation"],"sequence":barrier["sequence"],
-        "connectionId":scope.2,"connectionGeneration":connection_generation(host,&project,&scope.2)?,"data":value["data"],"readAt":now()}),
-    )
-}
-
 /// Core 原连接身份必须随事件传入；换代后的旧连接不能污染新观察或发送事实。
 pub(super) fn accept_event(
     host: &Host,
     project: &str,
     connection: &str,
     event: &Value,
-) -> Option<Value> {
+) -> Option<()> {
     let method = event["method"].as_str()?;
     if !matches!(
         method,
@@ -1280,9 +1114,7 @@ pub(super) fn accept_event(
             ),
         );
     }
-    Some(
-        json!({"projectId":project,"connectionId":connection,"connectionGeneration":connection_generation(host,project,connection).ok()?,"method":method,"params":params}),
-    )
+    Some(())
 }
 
 #[cfg(test)]
@@ -1437,7 +1269,9 @@ mod tests {
         host.slots.borrow_mut().get_mut("project").unwrap().state = "stopped".into();
         let params = json!({"sourceId":"host","projectId":"project"});
         assert_eq!(resolve_project(&host, &params).await.unwrap(), "project");
-        let error = observe(&host, &params).await.unwrap_err();
+        let error = library_baseline(&host, "project", "retired-connection")
+            .await
+            .unwrap_err();
         assert_eq!(
             error.downcast_ref::<crate::wire::Error>().unwrap().code,
             "scheduleHostUnavailable"
@@ -1472,6 +1306,7 @@ mod tests {
         host.slots.borrow_mut().get_mut("project").unwrap().state = "stopped".into();
         let result = read(
             &host,
+            "local",
             &json!({"sourceId":"host","projectId":"project","operation":"observe"}),
         )
         .await
@@ -1508,30 +1343,6 @@ mod tests {
         );
         assert!(require_published_catalog(&json!({"kind":"snapshot"})).is_ok());
     }
-    #[test]
-    fn owner_index_keeps_removed_hosts_and_legacy_identity_constraints() {
-        let home = tempfile::tempdir().unwrap();
-        let directory = home.path().join("task-owners");
-        storage::private_dir(&directory).unwrap();
-        storage::write(&directory.join("old-owner.json"), &json!(["legacy-task",{"id":"anchored-task","threadId":"original-thread","ambiguous":true}])).unwrap();
-        storage::write(
-            &directory.join("other-owner.json"),
-            &json!([{"id":"legacy-task"}]),
-        )
-        .unwrap();
-        let records = owner_records(home.path()).unwrap();
-        assert_eq!(records.len(), 2);
-        assert_eq!(records["old-owner"][0], json!({"id":"legacy-task"}));
-        assert_eq!(records["old-owner"][1]["threadId"], "original-thread");
-        assert_eq!(records["old-owner"][1]["ambiguous"], true);
-        assert!(
-            records
-                .values()
-                .all(|rows| rows.iter().any(|row| row["id"] == "legacy-task"))
-        );
-        assert!(owner_file(home.path(), "../other-owner").is_err());
-    }
-
     #[test]
     fn native_controls_preserve_identity_and_reject_extra_core_parameters() {
         let input = json!({"sourceId":"host","projectId":"p","logicalProjectId":"logical","executionProjectId":"execution","operation":"taskStopRun","threadId":"owner-thread","requestId":"11111111-1111-4111-8111-111111111111","taskId":"t","expectedRevision":2,"expectedRunId":"r"});

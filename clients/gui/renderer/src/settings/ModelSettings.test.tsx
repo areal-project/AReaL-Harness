@@ -1,15 +1,16 @@
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+const credential = vi.hoisted(() => ({ state: "unavailable", selected: false }));
 
 vi.mock("react", async (importOriginal) => {
   const react = await importOriginal<typeof import("react")>();
-  let selected = false;
   return {
     ...react,
     useState: (initial: unknown) => {
-      if (initial === null && !selected) {
-        selected = true;
+      if (initial === null && !credential.selected) {
+        credential.selected = true;
         return react.useState("provider");
       }
       return react.useState(initial);
@@ -35,6 +36,7 @@ vi.mock("./common.js", async (importOriginal) => {
   const original = await importOriginal<typeof import("./common.js")>();
   return {
     ...original,
+    SettingsDialog: ({ children }: { children: ReactNode }) => children,
     useResource: () => ({
       value: {
         revision: 1,
@@ -50,7 +52,7 @@ vi.mock("./common.js", async (importOriginal) => {
             baseUrl: "https://example.com",
           },
         ],
-        credentialStates: { provider: "unavailable" },
+        credentialStates: { provider: credential.state },
         credentialErrors: { provider: "storageLocked" },
       },
       loading: false,
@@ -60,11 +62,51 @@ vi.mock("./common.js", async (importOriginal) => {
   };
 });
 import { ModelSettings } from "./ModelSettings.js";
+import { ModelEditor } from "./ModelEditor.js";
+
+beforeEach(() => {
+  credential.selected = false;
+});
+
+it("defaults a new model to five thinking levels and enables vision input", () => {
+  const markup = renderToStaticMarkup(
+    createElement(ModelEditor, {
+      model: {},
+      editing: false,
+      ids: [],
+      onSave: vi.fn(),
+      onClose: vi.fn(),
+    }),
+  );
+  const checked = [
+    ...markup.matchAll(
+      /<input[^>]*checked=""[^>]*\/><span>settings\.modelEditor\.effort([A-Za-z]+)<\/span>/g,
+    ),
+  ].map((match) => match[1]);
+  expect(checked.sort()).toEqual(["ExtraHigh", "High", "Low", "Medium", "None"]);
+  expect(markup).toMatch(
+    /<[^>]*aria-label="settings\.modelEditor\.visionInput"[^>]*aria-checked="true"|<[^>]*aria-checked="true"[^>]*aria-label="settings\.modelEditor\.visionInput"/,
+  );
+});
 
 describe("locked provider credential", () => {
   it("shows the recovery status in the provider and API key area", () => {
     const markup = renderToStaticMarkup(createElement(ModelSettings, { action: vi.fn() }));
     expect(markup.match(/settings\.modelSettings\.keychainLocked/g)).toHaveLength(2);
     expect(markup).not.toContain("settings.modelSettings.missingCredentials");
+  });
+});
+
+describe("unchecked provider credential", () => {
+  it("keeps configuration usable while showing checking instead of an old lock error", () => {
+    credential.state = "checking";
+    try {
+      const markup = renderToStaticMarkup(createElement(ModelSettings, { action: vi.fn() }));
+      expect(markup).toContain("settings.modelSettings.checkingCredentials");
+      expect(markup).not.toContain("settings.modelSettings.keychainLocked");
+      expect(markup).toContain("settings.modelSettings.addProvider");
+    } finally {
+      credential.state = "unavailable";
+    }
   });
 });

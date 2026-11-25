@@ -1,0 +1,635 @@
+{
+  "schemaVersion": 1,
+  "experiment": "connection-recovery-fixed-report-comparison",
+  "date": "2026-11-22",
+  "sampleCount": 3,
+  "scoredFieldsPerCase": 7,
+  "source": "20261121-08",
+  "protocolSha256": "0903041e6918b11651222b091d9dcf98900a8ad19589373e2fb01932f637ea7a",
+  "arms": {
+    "raw": {
+      "correct": 18,
+      "total": 21,
+      "cases": [
+        {
+          "case": "Q7",
+          "correct": 6,
+          "total": 7,
+          "checks": {
+            "journeyStatus": true,
+            "firstFailureStage": true,
+            "unreached": true,
+            "cleanupStatus": true,
+            "triggerVerified": true,
+            "fullCiPassed": false,
+            "action": true
+          },
+          "answer": {
+            "journeyStatus": "failed",
+            "firstFailureStage": "automaticRecovery",
+            "unreached": [
+              "draftAndSelectionPreserved",
+              "continuedSubmission",
+              "explicitStopRespected",
+              "unknownNotReplayed"
+            ],
+            "cleanupStatus": "passed",
+            "triggerVerified": true,
+            "fullCiPassed": null,
+            "action": "investigate-recovery",
+            "evidence": [
+              "Q7/runner.log",
+              "Q7/context.json",
+              "Q7/failure.json",
+              "Q7/loadingWithoutFalseFailure.json",
+              "Q7/idle-socket-transition.json",
+              "Q7/successor-recovery-progress.json",
+              "Q7/cleanup.json"
+            ],
+            "needsHuman": false,
+            "reason": "runner首个业务失败在automaticRecovery。加载屏障已有同一requestId的成功responseHit；idle回执completed且项目从ready到stopped、suppression=false，后继connectionId发生变化并收到该项目stopped的shell，故空闲停止及后继连接准备条件真实命中。恢复进度仅记录项目与后继连接，runner断言自动激活失败，后续四项未运行。cleanup明确passed。证据只覆盖本次源码Electron连接旅程，完整CI无证据，保留null。"
+          },
+          "fileReads": 8,
+          "distinctFiles": 7,
+          "evidenceBytes": 3808,
+          "followupArtifactReads": 5,
+          "contextReads": 2
+        },
+        {
+          "case": "M2",
+          "correct": 6,
+          "total": 7,
+          "checks": {
+            "journeyStatus": true,
+            "firstFailureStage": true,
+            "unreached": true,
+            "cleanupStatus": true,
+            "triggerVerified": true,
+            "fullCiPassed": false,
+            "action": true
+          },
+          "answer": {
+            "journeyStatus": "passed",
+            "firstFailureStage": null,
+            "unreached": [],
+            "cleanupStatus": "passed",
+            "triggerVerified": true,
+            "fullCiPassed": null,
+            "action": "accept-scoped",
+            "evidence": [
+              "M2/runner.log",
+              "M2/context.json",
+              "M2/loadingWithoutFalseFailure.json",
+              "M2/idle-socket-transition.json",
+              "M2/automaticRecovery.json",
+              "M2/draftAndSelectionPreserved.json",
+              "M2/continuedSubmission.json",
+              "M2/explicitStopRespected.json",
+              "M2/unknownNotReplayed.json",
+              "M2/cleanup.json"
+            ],
+            "needsHuman": false,
+            "reason": "runner通过且六项事实均有实际结果。加载请求成功响应被屏障命中且无失败提示；idle completed后项目stopped且不禁止激活，后继连接收到该状态，随后project.activate、ready shell与UI startupReady相符。草稿及模型选择保留；继续提交completed且matchingTurns=1；显式停止completed并保持suppression=true；UNKNOWN样本实际dropped、仅一次send、command.read对原commandId返回同一turn回执且完成。cleanup passed。接受仅限context声明的源码Electron/真实Host Core/Chromium和本地模型旅程，不外推完整CI、安装包或真机。"
+          },
+          "fileReads": 11,
+          "distinctFiles": 10,
+          "evidenceBytes": 8711,
+          "followupArtifactReads": 8,
+          "contextReads": 2
+        },
+        {
+          "case": "R4",
+          "correct": 6,
+          "total": 7,
+          "checks": {
+            "journeyStatus": true,
+            "firstFailureStage": true,
+            "unreached": true,
+            "cleanupStatus": true,
+            "triggerVerified": true,
+            "fullCiPassed": false,
+            "action": true
+          },
+          "answer": {
+            "journeyStatus": "failed",
+            "firstFailureStage": "loadingWithoutFalseFailure",
+            "unreached": [
+              "automaticRecovery",
+              "draftAndSelectionPreserved",
+              "continuedSubmission",
+              "explicitStopRespected",
+              "unknownNotReplayed"
+            ],
+            "cleanupStatus": "passed",
+            "triggerVerified": true,
+            "fullCiPassed": null,
+            "action": "investigate-loading",
+            "evidence": [
+              "R4/runner.log",
+              "R4/context.json",
+              "R4/loading-observation.json",
+              "R4/failure.json",
+              "R4/cleanup.json"
+            ],
+            "needsHuman": false,
+            "reason": "loading-observation中requestId与responseHit均为3且errorCode=null，说明成功加载响应屏障真实命中；startupReady=false时startupFailure=true并记录无法完成加载提示，直接支持runner的loadingWithoutFalseFailure业务失败，不是仅凭超时推断。其余五项尚未到达。cleanup passed不能抵销业务失败；本次材料未给完整CI结果，保留null。"
+          },
+          "fileReads": 5,
+          "distinctFiles": 5,
+          "evidenceBytes": 1753,
+          "followupArtifactReads": 3,
+          "contextReads": 1
+        }
+      ],
+      "readCalls": 7,
+      "fileReads": 24,
+      "distinctFiles": 22,
+      "evidenceBytes": 14272,
+      "returnedBytesIncludingIndexAndLabels": 16200,
+      "followupArtifactReads": 16,
+      "agentElapsedSeconds": 164.251,
+      "declaredHumanEscalations": 0,
+      "answerFeedbackOrRetries": 0,
+      "accessLogSha256": "9ece33b12f9cbc0dbc10804303c0fe6bfffb6ae17f7475547bc04d8d3f8999f6",
+      "answerSha256": "ee1f8060712039e61517b09afd528c18cd193360842a9d604f63ff7ef7cf89e9"
+    },
+    "summary": {
+      "correct": 18,
+      "total": 21,
+      "cases": [
+        {
+          "case": "Q7",
+          "correct": 6,
+          "total": 7,
+          "checks": {
+            "journeyStatus": true,
+            "firstFailureStage": true,
+            "unreached": true,
+            "cleanupStatus": true,
+            "triggerVerified": true,
+            "fullCiPassed": false,
+            "action": true
+          },
+          "answer": {
+            "journeyStatus": "failed",
+            "firstFailureStage": "automaticRecovery",
+            "unreached": [
+              "draftAndSelectionPreserved",
+              "continuedSubmission",
+              "explicitStopRespected",
+              "unknownNotReplayed"
+            ],
+            "cleanupStatus": "passed",
+            "triggerVerified": true,
+            "fullCiPassed": null,
+            "action": "investigate-recovery",
+            "evidence": [
+              "Q7/summary.json",
+              "Q7/context.json",
+              "Q7/idle-socket-transition.json",
+              "Q7/successor-recovery-progress.json",
+              "Q7/failure-ui.json"
+            ],
+            "needsHuman": false,
+            "reason": "加载阶段已有实际成功屏障观察且无错误提示。恢复准备条件确实命中：idleRequest完成，原ready项目变为stopped且scheduleActivationSuppressed=false；连接ID更换，后继shell在新连接上观察到同一停止项目。随后恢复进展没有activation、Host ready或shell ready，失败时UI startupReady=false；summary明确记录automaticRecovery业务断言失败及退出码1。因此应调查恢复链路，后续四项未运行。清理passed不改变业务失败结论；没有完整CI执行结果，fullCiPassed保留null。"
+          },
+          "fileReads": 5,
+          "distinctFiles": 5,
+          "evidenceBytes": 7125,
+          "followupArtifactReads": 3,
+          "contextReads": 1
+        },
+        {
+          "case": "M2",
+          "correct": 6,
+          "total": 7,
+          "checks": {
+            "journeyStatus": true,
+            "firstFailureStage": true,
+            "unreached": true,
+            "cleanupStatus": true,
+            "triggerVerified": true,
+            "fullCiPassed": false,
+            "action": true
+          },
+          "answer": {
+            "journeyStatus": "passed",
+            "firstFailureStage": null,
+            "unreached": [],
+            "cleanupStatus": "passed",
+            "triggerVerified": true,
+            "fullCiPassed": null,
+            "action": "accept-scoped",
+            "evidence": [
+              "M2/summary.json",
+              "M2/context.json",
+              "M2/idle-socket-transition.json",
+              "M2/successor-recovery-progress.json"
+            ],
+            "needsHuman": false,
+            "reason": "六个requiredFacts均有passed及具体观察，进程退出码0。加载屏障请求与响应命中且无失败提示；idleRequest完成、项目实际stopped且未抑制激活，连接更换后successorShell仍观察到该停止项目，随后同一后继连接激活成功，Host和shell投影ready且代际一致，UI恢复ready。报告同时记录草稿与选择保留、唯一完成提交、UNKNOWN原command回执核对且只有一次发送、显式停止后保持stopped。清理passed。可接受该源码旅程范围；无安装包、真机或完整CI通过证据，fullCiPassed保留null。"
+          },
+          "fileReads": 4,
+          "distinctFiles": 4,
+          "evidenceBytes": 15265,
+          "followupArtifactReads": 2,
+          "contextReads": 1
+        },
+        {
+          "case": "R4",
+          "correct": 6,
+          "total": 7,
+          "checks": {
+            "journeyStatus": true,
+            "firstFailureStage": true,
+            "unreached": true,
+            "cleanupStatus": true,
+            "triggerVerified": true,
+            "fullCiPassed": false,
+            "action": true
+          },
+          "answer": {
+            "journeyStatus": "failed",
+            "firstFailureStage": "loadingWithoutFalseFailure",
+            "unreached": [
+              "automaticRecovery",
+              "draftAndSelectionPreserved",
+              "continuedSubmission",
+              "explicitStopRespected",
+              "unknownNotReplayed"
+            ],
+            "cleanupStatus": "passed",
+            "triggerVerified": true,
+            "fullCiPassed": null,
+            "action": "investigate-loading",
+            "evidence": [
+              "R4/summary.json",
+              "R4/context.json",
+              "R4/loading-observation.json",
+              "R4/failure-ui.json",
+              "R4/cleanup.json"
+            ],
+            "needsHuman": false,
+            "reason": "正常加载屏障确已命中：held.requestId与responseHit均为3，绑定同一连接且errorCode为null；此时startupReady=false却出现startupFailure及加载失败提示，故当前加载阶段失败，后续五项未运行。清理报告passed且无errors。仅有本次源码Electron连接旅程证据，没有完整CI结果，fullCiPassed保留null。"
+          },
+          "fileReads": 5,
+          "distinctFiles": 5,
+          "evidenceBytes": 4674,
+          "followupArtifactReads": 3,
+          "contextReads": 1
+        }
+      ],
+      "readCalls": 6,
+      "fileReads": 14,
+      "distinctFiles": 14,
+      "evidenceBytes": 27064,
+      "returnedBytesIncludingIndexAndLabels": 28761,
+      "followupArtifactReads": 8,
+      "agentElapsedSeconds": 105.795,
+      "declaredHumanEscalations": 0,
+      "answerFeedbackOrRetries": 0,
+      "accessLogSha256": "c56b21478e2e9365abe0e380f6a67f6b3489c225f6ee1b881cddab7ed1aa530d",
+      "answerSha256": "5f01125d16958d861d4bad7a757f8561dfffa3d43e725632063c0280be461c75"
+    }
+  },
+  "humanMinutes": null,
+  "canConfirmHumanTimeReduction": false,
+  "limitations": [
+    "Two different fresh-context agents, one per arm; single run, not randomized repeated human measurement.",
+    "Same fixed three cases, with reversed ordering; original report unchanged.",
+    "Text-only triage; original product run remains the acceptance evidence.",
+    "Instruction isolation, not filesystem enforcement.",
+    "One common protocol clarification supplied requiredFacts to both readers before first submission; no answer feedback.",
+    "Agent elapsed time includes tool and queue latency."
+  ],
+  "deltaSummaryMinusRaw": {
+    "correct": 0,
+    "readCalls": -1,
+    "fileReads": -10,
+    "distinctFiles": -8,
+    "evidenceBytes": 12792,
+    "followupArtifactReads": -8,
+    "agentElapsedSeconds": -58.456,
+    "declaredHumanEscalations": 0
+  },
+  "adjudication": {
+    "strictScorePreserved": true,
+    "scopeFieldAdjudication": "Both readers returned null for fullCiPassed and explicitly said evidence does not establish full CI. Protocol permitted null for unavailable evidence; packets did not include the full CI envelope. These are safe uncertainty answers, not false claims. The preregistered truth used false; preserve its 18/21 exact-match score rather than silently rewriting it.",
+    "businessFieldsCorrect": {
+      "raw": 18,
+      "summary": 18
+    },
+    "businessFieldsTotal": 18,
+    "supportedCaseDecisions": {
+      "raw": 3,
+      "summary": 3
+    },
+    "scopeOverclaims": {
+      "raw": 0,
+      "summary": 0
+    },
+    "readerCorrections": 0,
+    "scoringClarifications": 1,
+    "commonProtocolClarifications": 1,
+    "humanTimeMeasured": false,
+    "decision": "Keep the pilot on this journey. Summary reduces evidence retrieval, but not demonstrated human intervention or reading volume. Do not expand coverage. Next candidate is a compact decision summary using the same facts and evidence links, evaluated on the same samples."
+  },
+  "accessEvents": {
+    "raw": [
+      {
+        "at": 1795305811.384927,
+        "operation": "index",
+        "entries": [],
+        "outputBytes": 1247
+      },
+      {
+        "at": 1795305820.8198981,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "Q7/runner.log",
+            "bytes": 307
+          },
+          {
+            "file": "Q7/context.json",
+            "bytes": 400
+          }
+        ],
+        "outputBytes": 748
+      },
+      {
+        "at": 1795305829.449245,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "Q7/failure.json",
+            "bytes": 224
+          },
+          {
+            "file": "Q7/cleanup.json",
+            "bytes": 153
+          },
+          {
+            "file": "Q7/idle-socket-transition.json",
+            "bytes": 1623
+          },
+          {
+            "file": "Q7/successor-recovery-progress.json",
+            "bytes": 115
+          },
+          {
+            "file": "Q7/loadingWithoutFalseFailure.json",
+            "bytes": 386
+          }
+        ],
+        "outputBytes": 2664
+      },
+      {
+        "at": 1795305842.772005,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "M2/runner.log",
+            "bytes": 108
+          },
+          {
+            "file": "M2/context.json",
+            "bytes": 600
+          }
+        ],
+        "outputBytes": 749
+      },
+      {
+        "at": 1795305855.621023,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "M2/cleanup.json",
+            "bytes": 153
+          },
+          {
+            "file": "M2/loadingWithoutFalseFailure.json",
+            "bytes": 386
+          },
+          {
+            "file": "M2/automaticRecovery.json",
+            "bytes": 2089
+          },
+          {
+            "file": "M2/idle-socket-transition.json",
+            "bytes": 1623
+          },
+          {
+            "file": "M2/draftAndSelectionPreserved.json",
+            "bytes": 183
+          },
+          {
+            "file": "M2/continuedSubmission.json",
+            "bytes": 406
+          },
+          {
+            "file": "M2/explicitStopRespected.json",
+            "bytes": 878
+          },
+          {
+            "file": "M2/unknownNotReplayed.json",
+            "bytes": 1685
+          }
+        ],
+        "outputBytes": 7678
+      },
+      {
+        "at": 1795305896.984114,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "Q7/context.json",
+            "bytes": 600
+          },
+          {
+            "file": "M2/context.json",
+            "bytes": 600
+          }
+        ],
+        "outputBytes": 1243
+      },
+      {
+        "at": 1795305907.319492,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "R4/runner.log",
+            "bytes": 315
+          },
+          {
+            "file": "R4/context.json",
+            "bytes": 600
+          }
+        ],
+        "outputBytes": 956
+      },
+      {
+        "at": 1795305922.051275,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "R4/loading-observation.json",
+            "bytes": 453
+          },
+          {
+            "file": "R4/failure.json",
+            "bytes": 232
+          },
+          {
+            "file": "R4/cleanup.json",
+            "bytes": 153
+          }
+        ],
+        "outputBytes": 915
+      },
+      {
+        "at": 1795305985.071211,
+        "operation": "submit",
+        "entries": [],
+        "outputBytes": 9
+      }
+    ],
+    "summary": [
+      {
+        "at": 1795305870.643764,
+        "operation": "index",
+        "entries": [],
+        "outputBytes": 1307
+      },
+      {
+        "at": 1795305882.309281,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "R4/summary.json",
+            "bytes": 3286
+          },
+          {
+            "file": "R4/context.json",
+            "bytes": 600
+          }
+        ],
+        "outputBytes": 3929
+      },
+      {
+        "at": 1795305889.030211,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "R4/loading-observation.json",
+            "bytes": 453
+          },
+          {
+            "file": "R4/failure-ui.json",
+            "bytes": 182
+          },
+          {
+            "file": "R4/cleanup.json",
+            "bytes": 153
+          }
+        ],
+        "outputBytes": 868
+      },
+      {
+        "at": 1795305896.054515,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "M2/summary.json",
+            "bytes": 11921
+          },
+          {
+            "file": "M2/context.json",
+            "bytes": 600
+          }
+        ],
+        "outputBytes": 12564
+      },
+      {
+        "at": 1795305905.528468,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "M2/idle-socket-transition.json",
+            "bytes": 1623
+          },
+          {
+            "file": "M2/successor-recovery-progress.json",
+            "bytes": 1121
+          }
+        ],
+        "outputBytes": 2822
+      },
+      {
+        "at": 1795305948.198519,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "Q7/summary.json",
+            "bytes": 4644
+          },
+          {
+            "file": "Q7/context.json",
+            "bytes": 600
+          }
+        ],
+        "outputBytes": 5287
+      },
+      {
+        "at": 1795305963.190433,
+        "operation": "read",
+        "entries": [
+          {
+            "file": "Q7/idle-socket-transition.json",
+            "bytes": 1623
+          },
+          {
+            "file": "Q7/successor-recovery-progress.json",
+            "bytes": 115
+          },
+          {
+            "file": "Q7/failure-ui.json",
+            "bytes": 143
+          }
+        ],
+        "outputBytes": 1984
+      },
+      {
+        "at": 1795305988.104654,
+        "operation": "submit",
+        "entries": [],
+        "outputBytes": 9
+      }
+    ]
+  },
+  "protocol": "# 固定样本文本分诊对照（预先固定）\n\n只使用 20261121-08 的三份已完成连接恢复旅程，不运行产品、不增加变异、不修报告、不删除失败回答。既有 imported-journey.json 是实验组汇总报告，不使用主代理新写的结论。\n\n两名 fresh-context Agent 分别读原始证据组和汇总报告组；同类模型与工具，均不继承历史或预期答案。样本匿名为 Q7、M2、R4，原始组顺序 Q7→M2→R4，汇总组顺序 R4→M2→Q7。两组都可读取相同原始 JSON 与 runner.log；实验组额外可读已有完整 imported-journey.json。文本以外的截图对两组均不提供。本对照不是产品视觉验收。\n\n所有证据经 read.py 返回并记录文件、字节、时间与调用。先读 index，原始组先读各案 runner.log，汇总组先读各案 summary.json。后续按需要读取原始证据；每案 context.json 都必须读。不可读源码、另一组、主代理报告、sealed-truth.json、manifest.json，不可使用其他 Agent 或外部来源。由指令隔离，不是强制安全沙箱。\n\n每案首次答复固定七个评分字段：journeyStatus / firstFailureStage / unreached / cleanupStatus / triggerVerified / fullCiPassed / action。action 为 accept-scoped、investigate-loading、investigate-recovery、investigate-infrastructure 或 insufficient。另提供具体 evidence 文件引用、needsHuman（需要原证据外的人类判断/补充信息时为 true）、reason。证据不足填 unknown/null，不猜测；清理成功不代表业务通过，旅程通过不代表完整 CI 通过。triggerVerified 表示正常加载屏障或空闲停止加后继连接的准备条件真实命中；不能只凭笼统超时断言。不得以材料里的期望值作为实际成功证据。\n\n主代理开始前按已校验附件与实际执行报告封存答案。自动评分比较七字段（集合字段忽略顺序），并人工核对引用是否支持结论。答案不对评审反馈、不修改首答。读事件中的返回字节、实际文件数、初始入口以后的原始文件读取次数是成本指标；needsHuman 是 Agent 声明的升级需求；另记录主代理纠正次数。first read→submit 为 Agent 墙钟时间，包含工具/排队延迟，不代表人类时间或模型固有性能。只进行一轮，样本小且评审不同，不能推导统计显著性。\n\n判定：正确率不得下降；只有实际读取量/追查减少才报告对应改善。零人类升级对零升级不算减少；缺少真人配对数据，humanMinutes=null 且 canConfirmHumanTimeReduction=false。不因结果不理想更换样本、重跑挑优或扩展场景。\n\n共同补充（两组首答之前）：context.json 提供相同六个 requiredFacts，避免原始组需要猜测旅程覆盖计划；失败的当前阶段属于 reached，后续未运行事实属于 unreached。此补充同时通知两组，计入协议记录。\n",
+  "sourceManifest": {
+    "source": "/private/tmp/areal-connection-pilot-20261121-08",
+    "cases": {
+      "Q7": "stale-hibernation-owner",
+      "M2": "baseline",
+      "R4": "premature-unavailable"
+    },
+    "treatment": "Existing imported-journey.json, unabridged; same raw text evidence in both arms. Only source path labels anonymized.",
+    "humanMinutes": null,
+    "scope": "three fixed completed cases; two independent fresh-context agents; no product rerun",
+    "sha256": "5acabd0df8031a03c0cd33a0b5cfa571a3b6f90fcb9391edfd0cc4288f6af5f3",
+    "localBundle": "target/connection-report-comparison-20261122"
+  },
+  "protocolAmendmentEffect": {
+    "rawContextReads": 5,
+    "summaryContextReads": 3,
+    "rawDuplicateContextReads": 2,
+    "notes": "The raw reader had read context before the common clarification; it reread Q7 and M2. Distinct-file and followupArtifactReads metrics do not count those duplicates. All raw returned-byte and elapsed measurements remain unadjusted."
+  },
+  "evidenceCitationAudit": {
+    "status": "passed",
+    "method": "Parent checked each cited artifact against the preserved source. Both readers correctly distinguish matched successful loading response, idle stopped successor baseline, and missing recovery activation; baseline includes original receipt/unique send and terminal UI results. No answer feedback or revision.",
+    "verifiedCitationOccurrences": 30
+  }
+}

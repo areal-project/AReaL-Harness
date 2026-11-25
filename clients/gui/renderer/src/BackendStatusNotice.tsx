@@ -90,7 +90,7 @@ function backendPresentation({
     action = "update";
   } else if (connection?.state === "ready" && update?.state === "pending") {
     message = "backend.updatePending";
-    diagnostic = error;
+    diagnostic = error || update.message;
     tone = "info";
     action = "update";
   } else if (connection?.state === "ready") {
@@ -141,9 +141,16 @@ export function BackendStatusNotice(props: BackendStatusProps) {
       toast(t(message), tone, {
         key: `backend:${key}`,
         actions: (
-          <Button variant="ghost" size="sm" onClick={() => onAction.current("status")}>
-            {t("recovery.details")}
-          </Button>
+          <>
+            {presentation.action === "reconnect" && (
+              <Button variant="ghost" size="sm" onClick={() => onAction.current("reconnect")}>
+                {t("backend.reconnect")}
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => onAction.current("status")}>
+              {t("recovery.details")}
+            </Button>
+          </>
         ),
       });
     };
@@ -157,7 +164,7 @@ export function BackendStatusNotice(props: BackendStatusProps) {
     }
     announce();
     return () => dismissToast(`backend:${key}`);
-  }, [key, message, tone, t]);
+  }, [key, message, tone, presentation?.action, t]);
   return null;
 }
 

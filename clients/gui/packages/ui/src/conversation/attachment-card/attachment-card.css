@@ -1,18 +1,15 @@
-.composer-attachment-row .composer-image-card {
-  order: 0;
-}
-.composer-attachment-row .composer-text-card {
+.composer-attachment-row .composer-attachment-item:has(.composer-text-card) {
   order: 2;
 }
 .composer-image-card,
 .composer-text-card {
   box-sizing: border-box;
   position: relative;
-  width: 96px;
-  height: 96px;
-  flex: 0 0 96px;
+  width: calc(var(--spacing-inline) * 12);
+  height: calc(var(--spacing-inline) * 12);
+  flex: 0 0 calc(var(--spacing-inline) * 12);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-attachment);
+  border-radius: var(--radius-control);
   background: var(--color-surface-elevated);
   transition: border-color var(--motion-fast) var(--ease-standard);
 }
@@ -32,14 +29,14 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
-  padding: 6px;
+  gap: calc(var(--spacing-inline) / 2);
+  padding: calc(var(--spacing-inline) * 3 / 4);
 }
 .composer-text-icon {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: var(--spacing-control-sm);
+  height: var(--spacing-control-sm);
   flex-shrink: 0;
   border-radius: var(--radius-compact);
   background: var(--color-background);
@@ -49,8 +46,8 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  font-size: var(--text-fixed-body);
+  gap: calc(var(--spacing-inline) / 4);
+  font-size: var(--text-ui-base);
   line-height: 1.2;
 }
 .composer-text-copy > span {
@@ -60,20 +57,20 @@
 }
 .composer-text-copy > button {
   text-align: left;
-  font-size: var(--text-fixed-label);
+  font-size: var(--text-ui-caption);
   color: var(--color-foreground-subtle);
   text-decoration: underline;
-  text-underline-offset: 3px;
+  text-underline-offset: calc(var(--spacing-inline) * 3 / 8);
   overflow-wrap: anywhere;
 }
 .composer-remove-attachment {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: calc(var(--spacing-inline) / 2);
+  right: calc(var(--spacing-inline) / 2);
   display: grid;
   place-items: center;
-  width: 17px;
-  height: 17px;
+  width: calc(var(--spacing-inline) * 17 / 8);
+  height: calc(var(--spacing-inline) * 17 / 8);
   border-radius: 50%;
   background: var(--color-foreground);
   color: var(--color-background);
@@ -86,17 +83,17 @@
 }
 .composer-attachment-error {
   margin: 0;
-  font-size: var(--text-fixed-caption);
+  font-size: var(--text-ui-sm);
   color: var(--color-destructive);
   overflow-wrap: anywhere;
 }
 .composer-attachment-item {
   display: flex;
-  flex: 0 0 96px;
+  flex: 0 0 calc(var(--spacing-inline) * 12);
   min-width: 0;
-  width: 96px;
+  width: calc(var(--spacing-inline) * 12);
   flex-direction: column;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   overflow-wrap: anywhere;
 }
 
@@ -116,15 +113,15 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
   flex-shrink: 0;
 }
 .composer-image-note-count {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 3px 5px;
-  border-radius: var(--radius-inline);
+  gap: calc(var(--spacing-inline) * 3 / 8);
+  padding: calc(var(--spacing-inline) * 3 / 8) calc(var(--spacing-inline) * 5 / 8);
+  border-radius: var(--radius-compact);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-xs);
 }

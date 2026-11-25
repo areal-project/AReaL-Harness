@@ -7,6 +7,7 @@ use areal_local_service::storage;
 use areal_protocol::host as protocol;
 use areal_protocol::host::{
     LocalWebTicketParams, LocalWebTicketResult, LoopbackEndpoint, LoopbackHelloParams,
+    RemoteMethodLane,
 };
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
@@ -16,7 +17,7 @@ use hyper_util::rt::{TokioIo, TokioTimer};
 use serde_json::{Value, json};
 use std::{
     cell::RefCell,
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     convert::Infallible,
     io::Read,
     path::{Path, PathBuf},
@@ -36,6 +37,7 @@ use tokio_tungstenite::{
         protocol::{Role, WebSocketConfig},
     },
 };
+use tokio_util::task::AbortOnDropHandle;
 
 const METHODS: &[&str] = &[
     "host.status",
@@ -62,8 +64,11 @@ const WRITE_METHODS: &[&str] = &[
     "review.read",
     "attention.read",
     "project.models",
+    "project.activate",
     "command.read",
     "attachment.upload",
+    "attachment.read",
+    "worktree.project.add",
     "analytics.activity",
     "analytics.import",
     "analytics.read",
@@ -81,9 +86,9 @@ const WRITE_METHODS: &[&str] = &[
     "providers.command",
     "plugins.read",
     "plugins.command",
+    "bots.read",
+    "bots.command",
     "worktree.command",
-    "pages.command",
-    "pages.resource",
     "desktop.command",
 ];
 const TTL: Duration = Duration::from_secs(30);
@@ -91,6 +96,9 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_TICKETS: usize = 64;
 const MAX_CONNECTIONS: usize = 32;
 const MAX_WATCHED: usize = 4;
+const MAX_PENDING_COMMANDS: usize = 16;
+const MAX_PENDING_QUERIES: usize = 16;
+const MAX_PENDING_RECOVERY: usize = 4;
 const ELECTRON_ORIGIN: &str = "areal-ui://app";
 type Socket = WebSocketStream<TokioIo<hyper::upgrade::Upgraded>>;
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -100,7 +108,7 @@ struct BrowserBinding {
     port: u16,
 }
 
-fn ui_root(bin: &Path) -> Option<PathBuf> {
+pub(super) fn ui_root(bin: &Path) -> Option<PathBuf> {
     [
         bin.join("../../areal-gui"),
         bin.join("../share/areal-gui"),
@@ -119,16 +127,18 @@ struct Ticket {
     generation: String,
     deadline: Instant,
 }
-struct PageConnection {
+struct ClientConnection {
     host: Rc<Host>,
     connection: String,
 }
-impl Drop for PageConnection {
+impl Drop for ClientConnection {
     fn drop(&mut self) {
+        self.host.clients.borrow_mut().remove(&self.connection);
+        self.host.changed();
         self.host
             .gateway
             .workbench
-            .disconnect_pages(&self.connection);
+            .disconnect_connection(&self.host, &self.connection);
     }
 }
 #[derive(Default)]
@@ -139,16 +149,6 @@ pub(super) struct Loopback {
     ui_root: RefCell<Option<PathBuf>>,
 }
 impl Loopback {
-    pub(super) fn page_proxy_url(&self) -> Result<String> {
-        Ok(format!(
-            "{}/host/pages/proxy",
-            self.endpoint
-                .borrow()
-                .as_ref()
-                .context("CAPABILITY_UNAVAILABLE")?
-                .origin
-        ))
-    }
     pub(super) fn ticket(&self, input: LocalWebTicketParams) -> Result<LocalWebTicketResult> {
         self.mint_ticket(input, None)
     }
@@ -257,11 +257,26 @@ impl Loopback {
             "turn.stop" => "interrupt",
             "interaction.respond" | "task.question.reply" => "answer",
             "task.pause" => "pauseTask",
-            "library.command" | "analytics.import" | "worktree.read" | "worktree.command"
-            | "tasks.read" | "trajectory.read" | "trajectory.command" | "feedback.read"
-            | "feedback.command" | "manage.read" | "manage.command" | "providers.read"
-            | "providers.command" | "plugins.read" | "plugins.command" | "pages.command"
-            | "pages.resource" | "desktop.command" => "manage",
+            "attachment.read"
+            | "worktree.project.add"
+            | "library.command"
+            | "analytics.import"
+            | "worktree.read"
+            | "worktree.command"
+            | "tasks.read"
+            | "trajectory.read"
+            | "trajectory.command"
+            | "feedback.read"
+            | "feedback.command"
+            | "manage.read"
+            | "manage.command"
+            | "providers.read"
+            | "providers.command"
+            | "plugins.read"
+            | "bots.read"
+            | "bots.command"
+            | "plugins.command"
+            | "desktop.command" => "manage",
             _ if WRITE_METHODS.contains(&method) => "observe",
             _ => return false,
         };
@@ -518,11 +533,15 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             .iter()
             .any(|capability| capability == "persistedHistoryV1");
     let connection_id = uuid::Uuid::new_v4().to_string();
-    let _pages = PageConnection {
+    // 同一 WebSocket 连接上的 Query / Control / Mutation 会话共享 token_key，确保 reviewToken / cursor 可跨通道校验。
+    let token_key = super::gateway_owner::LocalSession::random_token_key()?;
+    host.clients
+        .borrow_mut()
+        .insert(connection_id.clone(), None);
+    let _connection = ClientConnection {
         host: host.clone(),
         connection: connection_id.clone(),
     };
-    let mut page_events = host.gateway.workbench.page_events();
     // 写能力同时要求协议协商和本机用户明确授予的范围；旧浏览器仍只有 observe。
     let mut writer = (negotiated
         && device_id.as_ref().is_none_or(|id| {
@@ -535,12 +554,17 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             .iter()
             .any(|capability| capability == "gui-write-v1"))
     .then(|| match &device_id {
-        Some(id) => super::gateway_owner::LocalSession::browser(
+        Some(id) => super::gateway_owner::LocalSession::browser_with_key(
             host.clone(),
             connection_id.clone(),
             id.clone(),
+            token_key,
         ),
-        None => super::gateway_owner::LocalSession::new(host.clone(), connection_id.clone()),
+        None => super::gateway_owner::LocalSession::new_with_key(
+            host.clone(),
+            connection_id.clone(),
+            token_key,
+        ),
     })
     .transpose()?;
     let result = protocol::LoopbackHelloResult {
@@ -607,23 +631,62 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
     let mut watched: Vec<super::conversation_read::ConversationReader> = Vec::new();
     let mut tick = tokio::time::interval(Duration::from_millis(500));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let writable = writer.is_some();
+    let mut bot_events = host.bots.subscribe_events();
+    let mut commands = VecDeque::new();
+    let mut queries = JoinSet::new();
+    let mut recovery = JoinSet::new();
+    let mut command: Option<AbortOnDropHandle<(super::gateway_owner::LocalSession, Value)>> = None;
     loop {
+        // 业务请求保留同连接顺序与会话状态；等待后台时仍消费读取、事件和撤销授权。
+        if command.is_none()
+            && let Some(raw) = commands.pop_front()
+        {
+            let mut local = writer.take().unwrap();
+            let host = host.clone();
+            let device = device_id.clone();
+            // 读取分支也会等待共享锁；已进入的业务必须独立被轮询，断连仍取消本连接任务。
+            command = Some(AbortOnDropHandle::new(tokio::task::spawn_local(
+                async move {
+                    let response = local_request(&host, &mut local, device.as_deref(), raw).await;
+                    (local, response)
+                },
+            )));
+        }
         tokio::select! {
-            event = page_events.recv() => {
+            Some(response) = queries.join_next(), if !queries.is_empty() => {
+                let response = response.context("Host query task failed")?;
+                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                send(&mut socket, &response).await?;
+            }
+            Some(response) = recovery.join_next(), if !recovery.is_empty() => {
+                let response = response.context("Host recovery task failed")?;
+                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                send(&mut socket, &response).await?;
+            }
+            completed = async { command.as_mut().unwrap().await }, if command.is_some() => {
+                let (local, response) = completed.context("Host command task failed")?;
+                command = None;
+                writer = Some(local);
+                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                send(&mut socket, &response).await?;
+            }
+            event = bot_events.recv(), if writable => {
                 let event = match event {
                     Ok(event) => event,
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(error) => return Err(error).context("page event stream interrupted"),
+                    Err(error) => return Err(error).context("bot event stream interrupted"),
                 };
-                if event["connection"] != connection_id { continue; }
                 ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
-                if let Some(device) = &device_id {
-                    ensure!(host.loopback.browser_permits(device, "manage"), "FORBIDDEN");
+                if let Some(device) = &device_id
+                    && !host.loopback.browser_permits(device, "manage")
+                {
+                    continue;
                 }
-                send(&mut socket, &json!({"version":VERSION,"method":"pages.event","params":{
-                    "event":"pages.event","connectionId":connection_id,
+                send(&mut socket, &json!({"version":VERSION,"method":"bots.event","params":{
+                    "event":"bots.event","connectionId":connection_id,
                     "gatewayGeneration":host.identity.generation,
-                    "token":event["token"],"notification":event["notification"]
+                    "notification":event
                 }})).await?;
             }
             message = socket.next() => {
@@ -632,30 +695,57 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                     Message::Text(bytes) => {
                         ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
                         let raw: Value = serde_json::from_str(&bytes)?;
-                        if let Some(local) = writer.as_mut().filter(|_| raw["method"].as_str().is_some_and(|method| WRITE_METHODS.contains(&method))) {
+                        if let Some(method) = raw["method"].as_str().filter(|method| writable && WRITE_METHODS.contains(method)) {
                             let id = raw["id"].as_str().filter(|id| !id.is_empty() && id.len() <= 64).context("invalid request")?.to_owned();
-                            let result = async {
-                                ensure!(raw["version"] == VERSION, wire::error("unsupportedVersion","Host requires version 1"));
-                                let object = raw.as_object().context("INVALID_PARAMS")?;
-                                ensure!(object.keys().all(|key| matches!(key.as_str(), "version"|"id"|"method"|"params"|"context"|"commandId")), "INVALID_PARAMS");
-                                if let Some(device) = &device_id {
-                                    ensure!(host.loopback.browser_method_permitted(device, raw["method"].as_str().unwrap_or_default()), "FORBIDDEN");
-                                }
-                                let mut envelope = raw.clone();
-                                envelope.as_object_mut().unwrap().remove("version");
-                                local.request(&envelope).await
-                            }.await;
-                            ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
-                            let response=match result {
-                                Ok(value)=>json!({"version":VERSION,"id":id,"result":value}),
-                                Err(error)=>{
-                                    json!({"version":VERSION,"id":id,"error":loopback_error(&raw, &error)})
-                                },
+                            let lane = request_lane(method, &raw["params"]).context("missing Host method lane")?;
+                            let (full, reason) = match lane {
+                                RemoteMethodLane::Control => (recovery.len() >= MAX_PENDING_RECOVERY, "recoveryQueueFull"),
+                                RemoteMethodLane::Query => (queries.len() >= MAX_PENDING_QUERIES, "queryQueueFull"),
+                                RemoteMethodLane::Mutation => (commands.len() + usize::from(command.is_some()) >= MAX_PENDING_COMMANDS, "commandQueueFull"),
                             };
-                            send(&mut socket,&response).await?;
+                            if full {
+                                let mut error = loopback_error(&raw, &anyhow::anyhow!("CAPACITY_EXCEEDED"));
+                                // 同一 code 可能来自命令、查询或核对队列，写明哪一队满了才能在详情里定位。
+                                error["reason"] = json!(reason);
+                                error["method"] = json!(raw["method"]);
+                                error["submissionUnknown"] = json!(false);
+                                eprintln!("Host request not admitted: method={} reason={reason}", raw["method"].as_str().unwrap_or_default());
+                                send(&mut socket, &json!({"version":VERSION,"id":id,
+                                    "error":error
+                                })).await?;
+                            } else if lane == RemoteMethodLane::Mutation {
+                                commands.push_back(raw);
+                            } else {
+                                let host = host.clone();
+                                let device = device_id.clone();
+                                let connection = connection_id.clone();
+                                let tasks = if lane == RemoteMethodLane::Control { &mut recovery } else { &mut queries };
+                                tasks.spawn_local(async move {
+                                    // 独立通道不消费上传或观察状态，仍绑定原主体与连接。
+                                    let local = match &device {
+                                        Some(device) => {
+                                            super::gateway_owner::LocalSession::browser_with_key(
+                                                host.clone(),
+                                                connection,
+                                                device.clone(),
+                                                token_key,
+                                            )
+                                        }
+                                        None => super::gateway_owner::LocalSession::new_with_key(
+                                            host.clone(),
+                                            connection,
+                                            token_key,
+                                        ),
+                                    };
+                                    match local {
+                                        Ok(mut local) => local_request(&host, &mut local, device.as_deref(), raw).await,
+                                        Err(error) => json!({"version":VERSION,"id":id,"error":loopback_error(&raw, &error)}),
+                                    }
+                                });
+                            }
                             continue;
                         }
-                        if let (None, Some(id)) = (writer.as_ref(), raw["method"].as_str().filter(|method| WRITE_METHODS.contains(method)).and(raw["id"].as_str())) {
+                        if let (false, Some(id)) = (writable, raw["method"].as_str().filter(|method| WRITE_METHODS.contains(method)).and(raw["id"].as_str())) {
                             send(&mut socket,&json!({"version":VERSION,"id":id,"error":read_error(&wire::error("methodNotFound","method is not available on this connection"))})).await?;
                             continue;
                         }
@@ -788,16 +878,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             }
             _=changes.changed()=>{
                 if !host.loopback.current(device_id.as_deref()) { break; }
-                if let Some(active)=&reader
-                    && !active.current(&host) {
-                        let event=keys(&host,&connection_id,active.invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
-                        reader=None;
-                        notify(&mut socket,event).await?;
-                    }
-                while let Some(index)=watched.iter().position(|value|!value.current(&host)) {
-                    let event=keys(&host,&connection_id,watched.remove(index).invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
-                    notify(&mut socket,event).await?;
-                }
+                // 先送出最新目录状态，再发 session.invalidated，避免客户端在过期 ready 状态下误重开正在停止的会话。
                 if let Some(active)=shell.as_mut() {
                     let refreshed = active.refresh(&host).await;
                     ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
@@ -812,10 +893,85 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                         }
                     }
                 }
+                if let Some(active)=&reader
+                    && !active.current(&host) {
+                        let event=keys(&host,&connection_id,active.invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
+                        reader=None;
+                        notify(&mut socket,event).await?;
+                    }
+                while let Some(index)=watched.iter().position(|value|!value.current(&host)) {
+                    let event=keys(&host,&connection_id,watched.remove(index).invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
+                    notify(&mut socket,event).await?;
+                }
             }
         }
     }
     Ok(())
+}
+
+fn request_lane(method: &str, params: &Value) -> Option<RemoteMethodLane> {
+    // 创建正在等待 setup 时，取消必须能越过同连接的业务队列。
+    if method == "worktree.command" && params["operation"] == "worktreeCancel" {
+        return Some(RemoteMethodLane::Control);
+    }
+    // 过渡：到 0.2.0 删。desktop.command 拆分后由各 Schema 方法声明通道。
+    if method == "desktop.command" {
+        match (
+            params["command"].as_str(),
+            params["request"]["operation"].as_str(),
+        ) {
+            (Some("reconcile"), _) => return Some(RemoteMethodLane::Control),
+            (Some("manage"), Some("inspect" | "context" | "mcpForms"))
+            | (Some("workspace"), Some("info"))
+            | (Some("resources"), Some("skills"))
+            | (Some("chatgpt"), Some("status"))
+            | (Some("prediction"), Some("request" | "cancel")) => {
+                return Some(RemoteMethodLane::Query);
+            }
+            _ => {}
+        }
+    }
+    protocol::remote_method_lane(method)
+}
+
+async fn local_request(
+    host: &Host,
+    local: &mut super::gateway_owner::LocalSession,
+    device: Option<&str>,
+    raw: Value,
+) -> Value {
+    let result = async {
+        ensure!(host.loopback.current(device), "FORBIDDEN");
+        ensure!(
+            raw["version"] == VERSION,
+            wire::error("unsupportedVersion", "Host requires version 1")
+        );
+        let object = raw.as_object().context("INVALID_PARAMS")?;
+        ensure!(
+            object.keys().all(|key| matches!(
+                key.as_str(),
+                "version" | "id" | "method" | "params" | "context" | "commandId"
+            )),
+            "INVALID_PARAMS"
+        );
+        if let Some(device) = device {
+            ensure!(
+                host.loopback
+                    .browser_method_permitted(device, raw["method"].as_str().unwrap_or_default()),
+                "FORBIDDEN"
+            );
+        }
+        let mut envelope = raw.clone();
+        envelope.as_object_mut().unwrap().remove("version");
+        local.request(&envelope).await
+    }
+    .await;
+    match result {
+        Ok(value) => json!({"version":VERSION,"id":raw["id"],"result":value}),
+        Err(error) => {
+            json!({"version":VERSION,"id":raw["id"],"error":loopback_error(&raw, &error)})
+        }
+    }
 }
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -835,7 +991,7 @@ struct ReadRequest {
 /// 等任一附加观察的下一条 Core 事件；广播接收可安全取消，未选中的不会丢事件。
 async fn next_watched(
     watched: &mut [super::conversation_read::ConversationReader],
-) -> (Result<super::schedule_connection::CoreEvent>, usize) {
+) -> (Result<Option<super::schedule_connection::CoreEvent>>, usize) {
     let (event, index, _) = futures_util::future::select_all(
         watched
             .iter_mut()
@@ -878,14 +1034,22 @@ fn loopback_error(request: &Value, error: &anyhow::Error) -> Value {
                 | "manage.command"
                 | "providers.command"
                 | "plugins.command"
+                | "bots.command"
                 | "analytics.import"
         )
     ) {
         value["commandId"] = request["commandId"].clone();
         value["submissionUnknown"] = json!(
-            !(super::gateway_owner::settled_failure(code) || code == "CAPABILITY_UNAVAILABLE")
+            !(super::gateway_owner::settled_failure(code)
+                || matches!(
+                    code,
+                    "CAPABILITY_UNAVAILABLE" | "COMMAND_FAILED" | "scheduleWorkspaceRequired"
+                ))
         );
-    } else if request["method"] == "providers.read" {
+    } else if matches!(
+        request["method"].as_str(),
+        Some("providers.read" | "bots.read")
+    ) {
         value["submissionUnknown"] = json!(false);
     }
     value
@@ -918,8 +1082,21 @@ async fn notify(socket: &mut Socket, event: Value) -> Result<()> {
     .await
 }
 
-async fn send(socket: &mut Socket, value: &Value) -> Result<()> {
-    let bytes = serde_json::to_string(value)?;
+async fn send<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
+    socket: &mut WebSocketStream<S>,
+    value: &Value,
+) -> Result<()> {
+    let mut bytes = serde_json::to_string(value)?;
+    if bytes.len() > wire::MAX_FRAME && value.get("id").is_some() {
+        // 响应超限只结算传输失败，不能断开整个连接，也不能把已执行的写入改判为未受理。
+        let mut error = json!({"code":"LIMIT_EXCEEDED",
+            "message":"请求结果超过传输大小限制，请缩小读取范围；连接仍可继续使用",
+            "reason":"responseTooLarge","submissionUnknown":true});
+        if let Some(command) = value["result"].get("commandId") {
+            error["commandId"] = command.clone();
+        }
+        bytes = serde_json::to_string(&json!({"version":VERSION,"id":value["id"],"error":error}))?;
+    }
     ensure!(
         bytes.len() <= wire::MAX_FRAME,
         "response exceeds frame limit"

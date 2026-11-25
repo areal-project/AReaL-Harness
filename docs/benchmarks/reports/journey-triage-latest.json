@@ -1,0 +1,397 @@
+{
+  "schemaVersion": 1,
+  "sampleSize": 10,
+  "measurement": {
+    "sampleSelection": "latest non-merge commits in the last 90 days that match a registered journey path",
+    "consideredCommits": 10,
+    "old": "Git history cannot recover human judgment or evidence-assembly minutes; old fields remain unknown.",
+    "new": "Machine triage time measured per row by this script, excluding Git startup; persisted reports are reused when their revision matches.",
+    "elapsedMs": 3163,
+    "machineTriageMs": {
+      "total": 1248,
+      "median": 124
+    },
+    "realJourneyEvidence": {
+      "rowsWithPersistedReport": 0,
+      "rowsWithoutPersistedReport": 10
+    }
+  },
+  "conclusion": {
+    "canConfirmHumanTimeReduction": false,
+    "reason": "the sampled Git history has no before/after human timing records",
+    "whatThisRunProves": [
+      "the narrowed registry selects only commits that touch a registered journey path",
+      "each selected commit receives deterministic checks, authorities, and evidence fields",
+      "missing real-journey reports are surfaced as an explicit execution blocker"
+    ],
+    "nextMeasurement": "record human triage and evidence-assembly minutes for the next comparable sample, then compare against machineTriageMs and persisted evidence coverage"
+  },
+  "rows": [
+    {
+      "commit": "d854f54dc3c510ceaef972d77e4e449ede8d46d7",
+      "subject": "fix(gui): hand off the full backend during desktop upgrades",
+      "changedPaths": 28,
+      "oldProcess": {
+        "journeys": "manual/unknown",
+        "authorities": "manual/unknown",
+        "evidenceFields": "manual/unknown",
+        "humanMinutes": null,
+        "measurement": "not recoverable from Git history"
+      },
+      "newProcess": {
+        "journeys": [
+          "unknown-receipt-recovery"
+        ],
+        "journeyCount": 1,
+        "requiredChecks": [
+          "test:conversation-reading",
+          "test:history-compat",
+          "test:service-reopen"
+        ],
+        "authorityCount": 3,
+        "evidenceFields": 5,
+        "realJourneyEvidence": [
+          {
+            "id": "unknown-receipt-recovery",
+            "status": "unavailable",
+            "evidenceSource": "no-historical-report",
+            "blockedStage": "real-journey-execution",
+            "blockReasons": [
+              "historical commit has no persisted real journey evidence"
+            ]
+          }
+        ],
+        "machineTriageMs": 151
+      }
+    },
+    {
+      "commit": "14852edfcdadc9b57ae77f661764bc89a23ab4c3",
+      "subject": "fix(gui): inherit last used model and recover configuration service",
+      "changedPaths": 17,
+      "oldProcess": {
+        "journeys": "manual/unknown",
+        "authorities": "manual/unknown",
+        "evidenceFields": "manual/unknown",
+        "humanMinutes": null,
+        "measurement": "not recoverable from Git history"
+      },
+      "newProcess": {
+        "journeys": [
+          "conversation-submit"
+        ],
+        "journeyCount": 1,
+        "requiredChecks": [
+          "test:conversation-reading",
+          "test:ux-journeys"
+        ],
+        "authorityCount": 3,
+        "evidenceFields": 5,
+        "realJourneyEvidence": [
+          {
+            "id": "conversation-submit",
+            "status": "unavailable",
+            "evidenceSource": "no-historical-report",
+            "blockedStage": "real-journey-execution",
+            "blockReasons": [
+              "historical commit has no persisted real journey evidence"
+            ]
+          }
+        ],
+        "machineTriageMs": 128
+      }
+    },
+    {
+      "commit": "2384bd62cf2f648fe53637599c7aaaea7769aab2",
+      "subject": "fix(gui): align acceptance with Host ownership and config isolation",
+      "changedPaths": 15,
+      "oldProcess": {
+        "journeys": "manual/unknown",
+        "authorities": "manual/unknown",
+        "evidenceFields": "manual/unknown",
+        "humanMinutes": null,
+        "measurement": "not recoverable from Git history"
+      },
+      "newProcess": {
+        "journeys": [
+          "unknown-receipt-recovery"
+        ],
+        "journeyCount": 1,
+        "requiredChecks": [
+          "test:conversation-reading",
+          "test:history-compat",
+          "test:service-reopen"
+        ],
+        "authorityCount": 3,
+        "evidenceFields": 5,
+        "realJourneyEvidence": [
+          {
+            "id": "unknown-receipt-recovery",
+            "status": "unavailable",
+            "evidenceSource": "no-historical-report",
+            "blockedStage": "real-journey-execution",
+            "blockReasons": [
+              "historical commit has no persisted real journey evidence"
+            ]
+          }
+        ],
+        "machineTriageMs": 120
+      }
+    },
+    {
+      "commit": "7ef20ab27173f24396351e11aba76c322e347f1d",
+      "subject": "refactor(library): remove obsolete whole-state write endpoint",
+      "changedPaths": 7,
+      "oldProcess": {
+        "journeys": "manual/unknown",
+        "authorities": "manual/unknown",
+        "evidenceFields": "manual/unknown",
+        "humanMinutes": null,
+        "measurement": "not recoverable from Git history"
+      },
+      "newProcess": {
+        "journeys": [
+          "unknown-receipt-recovery"
+        ],
+        "journeyCount": 1,
+        "requiredChecks": [
+          "test:conversation-reading",
+          "test:history-compat",
+          "test:service-reopen"
+        ],
+        "authorityCount": 3,
+        "evidenceFields": 5,
+        "realJourneyEvidence": [
+          {
+            "id": "unknown-receipt-recovery",
+            "status": "unavailable",
+            "evidenceSource": "no-historical-report",
+            "blockedStage": "real-journey-execution",
+            "blockReasons": [
+              "historical commit has no persisted real journey evidence"
+            ]
+          }
+        ],
+        "machineTriageMs": 127
+      }
+    },
+    {
+      "commit": "0b4b3a58ddf67b83001a1299da1445028c5df570",
+      "subject": "test(web): keep isolated host owners alive",
+      "changedPaths": 2,
+      "oldProcess": {
+        "journeys": "manual/unknown",
+        "authorities": "manual/unknown",
+        "evidenceFields": "manual/unknown",
+        "humanMinutes": null,
+        "measurement": "not recoverable from Git history"
+      },
+      "newProcess": {
+        "journeys": [
+          "conversation-submit"
+        ],
+        "journeyCount": 1,
+        "requiredChecks": [
+          "test:conversation-reading",
+          "test:ux-journeys"
+        ],
+        "authorityCount": 3,
+        "evidenceFields": 5,
+        "realJourneyEvidence": [
+          {
+            "id": "conversation-submit",
+            "status": "unavailable",
+            "evidenceSource": "no-historical-report",
+            "blockedStage": "real-journey-execution",
+            "blockReasons": [
+              "historical commit has no persisted real journey evidence"
+            ]
+          }
+        ],
+        "machineTriageMs": 140
+      }
+    },
+    {
+      "commit": "b2e5e3c9aa9da14f113191059215c03678e00893",
+      "subject": "fix(history): decouple saved conversations from execution configuration",
+      "changedPaths": 40,
+      "oldProcess": {
+        "journeys": "manual/unknown",
+        "authorities": "manual/unknown",
+        "evidenceFields": "manual/unknown",
+        "humanMinutes": null,
+        "measurement": "not recoverable from Git history"
+      },
+      "newProcess": {
+        "journeys": [
+          "unknown-receipt-recovery"
+        ],
+        "journeyCount": 1,
+        "requiredChecks": [
+          "test:conversation-reading",
+          "test:history-compat",
+          "test:service-reopen"
+        ],
+        "authorityCount": 3,
+        "evidenceFields": 5,
+        "realJourneyEvidence": [
+          {
+            "id": "unknown-receipt-recovery",
+            "status": "unavailable",
+            "evidenceSource": "no-historical-report",
+            "blockedStage": "real-journey-execution",
+            "blockReasons": [
+              "historical commit has no persisted real journey evidence"
+            ]
+          }
+        ],
+        "machineTriageMs": 124
+      }
+    },
+    {
+      "commit": "fbf7b732b0cd68853c86410c4e7007201b8da05c",
+      "subject": "test(gui): verify paged history context through scrolling",
+      "changedPaths": 1,
+      "oldProcess": {
+        "journeys": "manual/unknown",
+        "authorities": "manual/unknown",
+        "evidenceFields": "manual/unknown",
+        "humanMinutes": null,
+        "measurement": "not recoverable from Git history"
+      },
+      "newProcess": {
+        "journeys": [
+          "unknown-receipt-recovery"
+        ],
+        "journeyCount": 1,
+        "requiredChecks": [
+          "test:conversation-reading",
+          "test:history-compat",
+          "test:service-reopen"
+        ],
+        "authorityCount": 3,
+        "evidenceFields": 5,
+        "realJourneyEvidence": [
+          {
+            "id": "unknown-receipt-recovery",
+            "status": "unavailable",
+            "evidenceSource": "no-historical-report",
+            "blockedStage": "real-journey-execution",
+            "blockReasons": [
+              "historical commit has no persisted real journey evidence"
+            ]
+          }
+        ],
+        "machineTriageMs": 121
+      }
+    },
+    {
+      "commit": "3ad1f65f1a4ad0eb371b478d8849a604d897d428",
+      "subject": "ci(gui): share failure observations and prioritize smoke feedback",
+      "changedPaths": 9,
+      "oldProcess": {
+        "journeys": "manual/unknown",
+        "authorities": "manual/unknown",
+        "evidenceFields": "manual/unknown",
+        "humanMinutes": null,
+        "measurement": "not recoverable from Git history"
+      },
+      "newProcess": {
+        "journeys": [
+          "unknown-receipt-recovery"
+        ],
+        "journeyCount": 1,
+        "requiredChecks": [
+          "test:conversation-reading",
+          "test:history-compat",
+          "test:service-reopen"
+        ],
+        "authorityCount": 3,
+        "evidenceFields": 5,
+        "realJourneyEvidence": [
+          {
+            "id": "unknown-receipt-recovery",
+            "status": "unavailable",
+            "evidenceSource": "no-historical-report",
+            "blockedStage": "real-journey-execution",
+            "blockReasons": [
+              "historical commit has no persisted real journey evidence"
+            ]
+          }
+        ],
+        "machineTriageMs": 111
+      }
+    },
+    {
+      "commit": "0cabea3e64054df92a8342f24c650a97ea16874e",
+      "subject": "fix(gui): annotate localized history failures",
+      "changedPaths": 1,
+      "oldProcess": {
+        "journeys": "manual/unknown",
+        "authorities": "manual/unknown",
+        "evidenceFields": "manual/unknown",
+        "humanMinutes": null,
+        "measurement": "not recoverable from Git history"
+      },
+      "newProcess": {
+        "journeys": [
+          "conversation-submit"
+        ],
+        "journeyCount": 1,
+        "requiredChecks": [
+          "test:conversation-reading",
+          "test:ux-journeys"
+        ],
+        "authorityCount": 3,
+        "evidenceFields": 5,
+        "realJourneyEvidence": [
+          {
+            "id": "conversation-submit",
+            "status": "unavailable",
+            "evidenceSource": "no-historical-report",
+            "blockedStage": "real-journey-execution",
+            "blockReasons": [
+              "historical commit has no persisted real journey evidence"
+            ]
+          }
+        ],
+        "machineTriageMs": 111
+      }
+    },
+    {
+      "commit": "7aee4102da35cb378605f72d9d8e981b17d5513b",
+      "subject": "fix(gui): keep history and browser smoke checks current",
+      "changedPaths": 2,
+      "oldProcess": {
+        "journeys": "manual/unknown",
+        "authorities": "manual/unknown",
+        "evidenceFields": "manual/unknown",
+        "humanMinutes": null,
+        "measurement": "not recoverable from Git history"
+      },
+      "newProcess": {
+        "journeys": [
+          "conversation-submit"
+        ],
+        "journeyCount": 1,
+        "requiredChecks": [
+          "test:conversation-reading",
+          "test:ux-journeys"
+        ],
+        "authorityCount": 3,
+        "evidenceFields": 5,
+        "realJourneyEvidence": [
+          {
+            "id": "conversation-submit",
+            "status": "unavailable",
+            "evidenceSource": "no-historical-report",
+            "blockedStage": "real-journey-execution",
+            "blockReasons": [
+              "historical commit has no persisted real journey evidence"
+            ]
+          }
+        ],
+        "machineTriageMs": 115
+      }
+    }
+  ]
+}

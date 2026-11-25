@@ -11,22 +11,23 @@
   height: auto;
   min-height: var(--spacing-control-sm);
   max-width: 100%;
-  padding: 0;
+  padding: calc(var(--spacing-inline) / 4);
   gap: calc(var(--spacing-inline) / 4);
-  border-radius: var(--radius-full);
-  background: transparent;
-  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-fog);
+  border: var(--border-width-default) solid var(--color-border-hairline);
 }
 
 .settings-segmented-tabs [data-slot="tabs-trigger"] {
   flex: none;
   height: var(--spacing-control-sm);
   padding: calc(var(--spacing-inline) / 4) var(--spacing-inline);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-pill);
   border: var(--border-width-default) solid transparent;
   font-size: var(--text-ui-caption);
   line-height: var(--line-height-ui-sm);
   font-weight: var(--font-weight-toolbar);
+  letter-spacing: var(--tracking-ui-subtle);
   color: var(--color-settings-secondary);
   background: transparent;
   box-shadow: none;
@@ -34,16 +35,30 @@
   user-select: none;
   transition:
     background-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard);
+    color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
 }
 
 /* Base UI exposes data-active by presence, not a string boolean. */
 .settings-segmented-tabs [data-slot="tabs-trigger"][data-active] {
-  background: var(--color-surface-tertiary);
+  background: var(--color-card);
+  border-color: var(--color-border-hairline);
   color: var(--color-foreground);
+  box-shadow: var(--shadow-subtle);
 }
 
 .settings-segmented-tabs [data-slot="tabs-trigger"]:hover:not([data-active]) {
   color: var(--color-foreground);
   background: var(--color-surface-elevated);
+}
+
+.settings-segmented-tabs[data-scrollable="true"] [data-slot="tabs-list"] {
+  flex-wrap: nowrap;
+  max-width: none;
+  width: max-content;
+  gap: var(--spacing-inline);
+}
+
+.settings-segmented-tabs[data-scrollable="true"] [data-slot="tabs-trigger"] {
+  font-size: var(--text-ui-xs);
 }

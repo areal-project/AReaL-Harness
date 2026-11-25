@@ -1,5 +1,5 @@
 import { useI18n } from "../i18n/IntlProvider.js";
-import definitions from "../../../packages/provider-config/definitions.json";
+import definitions from "@areal/provider-config/definitions.json";
 const templates = definitions.filter((item) => item.kind === "api");
 import type { Data } from "../services.js";
 import type { ReactNode } from "react";
@@ -98,17 +98,24 @@ function ProviderTemplateCard({
   return (
     <>
       <Button
-        unstyled
-        data-slot={undefined}
         type="button"
+        variant="surface"
+        size="auto"
+        align="start"
+        wrap
         data-testid={cardTestId}
         disabled={disabled}
         onClick={onClick}
-        className="flex min-h-16 min-w-0 items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-left transition-colors outline-none hover:border-border-hover hover:bg-hover focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 disabled:opacity-60"
+        className="min-h-16 w-full min-w-0"
       >
-        {icon}
-        <span className="min-w-0 flex-1 break-words text-ui-base font-medium">{label}</span>
-        <ChevronRightIcon className="size-4 shrink-0 text-foreground-subtlest" aria-hidden="true" />
+        <span className="flex min-w-0 flex-1 items-center gap-3 px-2 py-1.5">
+          {icon}
+          <span className="min-w-0 flex-1 break-words text-ui-base font-medium">{label}</span>
+          <ChevronRightIcon
+            className="size-4 shrink-0 text-foreground-subtlest"
+            aria-hidden="true"
+          />
+        </span>
       </Button>
     </>
   );

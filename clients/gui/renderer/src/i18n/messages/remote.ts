@@ -1,4 +1,8 @@
 export const remoteMessages = {
+  "remote.projects": {
+    "zh-CN": "项目",
+    en: "Projects",
+  },
   "settings.relayService.reconfigure": {
     "zh-CN": "原服务器程序、服务及数据已移除，可修改信息重新部署。",
     en: "The previous program, service and data are removed. Edit the server details to deploy again.",
@@ -12,8 +16,8 @@ export const remoteMessages = {
     en: "root@relay.example.com",
   },
   "settings.relayService.localSelected": {
-    "zh-CN": "本机 Relay 已连接 · {host}",
-    en: "Connected to local relay · {host}",
+    "zh-CN": "已选择本机 Relay · {host}",
+    en: "Local relay selected · {host}",
   },
   "settings.relayService.title": { "zh-CN": "Relay 服务", en: "Relay service" },
   "settings.relayService.description": {
@@ -22,9 +26,8 @@ export const remoteMessages = {
   },
   "settings.relayService.local": { "zh-CN": "本机 Relay", en: "Local relay" },
   "settings.relayService.localDescription": {
-    "zh-CN":
-      "自动选择内网地址。跨网络连接取决于网络可达性。内网 HTTP 链接请在 AReaL Remote App 中扫描。",
-    en: "Chooses a private address automatically. Access across networks depends on reachability. Scan private HTTP links in the AReaL Remote app.",
+    "zh-CN": "自动选择内网地址。手机与电脑之间需要网络互通。请用 AReaL Remote App 扫描配对链接。",
+    en: "Chooses a LAN address automatically. The phone must be able to reach the computer. Scan the link in the AReaL Remote app.",
   },
   "settings.relayService.startLocal": {
     "zh-CN": "开启内网连接",
@@ -60,7 +63,7 @@ export const remoteMessages = {
     en: "Also permanently delete server data and certificates",
   },
   "settings.relayService.pending": {
-    "zh-CN": "上次操作结果待核对。请先检查服务器状态，再决定后续操作。",
+    "zh-CN": "上次操作结果待确认，请先检查服务器状态再继续。",
     en: "The previous operation needs reconciliation. Check server status before another operation.",
   },
   "settings.relayService.serverRunning": {
@@ -128,15 +131,15 @@ export const remoteMessages = {
     en: "Allow this browser to connect?",
   },
   "settings.mobileSettings.onceConfirmedItCanAccessTheProjects": {
-    "zh-CN": "确认后，它可以访问你选择的项目。设备名称仅供参考，请核对完整指纹。",
+    "zh-CN": "确认后可访问所选项目。设备名仅供参考，请比对完整指纹。",
     en: "Once confirmed, it can access the projects you select. The device name is for reference. Check the full fingerprint.",
   },
   "settings.mobileSettings.checkTheFullDeviceFingerprint": {
-    "zh-CN": "核对完整设备指纹",
+    "zh-CN": "比对完整设备指纹",
     en: "Check the full device fingerprint",
   },
   "settings.mobileSettings.compareEveryCharacterWithTheFingerprintShown": {
-    "zh-CN": "请与设备上显示的指纹逐字核对。",
+    "zh-CN": "请与设备上显示的指纹逐字比对。",
     en: "Compare every character with the fingerprint shown on the device.",
   },
   "settings.mobileSettings.thisOlderDeviceNeedsReviewAndIs": {
@@ -208,7 +211,7 @@ export const remoteMessages = {
     en: "Revoke access",
   },
   "settings.mobileSettings.theHostIsOfflineOrTheBackground": {
-    "zh-CN": "Host 已离线或后台连接不可用：{value0}",
+    "zh-CN": "后台服务已离线或连接不可用：{value0}",
     en: "The host is offline or the background connection is unavailable: {value0}",
   },
   "settings.mobileSettings.phoneConnectionSettings": {
@@ -240,7 +243,7 @@ export const remoteMessages = {
     en: "The invitation expires in two minutes",
   },
   "settings.mobileSettings.checkTheFingerprintAndAccessScope": {
-    "zh-CN": "核对指纹与访问范围",
+    "zh-CN": "确认指纹与访问范围",
     en: "Check the fingerprint and access scope",
   },
   "settings.mobileSettings.remoteAccessIsOff": {
@@ -428,7 +431,7 @@ export const remoteMessages = {
     en: "Phones must join the same tailnet. A successful local check does not mean a phone can connect.",
   },
   "settings.mobileSettings.ifTheHostIsOfflineCheckThe": {
-    "zh-CN": "Host 离线时请回到电脑检查后台；配对链接过期时请重新生成邀请。",
+    "zh-CN": "后台离线时请回到电脑检查；配对链接过期时请重新生成邀请。",
     en: "If the host is offline, check the background service on your computer. If the pairing link expires, generate a new invitation.",
   },
   "settings.mobileSettings.checkNetworkTools": {
@@ -440,7 +443,7 @@ export const remoteMessages = {
     en: "Unknown",
   },
   "settings.mobileSettings.hostHTTPSSupportIsEnabledThePhone": {
-    "zh-CN": "Host HTTPS 能力已启用；手机证书与网络链路仍需验证。",
+    "zh-CN": "本机 HTTPS 能力已启用；手机证书与网络链路仍需验证。",
     en: "Host HTTPS support is enabled. The phone certificate and network path still need verification.",
   },
   "settings.mobileSettings.tailscaleServePrivateNetwork": {
@@ -500,7 +503,7 @@ export const remoteMessages = {
     en: "Private",
   },
   "settings.mobileSettings.needsVerification": {
-    "zh-CN": "待核对",
+    "zh-CN": "待确认",
     en: "Needs verification",
   },
   "settings.mobileSettings.none": {
@@ -628,7 +631,7 @@ export const remoteMessages = {
     en: "Restore or remove this app's network configuration",
   },
   "settings.mobileSettings.restoreChecksTheActualScopeOfThe": {
-    "zh-CN": "恢复只核对已有映射；移除只撤销本应用创建的映射。",
+    "zh-CN": "恢复仅检查已有映射；移除仅撤销本应用创建的映射。",
     en: "Restore only checks the existing mapping. Remove only revokes mappings this app created.",
   },
   "settings.mobileSettings.iConfirmOnlyThisAppSRecords": {
@@ -636,7 +639,7 @@ export const remoteMessages = {
     en: "I confirm only this app's records will be handled and choose restore or removal below.",
   },
   "settings.mobileSettings.verifyAndRestore": {
-    "zh-CN": "核对并恢复",
+    "zh-CN": "检查并恢复",
     en: "Verify and restore",
   },
   "settings.mobileSettings.removeNetworkConfiguration": {
@@ -648,7 +651,7 @@ export const remoteMessages = {
     en: "Connect through a relay service",
   },
   "settings.mobileSettings.yourOrganizationProvidesASameOriginHTTPS": {
-    "zh-CN": "由组织提供 HTTPS Remote 页面。手机仍须核对指纹并经桌面批准。",
+    "zh-CN": "由组织提供 HTTPS 远程页面，手机仍须比对指纹并经桌面批准。",
     en: "Your organization provides the HTTPS Remote page. Phones still need fingerprint checks and desktop approval.",
   },
   "settings.mobileSettings.enrollOrReconnectRelay": {
@@ -708,7 +711,7 @@ export const remoteMessages = {
     en: "Retry requested. Upload progress will update automatically.",
   },
   "settings.trajectorySettings.uploadControlsAppliedCaptureSettingsWillApply": {
-    "zh-CN": "上传控制已应用；当前任务结束且 Core 空闲后自动应用采集设置。",
+    "zh-CN": "上传控制已生效；当前任务结束且后台空闲后应用新采集设置。",
     en: "Upload controls applied. Capture settings will apply automatically when the current task ends and Core is idle.",
   },
   "settings.trajectorySettings.dataFlywheelIsOnTheBackgroundService": {
@@ -764,7 +767,7 @@ export const remoteMessages = {
     en: "Data flywheel",
   },
   "settings.trajectorySettings.backgroundUploadsAreOnNewCaptureSettings": {
-    "zh-CN": "后台上传已开启；Core 空闲后自动应用新采集设置，不取消当前任务。",
+    "zh-CN": "后台上传已开启；后台空闲后自动应用新采集设置，不中断任务。",
     en: "Background uploads are on. New capture settings apply when Core is idle without canceling the current task.",
   },
   "settings.trajectorySettings.backgroundTrajectoryUploadsAreOnReEnabling": {
@@ -784,7 +787,7 @@ export const remoteMessages = {
     en: "Configure the destination and authentication in user settings or a standalone setup script first.",
   },
   "settings.trajectorySettings.thisCoreDoesNotProvideAControl": {
-    "zh-CN": "当前 Core 不支持此开关，请升级 Core。",
+    "zh-CN": "当前版本不支持此开关，请升级后重试。",
     en: "This Core does not support this switch. Upgrade Core.",
   },
   "settings.trajectorySettings.manageTheDestinationAuthenticationAndCapacityIn": {
@@ -880,7 +883,7 @@ export const remoteMessages = {
     en: "Total / Average / Maximum call duration",
   },
   "settings.trajectorySettings.thisCoreDoesNotProvideAModel": {
-    "zh-CN": "当前 Core 未提供模型调用耗时汇总，耗时未知。",
+    "zh-CN": "当前版本未提供模型调用耗时汇总，耗时未知。",
     en: "This Core does not provide a model call duration summary. Duration is unknown.",
   },
   "settings.trajectorySettings.recentUploadRecords": {
@@ -1077,11 +1080,11 @@ export const remoteMessages = {
     en: "Search skill rankings",
   },
   "settings.usageDashboard.searchSkills": {
-    "zh-CN": "搜索技能…",
+    "zh-CN": "搜索 Skills …",
     en: "Search skills…",
   },
   "settings.usageDashboard.noMatchingSkills": {
-    "zh-CN": "没有匹配的技能",
+    "zh-CN": "没有匹配的 Skills",
     en: "No matching skills",
   },
   "settings.usageDashboard.noSkillCallsYet": {
@@ -1093,7 +1096,7 @@ export const remoteMessages = {
     en: "Try another search.",
   },
   "settings.usageDashboard.callsAppearHereAfterTheAgentSuccessfully": {
-    "zh-CN": "Agent 成功读取技能入口后，调用次数会出现在这里。",
+    "zh-CN": "Agent 成功读取 Skills 入口后，调用次数会出现在这里。",
     en: "Calls appear here after the agent successfully reads a skill entry file.",
   },
   "settings.usageDashboard.howStatisticsAreCounted": {
@@ -1217,10 +1220,6 @@ export const remoteMessages = {
   "settings.serviceStatusSettings.disconnectedCheckWhetherTheBackgroundServiceIs": {
     "zh-CN": "当前未连接，后台是否仍在运行需要检查。",
     en: "Disconnected. Check whether the background service is still running.",
-  },
-  "settings.serviceStatusSettings.quitOtherInterfacesConnectedToTheSame": {
-    "zh-CN": "请先退出其他连接同一后台的界面。",
-    en: "Quit other interfaces connected to the same background service first.",
   },
   "settings.serviceStatusSettings.theCurrentCheckAllowsASafeStop": {
     "zh-CN": "当前检查允许安全停止。",
@@ -1395,7 +1394,7 @@ export const remoteMessages = {
     en: "Runtime environment",
   },
   "settings.coreCapabilitiesSettings.coreConnectionAndCapabilities": {
-    "zh-CN": "Core 连接与能力",
+    "zh-CN": "后台连接与能力",
     en: "Core connection and capabilities",
   },
   "settings.coreCapabilitiesSettings.viewDetails": {
@@ -1415,27 +1414,27 @@ export const remoteMessages = {
     en: "Workspace",
   },
   "settings.coreCapabilitiesSettings.coreConnected": {
-    "zh-CN": "Core 已连接",
+    "zh-CN": "后台已连接",
     en: "Core connected",
   },
   "settings.coreCapabilitiesSettings.coreDisconnectedPreviousCapabilityInformationMayBe": {
-    "zh-CN": "Core 未连接，上次能力信息可能已过期。",
+    "zh-CN": "后台未连接，上次能力信息可能已过期。",
     en: "Core disconnected. Previous capability information may be out of date.",
   },
   "settings.coreCapabilitiesSettings.coreExecutable": {
-    "zh-CN": "Core 程序",
+    "zh-CN": "后台程序",
     en: "Core executable",
   },
   "settings.coreCapabilitiesSettings.coreAPIVersion": {
-    "zh-CN": "Core 接口版本",
+    "zh-CN": "后台接口版本",
     en: "Core API version",
   },
   "settings.coreCapabilitiesSettings.runtimeInstance": {
-    "zh-CN": "Runtime 实例",
+    "zh-CN": "运行环境",
     en: "Runtime instance",
   },
   "settings.coreCapabilitiesSettings.coreCapabilitiesAreNotAvailableYetCheck": {
-    "zh-CN": "尚未取得 Core 能力；连接成功后可核对。",
+    "zh-CN": "尚未取得后台能力信息，连接成功后可查看。",
     en: "Core capabilities are not available yet. Check after connecting.",
   },
   "settings.coreCapabilitiesSettings.sessionsAndConversations": {
@@ -1447,7 +1446,7 @@ export const remoteMessages = {
     en: "Conversation execution available",
   },
   "settings.coreCapabilitiesSettings.thisCoreDoesNotProvideConversationExecution": {
-    "zh-CN": "当前 Core 未提供对话执行能力。",
+    "zh-CN": "当前后台未提供对话执行能力。",
     en: "This Core does not provide conversation execution.",
   },
   "settings.coreCapabilitiesSettings.ongoingGoal": {
@@ -1459,7 +1458,7 @@ export const remoteMessages = {
     en: "Ongoing goals available",
   },
   "settings.coreCapabilitiesSettings.thisCoreDoesNotProvideOngoingGoals": {
-    "zh-CN": "当前 Core 未提供持续目标能力。",
+    "zh-CN": "当前后台未提供持续目标能力。",
     en: "This Core does not provide ongoing goals.",
   },
   "settings.coreCapabilitiesSettings.tasksAndInbox": {
@@ -1471,7 +1470,7 @@ export const remoteMessages = {
     en: "Tasks and inbox available",
   },
   "settings.coreCapabilitiesSettings.thisCoreDoesNotProvideTasksAnd": {
-    "zh-CN": "当前 Core 未提供任务与收件箱能力。",
+    "zh-CN": "当前后台未提供任务与收件箱能力。",
     en: "This Core does not provide tasks and inbox.",
   },
   "settings.coreCapabilitiesSettings.managedProcessesAndTerminals": {
@@ -1483,11 +1482,11 @@ export const remoteMessages = {
     en: "Managed processes and terminals available",
   },
   "settings.coreCapabilitiesSettings.thisCoreIsNotConnectedToRuntime": {
-    "zh-CN": "当前 Core 未连接 Runtime，受管进程与终端不可用。",
+    "zh-CN": "后台未连接运行环境，受管进程与终端暂不可用。",
     en: "This Core is not connected to Runtime. Managed processes and terminals are unavailable.",
   },
   "settings.coreCapabilitiesSettings.thisCoreDoesNotProvideFullManaged": {
-    "zh-CN": "当前 Core 未提供完整的受管进程能力，请使用支持此功能的 Core。",
+    "zh-CN": "当前后台未提供完整的受管进程能力，请升级版本。",
     en: "This Core does not provide full managed process support. Use a Core that supports it.",
   },
   "settings.coreCapabilitiesSettings.subtaskExecution": {
@@ -1495,15 +1494,15 @@ export const remoteMessages = {
     en: "Subtask execution",
   },
   "settings.coreCapabilitiesSettings.coreSchedulesSubtasksAndReturnsTheirProgress": {
-    "zh-CN": "Core 自动安排子任务，统一返回进度与交付结果。",
+    "zh-CN": "后台自动安排子任务，并统一返回进度与交付结果。",
     en: "Core schedules subtasks and returns their progress and results together.",
   },
   "settings.coreCapabilitiesSettings.thisCoreDoesNotProvideTheUnified": {
-    "zh-CN": "当前 Core 未提供统一子任务接口，可读取兼容任务历史。",
+    "zh-CN": "当前后台未提供统一子任务接口，可查看兼容任务历史。",
     en: "This Core does not provide the unified subtask API. Compatible task history can still be read.",
   },
   "settings.spaceReclamation.coreHasNotFinishedDrainingCheckExecution": {
-    "zh-CN": "Core 尚未完成收敛，请检查执行与资源状态。",
+    "zh-CN": "后台仍在收尾中，请先检查运行与资源状态。",
     en: "Core has not finished draining. Check execution and resource status.",
   },
   "settings.spaceReclamation.newWorkIsNoLongerAccepted": {
@@ -1511,11 +1510,11 @@ export const remoteMessages = {
     en: "New work is no longer accepted.",
   },
   "settings.spaceReclamation.reclamationResultsAreIncompleteVerifyTheSpace": {
-    "zh-CN": "回收结果不完整，实际释放空间待核对。",
+    "zh-CN": "回收结果不完整，实际释放空间待确认。",
     en: "Reclamation results are incomplete. Verify the space actually freed.",
   },
   "settings.spaceReclamation.theMaintenanceResultNeedsVerificationItWill": {
-    "zh-CN": "维护操作结果待核对；不会自动重发，也不能确认已释放空间。",
+    "zh-CN": "维护结果待确认，不会自动重发，暂无法确认已释放空间。",
     en: "The maintenance result needs verification. It will not be resent automatically, and freed space is not confirmed.",
   },
   "settings.spaceReclamation.maintainingStorage": {
@@ -1523,7 +1522,7 @@ export const remoteMessages = {
     en: "Maintaining storage…",
   },
   "settings.spaceReclamation.thePreviousMaintenanceResultNeedsVerificationIt": {
-    "zh-CN": "上次维护操作结果待核对；不会自动重发。",
+    "zh-CN": "上次维护结果待确认，不会自动重发。",
     en: "The previous maintenance result needs verification. It will not be resent automatically.",
   },
   "settings.spaceReclamation.reclaimStorage": {
@@ -1607,7 +1606,7 @@ export const remoteMessages = {
     en: "Allowed local Funnel ports: {ports}. This does not verify public access.",
   },
   "settings.mobileSettings.reconciliationReview": {
-    "zh-CN": "中断操作核对：{status}。请在下方明确恢复或移除。",
+    "zh-CN": "中断操作待确认：{status}。请在下方选择恢复或移除。",
     en: "Interrupted operation review: {status}. Confirm restore or removal below.",
   },
   "settings.mobileSettings.httpsOrigin": {
@@ -1724,7 +1723,7 @@ export const remoteMessages = {
     en: "A skill call is a successful read of a SKILL.md entry. {count, plural, one {# call has an unknown date.} other {# calls have unknown dates.}} Data stays on this computer.",
   },
   "settings.mobileSettings.networkDiagnostic.funnelCapabilityUnknown": {
-    "zh-CN": "无法明确确认本机 Funnel 端口能力，未进行公网配置。请联系管理员核对。",
+    "zh-CN": "无法确认本机 Funnel 端口能力，未做公网配置，请联系管理员。",
     en: "Funnel port support could not be confirmed on this computer. No public access was configured. Contact your administrator.",
   },
   "settings.mobileSettings.networkDiagnostic.funnelPortDenied": {
@@ -1740,7 +1739,7 @@ export const remoteMessages = {
     en: "Confirm again that you want to make this Remote entry public on the internet.",
   },
   "settings.mobileSettings.networkDiagnostic.unavailable": {
-    "zh-CN": "未找到 Tailscale CLI。请先在 Host 安装并确认命令可用，再重新检测。",
+    "zh-CN": "未找到 Tailscale CLI，请先在本机安装并确认可用后重试。",
     en: "Tailscale CLI was not found. Install it on the host and confirm that the command works, then check again.",
   },
   "settings.mobileSettings.networkDiagnostic.unsupportedVersion": {
@@ -1748,11 +1747,11 @@ export const remoteMessages = {
     en: "This Tailscale version does not support the verified persistent Serve configuration. Upgrade to stable version 1.52.0 or later.",
   },
   "settings.mobileSettings.networkDiagnostic.notLoggedIn": {
-    "zh-CN": "Host 尚未登录 Tailscale。请在 Tailscale 中登录后重新检测。",
+    "zh-CN": "本机尚未登录 Tailscale，请先登录后重新检测。",
     en: "The host is not signed in to Tailscale. Sign in through Tailscale, then check again.",
   },
   "settings.mobileSettings.networkDiagnostic.httpsDisabled": {
-    "zh-CN": "tailnet 未启用此 Host 的 HTTPS。请联系 tailnet 管理员检查 HTTPS 设置。",
+    "zh-CN": "tailnet 未启用本机 HTTPS，请联系管理员检查设置。",
     en: "HTTPS is not enabled for this host in the tailnet. Ask your tailnet administrator to check the HTTPS settings.",
   },
   "settings.mobileSettings.networkDiagnostic.httpsUnknown": {
@@ -1768,7 +1767,7 @@ export const remoteMessages = {
     en: "This app already has a saved mapping. Check it first, then restore or remove it.",
   },
   "settings.mobileSettings.networkDiagnostic.mappingChanged": {
-    "zh-CN": "映射已被外部更改。本应用不会覆盖或删除它；请在 Tailscale 核对配置后重试。",
+    "zh-CN": "映射已被外部修改，本应用不会覆盖，请在 Tailscale 检查后重试。",
     en: "The mapping was changed outside this app. It will not be overwritten or deleted. Check the configuration in Tailscale, then try again.",
   },
   "settings.mobileSettings.networkDiagnostic.mappingAbsent": {
@@ -1784,7 +1783,7 @@ export const remoteMessages = {
     en: "The Remote entry is offline. Enable Remote on this page first.",
   },
   "settings.mobileSettings.networkDiagnostic.networkChanged": {
-    "zh-CN": "Host 网络身份、登录或 HTTPS 状态已变化。请重新检测并核对映射。",
+    "zh-CN": "本机网络身份、登录或 HTTPS 状态已变化，请重新检测映射。",
     en: "The host network identity, sign-in, or HTTPS status has changed. Check again and review the mapping.",
   },
   "settings.mobileSettings.networkDiagnostic.cleanupPending": {
@@ -1792,7 +1791,7 @@ export const remoteMessages = {
     en: "Mapping removal is incomplete. The entry is not published. Check Tailscale, then try removing it again.",
   },
   "settings.mobileSettings.networkDiagnostic.reconciliationRequired": {
-    "zh-CN": "映射操作尚待核对。请明确确认恢复或移除。",
+    "zh-CN": "映射操作尚待确认，请明确选择恢复或移除。",
     en: "The mapping operation needs review. Confirm whether to restore or remove it.",
   },
   "settings.mobileSettings.networkDiagnostic.persistenceFailed": {
@@ -1821,27 +1820,27 @@ export const remoteMessages = {
     en: "Enter an integer HTTPS port from 1 to 65535.",
   },
   "settings.mobileSettings.networkLogin.loggedIn": {
-    "zh-CN": "Host 已登录；手机状态未验证。",
+    "zh-CN": "本机已登录；手机状态尚未验证。",
     en: "The host is signed in. Phone access has not been verified.",
   },
   "settings.mobileSettings.networkLogin.notLoggedIn": {
-    "zh-CN": "Host 尚未登录。请在 Tailscale 中登录后重新检测。",
+    "zh-CN": "本机尚未登录，请在 Tailscale 登录后重新检测。",
     en: "The host is not signed in. Sign in through Tailscale, then check again.",
   },
   "settings.mobileSettings.networkLogin.approvalRequired": {
-    "zh-CN": "Host 需要管理员批准。请在 Tailscale 完成后重新检测。",
+    "zh-CN": "本机需要管理员批准，请在 Tailscale 完成后重新检测。",
     en: "The host requires administrator approval. Complete approval in Tailscale, then check again.",
   },
   "settings.mobileSettings.networkLogin.stopped": {
-    "zh-CN": "Host 的 Tailscale 已停止。请启动本机 Tailscale 服务后重新检测。",
+    "zh-CN": "本机 Tailscale 已停止，请启动服务后重新检测。",
     en: "Tailscale is stopped on the host. Start the local Tailscale service, then check again.",
   },
   "settings.mobileSettings.networkLogin.starting": {
-    "zh-CN": "Host 的 Tailscale 正在启动。请稍后重新检测。",
+    "zh-CN": "本机 Tailscale 正在启动，请稍后重新检测。",
     en: "Tailscale is starting on the host. Check again shortly.",
   },
   "settings.mobileSettings.networkLogin.unknown": {
-    "zh-CN": "无法确认 Host 的 Tailscale 登录状态。请在本机检查后重新检测。",
+    "zh-CN": "无法确认本机 Tailscale 登录状态，请检查后重新检测。",
     en: "The host Tailscale sign-in status could not be confirmed. Check it on this computer, then try again.",
   },
   "settings.trajectorySettings.recordStatus.pending": {
@@ -1913,16 +1912,12 @@ export const remoteMessages = {
     en: "{value0, plural, one {# turn with reported usage} other {# turns with reported usage}}",
   },
   "settings.usageDashboard.skillCount": {
-    "zh-CN": "{value0, number} 个技能",
+    "zh-CN": "{value0, number} 个 Skills",
     en: "{value0, plural, one {# skill} other {# skills}}",
   },
   "settings.usageDashboard.calendarDaySummary": {
     "zh-CN": "{value0}，使用 {value1}，{value2, number} Token，{value3, number} 次 Skills 调用",
     en: "{value0}, used for {value1}, {value2, plural, one {# token} other {# tokens}}, {value3, plural, one {# skill call} other {# skill calls}}",
-  },
-  "settings.serviceStatusSettings.connectedSummary": {
-    "zh-CN": "已连接 · {value0, number} 个窗口 · {value1, number} 个处理中请求",
-    en: "Connected · {value0, plural, one {# window} other {# windows}} · {value1, plural, one {# request in progress} other {# requests in progress}}",
   },
   "settings.serviceStatusSettings.workspaceActivity": {
     "zh-CN": "活动轮次 {value0, number} · 持续目标 {value1, number} · 任务 {value2, number}",
@@ -2021,11 +2016,11 @@ export const remoteMessages = {
     en: "“{device}” wants to connect",
   },
   "settings.mobileConnect.requestDescription": {
-    "zh-CN": "核对后才能访问你选择的项目。",
+    "zh-CN": "确认后即可访问你选择的项目。",
     en: "It can access only the projects you choose after you review it.",
   },
   "settings.mobileConnect.reviewRequest": {
-    "zh-CN": "核对并授权",
+    "zh-CN": "确认并授权",
     en: "Review",
   },
   "settings.mobileConnect.devices": {
@@ -2133,7 +2128,7 @@ export const remoteMessages = {
     en: "Scan",
   },
   "settings.mobileConnect.stepReview": {
-    "zh-CN": "核对",
+    "zh-CN": "确认",
     en: "Review",
   },
   "settings.mobileConnect.stepDone": {
@@ -2180,6 +2175,14 @@ export const remoteMessages = {
     "zh-CN": "可以访问的项目",
     en: "Projects it can access",
   },
+  "settings.mobileConnect.allProjects": {
+    "zh-CN": "全部项目（自动包含后续新增项目）",
+    en: "All projects (automatically includes future projects)",
+  },
+  "settings.mobileConnect.allProjectsShort": {
+    "zh-CN": "全部项目",
+    en: "All projects",
+  },
   "settings.mobileConnect.viewOnlyDescription": {
     "zh-CN": "看会话和进度",
     en: "See conversations and progress",
@@ -2207,5 +2210,21 @@ export const remoteMessages = {
   "settings.mobileConnect.connected": {
     "zh-CN": "已连接",
     en: "Connected",
+  },
+  "settings.mobileConnect.pendingOperationTitle": {
+    "zh-CN": "上次手机连接操作结果尚未确认",
+    en: "Last mobile connection change is unconfirmed",
+  },
+  "settings.mobileConnect.pendingOperationDescription": {
+    "zh-CN": "原请求 {requestId}… 仍在确认，完成前无法发起新的手机连接更改。",
+    en: "Request {requestId}… is still being confirmed. Wait before starting another mobile connection change.",
+  },
+  "settings.mobileConnect.checkPendingOperation": {
+    "zh-CN": "检查上次操作",
+    en: "Check last action",
+  },
+  "settings.relayService.useSuggestedHost": {
+    "zh-CN": "改用 {host}",
+    en: "Use {host}",
   },
 } as const;

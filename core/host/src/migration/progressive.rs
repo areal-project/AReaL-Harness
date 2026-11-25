@@ -161,16 +161,10 @@ impl Migration {
             );
             self.validate_bindings(r, existing)?;
             for suffix in ["pending", "outcomes"] {
-                self.fence_file(
-                    r,
-                    &format!("{}-{suffix}.json", binding.alias.legacy_project_id),
-                )?;
+                self.fence_file(r, &binding.alias.submission_file(suffix))?;
             }
             let outcomes = self
-                .original_json(
-                    r,
-                    &format!("{}-outcomes.json", binding.alias.legacy_project_id),
-                )?
+                .original_json(r, &binding.alias.submission_file("outcomes"))?
                 .unwrap_or_else(|| json!({}));
             journal.import(&binding.project_id, outcomes)?;
             for adoption in &adoptions {

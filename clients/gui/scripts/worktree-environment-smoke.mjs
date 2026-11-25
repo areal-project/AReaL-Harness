@@ -13,13 +13,19 @@ import {
   assertApplicationStopped,
   cleanupSyntheticHostKeychain,
   closeSmokeApplication,
+  readFixtureHost,
+  stopFixtureHost,
 } from "./application-cleanup.mjs";
 import { captureSmokeFailure, createProjectConversation } from "./smoke-navigation.mjs";
+
+import { fixtureWorkbench } from "./support/desktop-fixture.mjs";
+import { readCoreThread } from "./support/core-observation.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
+const { HostClient } = require("@areal/client/node");
 const execFileAsync = promisify(execFile);
 const scratch = await makeTempDir("areal-worktree-environment-");
 const rust = process.argv.includes("--rust");
@@ -167,9 +173,10 @@ const server = createServer(async (request, response) => {
   }
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+const modelConfig = join(userHome, ".areal/config.toml");
 await writeFile(
-  join(userHome, ".areal/config.toml"),
-  `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[permissions]\nmode="ASK_PERMISSIONS"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\n`,
+  modelConfig,
+  `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[permissions]\nmode="ASK_PERMISSIONS"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`,
 );
 const binary = process.env.AREAL_GUI_EXECUTABLE
   ? resolve(dirname(process.env.AREAL_GUI_EXECUTABLE), "../Resources/areal-core/bin/areal")
@@ -178,7 +185,7 @@ const sha256 = (data) => createHash("sha256").update(data).digest("hex");
 const binaryHash = sha256(await readFile(binary));
 const sourceFiles = [
   "scripts/worktree-environment-smoke.mjs",
-  "../../services/workbench/src/desktop/core/worktrees.cjs",
+  "../../core/host/src/worktree_catalog.rs",
   "packages/workspace-git/worktrees.js",
   "renderer/src/WorktreeStarter.tsx",
   "renderer/src/WorktreeStatus.tsx",
@@ -200,7 +207,9 @@ const hashSources = async () =>
 const source = {
   commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
   status: execFileSync("git", ["status", "--short"], { cwd: root, encoding: "utf8" }),
-  diffSha256: sha256(execFileSync("git", ["diff", "--binary", "HEAD"], { cwd: root })),
+  diffSha256: sha256(
+    execFileSync("git", ["diff", "--binary", "HEAD"], { cwd: root, maxBuffer: 32 * 1024 * 1024 }),
+  ),
   hashes: await hashSources(),
 };
 const env = { ...process.env };
@@ -208,6 +217,7 @@ for (const key of Object.keys(env))
   if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
 Object.assign(env, {
   AREAL_CORE_USER_HOME: userHome,
+  AREAL_CORE_CONFIG: modelConfig,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
@@ -221,6 +231,34 @@ env.NO_PROXY = env.no_proxy = [env.NO_PROXY, env.no_proxy, "127.0.0.1", "localho
 const button = (name) => page.getByRole("button", { name, exact: true });
 const state = () => page.evaluate(() => window.arealDesktop.snapshot());
 const project = (snapshot) => snapshot.projects.find((item) => item.root === workspace);
+const worktreeDirectory = () =>
+  fixtureWorkbench(page, "worktree.read", { operation: "worktreeList" });
+
+function observeHostCapacity(page) {
+  page.on("websocket", (socket) => {
+    if (!new URL(socket.url()).pathname.endsWith("/host/socket")) return;
+    const pending = new Map();
+    socket.on("framesent", ({ payload }) => {
+      if (typeof payload !== "string") return;
+      const frame = JSON.parse(payload);
+      if (typeof frame.id !== "string" || typeof frame.method !== "string") return;
+      const operation = frame.params?.operation ?? frame.params?.request?.operation;
+      pending.set(frame.id, {
+        method: frame.method,
+        ...(typeof operation === "string" ? { operation } : {}),
+      });
+    });
+    socket.on("framereceived", ({ payload }) => {
+      if (typeof payload !== "string") return;
+      const frame = JSON.parse(payload);
+      const rejected = pending.get(frame.id);
+      pending.delete(frame.id);
+      if (rejected && frame.error?.code === "CAPACITY_EXCEEDED")
+        record("host-capacity-rejected", { rejected, pending: [...pending.values()] });
+    });
+  });
+}
+
 async function until(predicate, label, timeout = 45000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -229,6 +267,31 @@ async function until(predicate, label, timeout = 45000) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(`Timeout waiting for ${label}`);
+}
+async function stopOwnedApplication(label) {
+  if (!app) return assertApplicationStopped(binary, env, null);
+  const application = app;
+  app = null;
+  const pid = application.process().pid;
+  const host = await readFixtureHost(env);
+  const directory = join(evidence, label);
+  await mkdir(directory);
+  let receipt;
+  try {
+    await application.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 0 });
+    });
+    if (host) receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, directory);
+  } finally {
+    await closeSmokeApplication(application);
+    await assertApplicationStopped(binary, env, { pid, hostPid: host?.pid });
+  }
+  stoppedServices.push({
+    pid,
+    hostPid: host?.pid,
+    stopRequestId: receipt?.requestId,
+    stopped: true,
+  });
 }
 async function shot(name) {
   const path = join(evidence, `${name}.png`);
@@ -326,6 +389,10 @@ async function draftText() {
   return page.getByTestId("chat-input").innerText();
 }
 async function sendDraft(text) {
+  await page.getByTestId("composer-model-trigger").click();
+  await page.getByRole("tab", { name: "fixture", exact: true }).click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
+  await page.keyboard.press("Escape");
   await page.getByTestId("chat-input").fill(text);
   await button("发送").click();
   record("send-clicked", { text });
@@ -346,6 +413,7 @@ try {
     logWrites.push(writeFile(join(evidence, "electron.stderr.log"), data, { flag: "a" }));
   });
   page = await app.firstWindow();
+  observeHostCapacity(page);
   page.setDefaultTimeout(20000);
   page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
@@ -365,20 +433,7 @@ try {
         ["backend", "library", "tasks", "worktree", ...domains].join(","),
       );
     }, rustDomains);
-    const stop = JSON.parse(
-      execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
-        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
-        encoding: "utf8",
-      }),
-    );
-    assert.equal(stop.state, "completed");
-    assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
-    await writeFile(join(evidence, "rust-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
-    await app.evaluate(({ dialog }) => {
-      dialog.showMessageBox = async () => ({ response: 0 });
-    });
-    await closeSmokeApplication(app);
-    await assertApplicationStopped(binary, env, null);
+    await stopOwnedApplication("rust-bootstrap-stop");
     app = await electron.launch({
       executablePath: process.env.AREAL_GUI_EXECUTABLE || require("electron"),
       args: process.env.AREAL_GUI_EXECUTABLE ? [] : [join(gui, "app")],
@@ -392,6 +447,7 @@ try {
       logWrites.push(writeFile(join(evidence, "electron.stderr.log"), data, { flag: "a" }));
     });
     page = await app.firstWindow();
+    observeHostCapacity(page);
     page.setDefaultTimeout(20000);
     page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
     await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
@@ -415,11 +471,23 @@ try {
   }, workspace);
   await button("不在项目中工作").click();
   await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
-  await until(
-    async () => project(await state())?.state?.connected,
-    "real Core project connection",
-    120000,
-  );
+  const host = new HostClient();
+  try {
+    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    await until(
+      async () => {
+        const matches = (await host.status()).projects.filter(
+          ({ registration }) => registration.workspace === workspace,
+        );
+        assert.ok(matches.length <= 1, "the exact fixture workspace has one Core owner");
+        return matches[0]?.service?.state === "ready";
+      },
+      "real Core project connection",
+      120000,
+    );
+  } finally {
+    host.close();
+  }
   await button("设置").click();
   await button("常规").click();
   const predictions = page.getByRole("switch", { name: "预测下一条提示词", exact: true });
@@ -572,7 +640,7 @@ try {
   checks.push(
     "Selected branch creates on first Send, real shell setup gates submission, Core reads the resulting marker and the ready conversation shows a GitFork sidebar badge",
   );
-  await page.getByRole("button", { name: /^Worktree 分支 / }).click();
+  await page.getByRole("button", { name: /^工作树分支 / }).click();
   await button("Write acceptance marker").click();
   await until(
     async () => (await textFile(join(happyPath, "action.txt"))) === "ACTION_OK",
@@ -588,7 +656,9 @@ try {
   await sendDraft(failedDraft);
   await until(
     async () =>
-      project(await state())?.worktreeOperations?.some((operation) => operation.state === "failed"),
+      (await worktreeDirectory()).worktrees.some(
+        (operation) => operation.projectId === logicalProjectId && operation.state === "failed",
+      ),
     "failed setup receipt",
     90000,
   );
@@ -656,22 +726,30 @@ try {
     "explicit source prompt after cancellation",
     90000,
   );
-  const sourceState = await until(async () => {
-    const current = project(await state());
-    return (
-      Object.values(current.state.threads).some((thread) =>
-        thread.turns?.some((turn) => JSON.stringify(turn).includes("WORKTREE_ACCEPTANCE_SOURCE")),
-      ) && current
-    );
-  }, "source thread projection");
-  const sourceThread = Object.values(sourceState.state.threads).find((thread) =>
-    thread.turns?.some((turn) => JSON.stringify(turn).includes("WORKTREE_ACCEPTANCE_SOURCE")),
+  const workbench = page.getByTestId("areal-workbench");
+  const sourceThreadId = await until(
+    () => workbench.getAttribute("data-thread-id"),
+    "original checkout thread is selected",
   );
+  const sourceThread = await readCoreThread({
+    binary,
+    env,
+    gui,
+    workspace,
+    threadId: sourceThreadId,
+  });
+  assert.equal(sourceThread.cwd, workspace);
   assert.ok(
-    sourceThread && !sourceThread.worktree,
-    "explicit fallback binds the source checkout without a worktree badge",
+    sourceThread.turns.some((turn) => JSON.stringify(turn).includes("WORKTREE_ACCEPTANCE_SOURCE")),
   );
-  assert.equal(sourceThread.executionProjectId, sourceState.id);
+  assert.equal(await workbench.getAttribute("data-project-id"), logicalProjectId);
+  assert.equal(
+    await page
+      .getByTestId(`task-item-${sourceThreadId}`)
+      .getByTestId("task-worktree-badge")
+      .count(),
+    0,
+  );
   assert.ok(
     worktrees().includes(retainedPath),
     "the cancelled worktree remains available for inspection",
@@ -721,25 +799,22 @@ try {
     .waitFor({ timeout: 120000 });
   const operation = await until(
     async () =>
-      project(await state())?.worktreeOperations?.find(
-        (item) => item.record?.directory === cleanPath && item.state === "ready",
+      (await worktreeDirectory()).worktrees.find(
+        (item) =>
+          item.projectId === logicalProjectId &&
+          item.directory === cleanPath &&
+          item.state === "ready",
       ),
     "clean worktree receipt",
   );
   await openWorktreeSettings("常规");
   const directories = page.locator(".worktrees-directory-item");
   const directoryCount = await until(async () => {
-    const reply = await page.evaluate(
-      ({ projectId }) =>
-        window.arealDesktop.command("workspace", { operation: "worktreeList", projectId }),
-      { projectId: logicalProjectId },
-    );
+    const { worktrees } = await worktreeDirectory();
     return (
-      reply.ok &&
-      reply.value.worktrees.some(
+      worktrees.some(
         (item) => item.requestId === operation.requestId && item.directory === cleanPath,
-      ) &&
-      reply.value.worktrees.filter((item) => !item.deleted).length
+      ) && worktrees.filter((item) => !item.deleted).length
     );
   }, "clean worktree in directory listing");
   await until(async () => (await directories.count()) >= directoryCount, "directory rows rendered");
@@ -770,7 +845,6 @@ try {
     "Deleting a clean worktree through General settings removes its Git registration and directory",
   );
   if (rust) {
-    const { HostClient } = require("@areal/client/node");
     const host = new HostClient();
     let sourceId;
     try {
@@ -873,21 +947,8 @@ try {
 } finally {
   if (preparedWorktree)
     await writeFile(join(preparedWorktree, ".acceptance-release"), "release for cleanup\n");
-  const metadata = await readFile(join(scratch, "core/service.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
   try {
-    if (app) {
-      await app.evaluate(({ dialog }) => {
-        dialog.showMessageBox = async () => ({ response: 1 });
-      });
-      await closeSmokeApplication(app);
-    }
-    await assertApplicationStopped(binary, env, metadata);
-    stoppedServices.push({ pid: metadata?.pid, stopped: true });
+    await stopOwnedApplication("final-stop");
   } catch (error) {
     errors.push(`cleanup: ${error.stack ?? error}`);
     passed = false;
@@ -895,15 +956,6 @@ try {
   }
   if (rust) {
     try {
-      const stop = JSON.parse(
-        execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
-          env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
-          encoding: "utf8",
-        }),
-      );
-      await writeFile(join(evidence, "rust-final-stop.json"), JSON.stringify(stop, null, 2));
-      assert.equal(stop.state, "completed");
-      assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
       const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scratch);
       await writeFile(
         join(evidence, "synthetic-keychain-cleanup.json"),

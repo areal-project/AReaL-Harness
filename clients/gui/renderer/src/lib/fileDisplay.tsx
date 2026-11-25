@@ -5,9 +5,6 @@ import {
   normalizePath,
   trimTrailingSeparator,
   resolveIconName,
-  getIconPalette,
-  getIconLabel,
-  buildInlineSvgDataUrl,
 } from "@/lib/fileDisplayHelpers.js";
 
 export const INLINE_FALLBACK_FILE_ICON_SRC =
@@ -257,10 +254,21 @@ export function FileDisplayIcon({
   // The built-in Markdown type glyph is shared by review, file tree and tabs.
   // Its color follows the UI theme, independently of Git status or code themes.
   if (fileIconSrc.endsWith("/markdown.svg")) {
-    return <svg data-file-icon="markdown" width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" className={className}
-      style={{ color: "light-dark(#199f43, #5ecc71)" }}>
-      <path fill="currentColor" d="M1 12V4h2l2 2.5L7 4h2v8H7V7.5l-2 2-2-2V12zm9-3 3 3.5L16 9h-2V4h-2v5z" />
-    </svg>;
+    return (
+      <svg
+        data-file-icon="markdown"
+        width={size}
+        height={size}
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+        className={className ? `${className} text-success` : "text-success"}
+      >
+        <path
+          fill="currentColor"
+          d="M1 12V4h2l2 2.5L7 4h2v8H7V7.5l-2 2-2-2V12zm9-3 3 3.5L16 9h-2V4h-2v5z"
+        />
+      </svg>
+    );
   }
   return (
     <img

@@ -47,6 +47,7 @@ pub(super) fn map_error(error: Error) -> RpcError {
         && let Some(code) = [
             "CREDENTIAL_UNAVAILABLE",
             "MODEL_CREDENTIAL_UNAVAILABLE",
+            "EXECUTION_CONFIGURATION_UNAVAILABLE",
             "UNSUPPORTED_PROFILE",
             "MODEL_REASONING_EFFORT_UNSUPPORTED",
         ]
@@ -122,6 +123,18 @@ mod tests {
         assert_eq!(
             error.data.as_ref().unwrap()["reason"],
             "INPUT_LIMIT_EXCEEDED"
+        );
+        assert_eq!(error.data.as_ref().unwrap()["outcome"]["kind"], "rejected");
+    }
+
+    #[test]
+    fn execution_configuration_rejection_has_a_public_reason() {
+        let error = map_error(Error::Rejected(Box::new(Error::Invalid(
+            "EXECUTION_CONFIGURATION_UNAVAILABLE: private configuration details".into(),
+        ))));
+        assert_eq!(
+            error.data.as_ref().unwrap()["reason"],
+            "EXECUTION_CONFIGURATION_UNAVAILABLE"
         );
         assert_eq!(error.data.as_ref().unwrap()["outcome"]["kind"], "rejected");
     }

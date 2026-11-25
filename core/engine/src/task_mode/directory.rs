@@ -123,6 +123,7 @@ impl PreparedTask {
             })
             .map(|r| OwnerNoticeFact {
                 kind: OwnerNoticeKind::TaskCompleted,
+                turn_id: None,
                 task_id: Some(task.id.clone()),
                 run_id: Some(r.id.clone()),
                 thread_id: r.thread_id.clone(),
@@ -183,6 +184,7 @@ fn validate_attention(rows: &[OwnerAttention]) -> Result<()> {
 }
 fn notice(row: &OwnerAttention) -> OwnerNoticeFact {
     OwnerNoticeFact {
+        turn_id: None,
         kind: if row.kind == OwnerAttentionKind::AsyncQuestion {
             OwnerNoticeKind::QuestionPending
         } else {
@@ -244,6 +246,33 @@ pub(crate) struct OwnerDirectory {
     events: broadcast::Sender<Arc<OwnerInvalidation>>,
 }
 impl OwnerDirectory {
+    pub(crate) fn publish_turn_completion(&self, thread: &Thread, turn: &Turn) {
+        if turn.goal.is_some() || thread.goal_owner.is_some() {
+            return;
+        }
+        let mut state = self.state.lock().unwrap();
+        self.emit(
+            &mut state,
+            vec![],
+            vec![],
+            vec![OwnerNoticeFact {
+                kind: OwnerNoticeKind::TurnCompleted,
+                turn_id: Some(turn.id.clone()),
+                task_id: None,
+                run_id: None,
+                thread_id: Some(thread.id.clone()),
+                question_id: None,
+                interaction_id: None,
+                interaction_kind: None,
+                objective_preview: bounded(
+                    thread.name.as_deref().unwrap_or("打开任务查看详情"),
+                    200,
+                ),
+                expires_at: None,
+            }],
+        );
+    }
+
     pub(super) fn new(snapshot: &Snapshot) -> Result<Self> {
         let owner = Self {
             state: std::sync::Mutex::new(View {

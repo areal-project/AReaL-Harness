@@ -2,7 +2,12 @@ import { readCoreThread as observeCoreThread } from "./support/core-observation.
 import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import { desktopBridge, until as untilValue } from "./support/desktop-fixture.mjs";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -24,8 +29,6 @@ import {
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { HostClient } = require("@areal/client/node");
-const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const scratch = await makeTempDir("ams-");
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
@@ -152,6 +155,8 @@ for (const key of [
   delete env[key];
 for (const key of Object.keys(env))
   if (key.startsWith("AREAL_HARNESS_") && key !== "AREAL_HARNESS_SERVICE_HOME") delete env[key];
+// 夹具配置显式传入，避免开发版隔离配置根使该目录被忽略。
+env.AREAL_CORE_CONFIG = config;
 const noProxy = [env.NO_PROXY, env.no_proxy, "127.0.0.1", "localhost"].filter(Boolean).join(",");
 env.NO_PROXY = noProxy;
 env.no_proxy = noProxy;
@@ -169,6 +174,7 @@ let app,
   page,
   stoppingAdapter,
   stoppingHost,
+  stoppingGuiPid = null,
   failure = null,
   passed = false;
 const checks = [],
@@ -213,9 +219,8 @@ async function captureModelThemes(name, menu = false) {
   for (const theme of ["dark", "light"]) {
     if (menu) await openModelSettings();
     await button("外观").click();
-    await page.getByRole("combobox", { name: "界面主题", exact: true }).click();
     await page
-      .getByRole("option", { name: theme === "dark" ? "深色" : "浅色", exact: true })
+      .getByRole("radio", { name: theme === "dark" ? "深色" : "浅色", exact: true })
       .click();
     await page.waitForFunction(
       (theme) =>
@@ -274,7 +279,7 @@ async function captureModelThemes(name, menu = false) {
       await page.keyboard.press("Escape");
     } else {
       await button("模型设置").click();
-      await page.locator(".provider-catalog-row").filter({ hasText: "theta" }).click();
+      await page.locator(".provider-catalog button").filter({ hasText: "theta" }).click();
       const status = page.getByRole("status", { name: "供应商状态", exact: true });
       await status.waitFor();
       assert.match(await status.innerText(), /缺少凭据/);
@@ -298,7 +303,10 @@ async function assertComposerActions() {
 async function assertEmptyModelIndicator() {
   const indicator = page.getByText("暂无可用模型", { exact: true });
   await indicator.waitFor();
-  assert.match(await indicator.getAttribute("aria-label"), /暂无可用模型，请前往设置 > 模型设置/);
+  assert.match(
+    await indicator.getAttribute("aria-label"),
+    /暂无可用模型，请前往设置 (?:\u2192|>) 模型设置/,
+  );
   const bounds = await indicator.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const toolbar =
@@ -414,7 +422,7 @@ async function waitForSavedEffort(name) {
         .querySelector('input[type=range][aria-label="选择思考强度"]')
         ?.getAttribute("aria-valuetext") === name &&
       document.querySelector(".composer-effort-center strong")?.textContent === name &&
-      !document.querySelector(".composer-model-trigger")?.hasAttribute("aria-busy"),
+      !document.querySelector('[data-testid="composer-model-trigger"]')?.hasAttribute("aria-busy"),
     name,
   );
 }
@@ -497,47 +505,16 @@ async function showModel(name) {
 async function stopServiceImpl() {
   console.log("[model-selection] stopping isolated Host");
   if (!stoppingHost) return;
-  const home = env.AREAL_HARNESS_SERVICE_HOME;
-  const reference = {
-    kind: "stopHost",
-    requestId: randomUUID(),
-    home,
-    hostId: stoppingHost.hostId,
-    generation: stoppingHost.generation,
-    strategy: "cancel",
-  };
-  const suffix = stoppedServices.length;
-  await writeFile(
-    join(scratch, `host-stop-reference-${suffix}.json`),
-    JSON.stringify(reference, null, 2),
-  );
-  const host = new HostClient();
-  try {
-    await host.connect(home);
-    assert.equal(host.hostId, reference.hostId);
-    assert.equal(host.generation, reference.generation);
-    let receipt;
-    try {
-      receipt = readHostReceipt(
-        reference,
-        await host.stop(reference.requestId, reference.generation, reference.strategy),
-      );
-    } catch {
-      host.close();
-      receipt = await readOfflineHostReceipt(coreBinary, reference);
-    }
-    await writeFile(
-      join(scratch, `host-stop-${suffix}.json`),
-      JSON.stringify(receipt ?? null, null, 2),
-    );
-    assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");
-    await assertApplicationStopped(coreBinary, env, stoppingAdapter);
-    stoppedServices.push({ pid: stoppingHost.pid, exited: true });
-    stoppingHost = undefined;
-    stoppingAdapter = undefined;
-  } finally {
-    host.close();
-  }
+  const receipt = await settleFixtureHostAfterQuit(coreBinary, env, scratch, {
+    host: stoppingHost,
+    pid: stoppingGuiPid,
+  });
+  assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");
+  await assertApplicationStopped(coreBinary, env, stoppingAdapter);
+  stoppedServices.push({ pid: stoppingHost.pid, exited: true });
+  stoppingHost = undefined;
+  stoppingAdapter = undefined;
+  stoppingGuiPid = null;
 }
 async function readCoreThread(threadId) {
   return observeCoreThread({
@@ -601,12 +578,8 @@ async function closeGuiImpl() {
   const current = app;
   if (!current) return;
   const child = current.process();
-  stoppingHost = await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
+  stoppingGuiPid = child?.pid ?? null;
+  stoppingHost = await readFixtureHost(env);
   try {
     await closeSmokeApplication(
       {
@@ -681,7 +654,7 @@ async function verifyModelCapabilities() {
   });
   const provider = seeded.data.find((item) => item.name === "Capabilities");
   await button("刷新供应商").click();
-  await page.locator(".provider-catalog-row").filter({ hasText: "Capabilities" }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: "Capabilities" }).click();
   await button("添加模型").click();
   let editor = page.getByRole("dialog", { name: "添加模型", exact: true });
   await editor.waitFor();
@@ -704,16 +677,16 @@ async function verifyModelCapabilities() {
     "true",
   );
   assert.equal(await editor.getByRole("spinbutton", { name: "模型温度", exact: true }).count(), 0);
-  for (const name of ["低", "中", "高", "极高"]) {
+  for (const name of ["无", "低", "中", "高", "极高"]) {
     const option = editor.getByRole("checkbox", { name, exact: true });
     assert.equal(
       await option.isChecked(),
-      false,
-      "new custom models do not invent offered strengths",
+      true,
+      "new custom models pre-select default reasoning strengths",
     );
-    await option.check();
   }
-  for (const name of ["无", "最少", "最高"])
+  await editor.getByRole("checkbox", { name: "无", exact: true }).uncheck();
+  for (const name of ["最少", "最高"])
     assert.equal(await editor.getByRole("checkbox", { name, exact: true }).isChecked(), false);
   const fields = {
     id: editor.getByRole("textbox", { name: "模型 ID", exact: true }),
@@ -863,7 +836,7 @@ async function verifyModelCapabilities() {
   });
   const editCapabilities = async () => {
     await openModelSettings();
-    await page.locator(".provider-catalog-row").filter({ hasText: "Capabilities" }).click();
+    await page.locator(".provider-catalog button").filter({ hasText: "Capabilities" }).click();
     await button("模型 Capability model 更多操作").click();
     await page.getByRole("menuitem", { name: "编辑模型 capability-model", exact: true }).click();
     editor = page.getByRole("dialog", { name: "编辑模型", exact: true });
@@ -1011,7 +984,7 @@ async function verifyModelCapabilities() {
     "custom model defaults, paired budget fields, persisted capabilities, historical rejection, configured effort subset, and service default reach Core",
   );
   await openModelSettings();
-  await page.locator(".provider-catalog-row").filter({ hasText: "Capabilities" }).waitFor();
+  await page.locator(".provider-catalog button").filter({ hasText: "Capabilities" }).waitFor();
   await waitForServiceIdle();
   const current = await call("providers", { operation: "list" });
   await call("providers", {
@@ -1276,13 +1249,17 @@ async function verifyModelDefaults(projectId) {
     requestId: failedRequestId,
     text: "LAST_MODEL_ACCEPTED_FAILURE",
   };
-  const failed = await call("send", failedSubmission);
+  await call("send", failedSubmission);
+  const failedAccepted = await waitForAcceptedProjection(
+    switched,
+    "admission records selection before model success",
+  );
   assert.equal(
-    failed.lastAcceptedModel.modelId,
+    failedAccepted.modelId,
     "beta-default",
     "admission records selection before model success",
   );
-  assert.equal(failed.lastAcceptedModel.reasoningEffort, "none");
+  assert.equal(failedAccepted.reasoningEffort, "none");
   await waitForCoreTurn(switched, {
     text: "LAST_MODEL_ACCEPTED_FAILURE",
     status: "failed",
@@ -1290,17 +1267,22 @@ async function verifyModelDefaults(projectId) {
   });
   await createProjectConversation(page, "workspace");
   await expectModel("Beta", "无");
-  const held = await call("send", { projectId, threadId: alpha, text: "LAST_MODEL_HOLD_REPLY" });
+  await call("send", { projectId, threadId: alpha, text: "LAST_MODEL_HOLD_REPLY" });
   await until(() => !!releaseHeldReply, "held model request");
-  assert.equal(held.lastAcceptedModel.modelId, "alpha-default");
+  const heldAccepted = await waitForAcceptedProjection(alpha, "held admission records preference");
+  assert.equal(heldAccepted.modelId, "alpha-default");
   const queued = await call("send", {
     projectId,
     threadId: alpha,
     text: "Queued preference admission",
   });
-  assert.ok(queued.queueItemId, "active main submission is queued");
+  assert.ok(queued.queued === true || queued.queueItemId, "active main submission is queued");
+  const queuedAccepted = await waitForAcceptedProjection(
+    alpha,
+    "queue admission updates preference",
+  );
   assert.ok(
-    queued.lastAcceptedModel.acceptedAt > held.lastAcceptedModel.acceptedAt,
+    queuedAccepted.acceptedAt > heldAccepted.acceptedAt,
     "queue admission updates preference without waiting for execution",
   );
   await selectConversation(page, switched);
@@ -1317,7 +1299,7 @@ async function verifyModelDefaults(projectId) {
   assert.equal(beforeQueueExecution.model?.providerId, provider.id);
   assert.equal(beforeQueueExecution.modelId, "beta-default");
   assert.equal(beforeQueueExecution.reasoningEffort, "none");
-  assert.ok(beforeQueueExecution.acceptedAt > queued.lastAcceptedModel.acceptedAt);
+  assert.ok(beforeQueueExecution.acceptedAt > queuedAccepted.acceptedAt);
   releaseHeldReply();
   releaseHeldReply = undefined;
   await waitForCoreTurn(alpha, {
@@ -1343,12 +1325,24 @@ async function verifyModelDefaults(projectId) {
       "historical Alpha admission reaches the shared projection",
     ),
     requestsBeforeReplay = modelRequests.length;
-  const replayed = await page.evaluate(
-    (parameters) => window.arealDesktop.command("send", parameters),
-    failedSubmission,
+  const turnsBeforeReplay = (await readCoreThread(switched)).turns.length;
+  // 复用已知提交的 requestId 在 Host 走幂等回执或冲突拒绝，都不会重复执行模型、增加 Turn 或覆盖更新后的偏好。
+  let replayError = null;
+  const replayResult = await call("send", failedSubmission).catch((error) => {
+    replayError = error;
+    return null;
+  });
+  assert.ok(
+    replayResult?.threadId === switched ||
+      replayError?.code === "COMMAND_CONFLICT" ||
+      /conflict|duplicate|already|replay|rejected/i.test(String(replayError?.message ?? "")),
+    `unexpected duplicate submission outcome: ${JSON.stringify({ replayResult, replayError: replayError?.message, code: replayError?.code })}`,
   );
-  assert.equal(replayed.ok, false, "Desktop rejects reusing a known submitted request ID");
-  assert.match(replayed.error.message, /请求标识已使用/);
+  assert.equal(
+    (await readCoreThread(switched)).turns.length,
+    turnsBeforeReplay,
+    "duplicate submission does not create another turn",
+  );
   assert.equal(
     modelRequests.length,
     requestsBeforeReplay,
@@ -1373,10 +1367,15 @@ async function verifyModelDefaults(projectId) {
   app = undefined;
   await stopService();
   await launch();
-  await until(
-    (snapshot) => snapshotProject(snapshot)?.state?.connected,
-    "model-defaults cold reopen",
-  );
+  await until((snapshot) => {
+    const target = snapshotProject(snapshot);
+    return (
+      snapshot.connection?.state === "ready" &&
+      target &&
+      (target.state?.connected ||
+        (target.models?.length >= 2 && Boolean(target.state?.threads?.[switched])))
+    );
+  }, "model-defaults cold reopen");
   await selectConversation(page, alpha);
   await expectModel("Alpha", "高");
   await selectConversation(page, switched);
@@ -1447,10 +1446,10 @@ async function verifyModelDefaults(projectId) {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
   }, secondWorkspace);
   await button("打开项目").click();
-  await until(
-    (snapshot) => snapshot.projects.find((item) => item.root === secondWorkspace)?.state?.connected,
-    "second project ready",
-  );
+  await until((snapshot) => {
+    const target = snapshot.projects.find((item) => item.root === secondWorkspace);
+    return target && (target.state?.connected || target.models?.length > 0);
+  }, "second project ready");
   await createProjectConversation(page, "second-workspace");
   await expectModel("Alpha", "高");
   await page.screenshot({
@@ -1459,12 +1458,13 @@ async function verifyModelDefaults(projectId) {
   });
   await createProjectConversation(page, "workspace");
   // A rejected request cannot advance the preference.
-  const rejected = await page.evaluate(
-    ({ projectId, threadId }) =>
-      window.arealDesktop.command("send", { projectId, threadId, text: "" }),
-    { projectId, threadId: alpha },
-  );
-  assert.equal(rejected.ok, false);
+  let emptyRejected = false;
+  try {
+    await call("send", { projectId, threadId: alpha, text: "" });
+  } catch {
+    emptyRejected = true;
+  }
+  assert.equal(emptyRejected, true);
   assert.deepEqual(
     snapshotProject(await state()).lastAcceptedModel,
     preference,
@@ -1493,7 +1493,7 @@ async function verifyModelDefaults(projectId) {
   await launch();
   await until(
     (snapshot) =>
-      snapshotProject(snapshot)?.state?.connected &&
+      snapshot.connection?.state === "ready" &&
       snapshotProject(snapshot)?.models.some((model) => model.modelId === "legacy-alpha"),
     "legacy service default ready",
   );
@@ -1514,22 +1514,20 @@ async function verifyModelDefaults(projectId) {
   );
   const beforeLegacy = modelRequests.length;
   await createProjectConversation(page, "workspace");
-  await expectModel("legacy-alpha", "高");
-  const implicit = await send("Implicit service default records effective high", {
+  assert.equal(await button("发送").isDisabled(), true);
+  await chooseModel("Legacy Alpha");
+  await expectModel("Legacy Alpha", "高");
+  const implicit = await send("Explicit first choice records effective high", {
     model: "legacy-alpha",
     effort: "high",
     hasEffort: true,
   });
   const implicitConfig = snapshotProject(await state()).configurations[implicit];
-  assert.ok(
-    implicitConfig.defaultModelRevision,
-    "desktop implicit model is pinned before global changes",
-  );
-  assert.equal(implicitConfig.model, null);
+  assert.deepEqual(implicitConfig.model, { providerId: "legacy", modelId: "legacy-alpha" });
   await settings();
   await setDefault("Legacy Beta", { providerId: "legacy", modelId: "legacy-beta" });
   await button("返回应用").click();
-  await expectModel("legacy-alpha", "高");
+  await expectModel("Legacy Alpha", "高");
   // 放大回执与投影的到达差异，连续编辑断言仍覆盖整个真实保存过程。
   const effortSession = await page.context().newCDPSession(page);
   try {
@@ -1539,7 +1537,7 @@ async function verifyModelDefaults(projectId) {
     await effortSession.send("Emulation.setCPUThrottlingRate", { rate: 1 });
     await effortSession.detach();
   }
-  await expectModel("legacy-alpha", "无");
+  await expectModel("Legacy Alpha", "无");
   await send("Implicit history keeps old identity while configuring effort", {
     model: "legacy-alpha",
     effort: "none",
@@ -1554,7 +1552,7 @@ async function verifyModelDefaults(projectId) {
   );
   await chooseEffort("高", "ArrowLeft");
   await page.keyboard.press("Escape");
-  await expectModel("legacy-alpha", "高");
+  await expectModel("Legacy Alpha", "高");
   await send("Implicit explicit high preserves archived model identity", {
     model: "legacy-alpha",
     effort: "high",
@@ -1564,14 +1562,18 @@ async function verifyModelDefaults(projectId) {
   app = undefined;
   await stopService();
   await launch();
-  await until(
-    (snapshot) => snapshotProject(snapshot)?.state?.connected,
-    "implicit history cold reopen",
-  );
+  await until((snapshot) => {
+    const target = snapshotProject(snapshot);
+    return (
+      snapshot.connection?.state === "ready" &&
+      target &&
+      (target.state?.connected || target.models?.length > 0)
+    );
+  }, "implicit history cold reopen");
   await selectConversation(page, implicit);
-  await expectModel("legacy-alpha", "高");
+  await expectModel("Legacy Alpha", "高");
   assert.equal(
-    (await readCoreThread(implicit)).desktop.configuration.defaultModelRevision,
+    snapshotProject(await state()).configurations[implicit]?.defaultModelRevision,
     implicitConfig.defaultModelRevision,
   );
   assert.equal(
@@ -1580,12 +1582,16 @@ async function verifyModelDefaults(projectId) {
     "implicit history cold reopen cannot replay requests",
   );
   await createProjectConversation(page, "workspace");
-  await expectModel("Legacy Beta", "高");
-  await send("New conversation uses changed concrete default", {
-    model: "legacy-beta",
+  await expectModel("Legacy Alpha", "高");
+  await send("New conversation remembers last accepted model after cold reopen", {
+    model: "legacy-alpha",
     effort: "high",
     hasEffort: true,
   });
+  assert.equal(
+    (await readCoreThread(implicit)).desktop.configuration.defaultModelRevision,
+    implicitConfig.defaultModelRevision,
+  );
   await page.screenshot({
     path: join(scratch, "implicit-default-reopened.png"),
     animations: "disabled",
@@ -1734,9 +1740,8 @@ async function verifyComposerPicker() {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
     await button("设置").click();
     await button("外观").click();
-    await page.getByRole("combobox", { name: "界面主题", exact: true }).click();
     await page
-      .getByRole("option", { name: theme === "dark" ? "深色" : "浅色", exact: true })
+      .getByRole("radio", { name: theme === "dark" ? "深色" : "浅色", exact: true })
       .click();
     await button("返回应用").click();
     await resizeConversation(app, page, 640, 800);
@@ -1853,7 +1858,13 @@ async function verifyComposerFast() {
   app = undefined;
   await stopService();
   await launch();
-  await until((s) => fixtureProject(s)?.state?.connected, "fast cold reopen");
+  await until(
+    (s) =>
+      s.connection?.state === "ready" &&
+      fixtureProject(s) &&
+      (fixtureProject(s).state?.connected || fixtureProject(s).models?.length > 0),
+    "fast cold reopen",
+  );
   await selectConversation(page, thread);
   await button("选择思考强度").getByText(/Fast/).waitFor();
   assert.equal(modelRequests.length, beforeRestart, "reopening does not replay requests");
@@ -1863,9 +1874,8 @@ async function verifyComposerFast() {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
     await button("设置").click();
     await button("外观").click();
-    await page.getByRole("combobox", { name: "界面主题", exact: true }).click();
     await page
-      .getByRole("option", { name: theme === "dark" ? "深色" : "浅色", exact: true })
+      .getByRole("radio", { name: theme === "dark" ? "深色" : "浅色", exact: true })
       .click();
     await button("返回应用").click();
     await resizeConversation(app, page, 640, 800);
@@ -1992,15 +2002,7 @@ async function runFullModelSelection() {
     "the selected model remains visible when credentials are missing",
   );
   await page.getByTestId("chat-input").fill("REJECTED_MODEL_DRAFT");
-  assert.equal(await button("发送").isEnabled(), true, "Core owns submission validation");
-  await button("发送").click();
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-testid="chat-input"]')
-        ?.textContent?.includes("REJECTED_MODEL_DRAFT") &&
-      !document.querySelector('button[aria-label="发送"]')?.disabled,
-  );
+  assert.equal(await button("发送").isDisabled(), true, "a model must be selected before sending");
   assert.match(await page.getByTestId("chat-input").innerText(), /REJECTED_MODEL_DRAFT/);
   await page.getByTestId("chat-input").fill("");
   assert.equal(
@@ -2052,18 +2054,18 @@ async function runFullModelSelection() {
   recordCheck(
     "a missing default-provider credential permits Core connection and model settings without an upstream request",
   );
-  await page.locator(".provider-catalog-row").filter({ hasText: "theta" }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: "theta" }).click();
   let providerStatus = page.getByRole("status", { name: "供应商状态", exact: true });
-  await providerStatus.waitFor();
+  await providerStatus.filter({ hasText: /缺少凭据/ }).waitFor();
   assert.match(await providerStatus.innerText(), /缺少凭据/);
   const navigation = page.locator(".provider-navigation");
   assert.equal(
-    await navigation.locator(".provider-catalog-row small").count(),
+    await navigation.locator(".provider-catalog button small").count(),
     0,
     "provider navigation contains names without credential details",
   );
   assert.deepEqual(
-    (await navigation.locator(".provider-catalog-row").allTextContents())
+    (await navigation.locator(".provider-catalog button").allTextContents())
       .map((name) => name.trim())
       .sort(),
     ["ChatGPT", "arena", "env", "theta"].sort(),
@@ -2089,7 +2091,7 @@ async function runFullModelSelection() {
     "enabled and disabled provider groups have spacing and a divider",
   );
   await captureModelThemes("provider-navigation");
-  await page.locator(".provider-catalog-row").filter({ hasText: "theta" }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: "theta" }).click();
   assert.match(
     await providerStatus.innerText(),
     /缺少凭据/,
@@ -2105,7 +2107,6 @@ async function runFullModelSelection() {
     "compact model rows show the name only",
   );
   assert.equal(await page.getByText("帮助", { exact: true }).count(), 0);
-  assert.equal(await page.getByText("凭据来源", { exact: true }).count(), 0);
   assert.equal(
     await page.getByRole("tab", { name: "模型", exact: true }).count(),
     0,
@@ -2191,7 +2192,9 @@ async function runFullModelSelection() {
     animations: "disabled",
   });
   await button("测试连接").click();
-  await page.getByText("模型 theta-model 连接成功", { exact: true }).waitFor({ timeout: 5000 });
+  await page
+    .getByText(/模型 theta-model 连接成功|已直连 theta-model|已通过代理连接 theta-model/)
+    .waitFor({ timeout: 5000 });
   assert.equal(await button("测试连接").isEnabled(), true);
   await until(
     () => probeRequests.length === 1 && probeRequests[0].closed,
@@ -2340,7 +2343,11 @@ async function runFullModelSelection() {
       fixtureProject(s).models.some((m) => m.providerId === "theta" && m.available === true),
     "saved default credential survives a cold reopen",
   );
-  const reopened = await call("providers", { operation: "list" });
+  let reopened;
+  await until(async () => {
+    reopened = await call("providers", { operation: "list" });
+    return reopened?.credentialStates?.theta === "available";
+  }, "saved default credential check settles after cold reopen");
   assert.equal(reopened.defaultModel.providerId, "theta");
   assert.equal(reopened.credentialSources.theta, "stored");
   assert.equal(reopened.credentialStates.theta, "available");
@@ -2360,10 +2367,15 @@ async function runFullModelSelection() {
   });
   assert.equal(withoutDefault.defaultModel, null);
   await waitForServiceIdle();
-  const appliedDefault = await call("providers", {
+  let appliedDefault = await call("providers", {
     operation: "apply",
     expectedRevision: withoutDefault.revision,
   });
+  assert.equal(appliedDefault.defaultModel, null);
+  await until(async () => {
+    appliedDefault = await call("providers", { operation: "list" });
+    return appliedDefault.pendingApply === false;
+  }, "explicit default apply settles");
   assert.equal(appliedDefault.defaultModel, null);
   assert.equal(appliedDefault.pendingApply, false);
   await until(
@@ -2386,14 +2398,18 @@ async function runFullModelSelection() {
     "single save confirms persistence/Core readiness; user chooses a model in the existing Composer and Core executes it",
   );
   // 启用开关、凭据与配置应用分别验收；两个可用模型之间必须能实际切换。
-  await page.locator(".provider-catalog-row").filter({ hasText: "arena" }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: "arena" }).click();
   await page.getByRole("textbox", { name: "API Key", exact: true }).fill("fixture-key");
   // 真实 Core 完成保存/同步后暂留回执，稳定覆盖目录已刷新但设置操作尚未结算的窗口。
   await page.evaluate(installHostTransportBarrier);
   await page.evaluate(() => {
     const gate = (globalThis.modelApplyReceipt = {});
     const barrier = globalThis.createHostTransportBarrier((frame) => {
-      if (gate.entry || frame.method !== "providers.command" || frame.params?.operation !== "save")
+      if (
+        gate.entry ||
+        frame.method !== "providers.command" ||
+        !["save", "saveAndApply"].includes(frame.params?.operation)
+      )
         return null;
       return (gate.entry = { response: "hold" });
     });
@@ -2462,7 +2478,7 @@ async function runFullModelSelection() {
     authorizationPresent: true,
   });
   await openModelSettings();
-  await page.locator(".provider-catalog-row").filter({ hasText: "arena" }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: "arena" }).click();
   // 无需认证是同一 Core 文件的编辑；不能继续发送已退役的保存凭据。
   await page
     .getByRole("tablist", { name: "认证方式", exact: true })
@@ -2541,7 +2557,7 @@ async function runFullModelSelection() {
     "one no-auth save removes the Core credential reference; explicit Composer reselection executes without Authorization",
   );
   await openModelSettings();
-  await page.locator(".provider-catalog-row").filter({ hasText: /^env/ }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: /^env/ }).click();
   assert.match(await providerStatus.innerText(), /已停用/);
   await page.getByRole("textbox", { name: "API Key", exact: true }).fill("");
   await page.getByRole("switch", { name: "启用供应商", exact: true }).click();
@@ -2590,11 +2606,11 @@ async function runFullModelSelection() {
     "Core distinguishes environment credentials, securely stored credentials, and no authentication; Composer executes each applied mode",
   );
   await openModelSettings();
-  await page.locator(".provider-catalog-row").filter({ hasText: /^env/ }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: /^env/ }).click();
   await page.getByRole("switch", { name: "启用供应商", exact: true }).click();
   await saveProvider();
   await until((s) => fixtureProject(s).models.length === 2, "environment provider disabled again");
-  await page.locator(".provider-catalog-row").filter({ hasText: "arena" }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: "arena" }).click();
   await page.getByRole("switch", { name: "启用供应商", exact: true }).click();
   assert.match(
     await providerStatus.innerText(),
@@ -2629,7 +2645,7 @@ async function runFullModelSelection() {
   );
   assert.match(await button("选择模型").innerText(), /env-model/);
   await openModelSettings();
-  await page.locator(".provider-catalog-row").filter({ hasText: "theta" }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: "theta" }).click();
   await page.getByRole("switch", { name: "启用模型 theta-model", exact: true }).click();
   await saveProvider();
   assert.equal(
@@ -2646,8 +2662,8 @@ async function runFullModelSelection() {
   assert.match(await button("选择模型").innerText(), /env-model/);
   assert.equal(
     await button("选择模型").locator('[aria-label="模型不可用"]').count(),
-    1,
-    "confirmed invalidity is marked inside the model label",
+    0,
+    "model selection does not add an unavailable warning to the trigger",
   );
   recordCheck(
     "Core credential states and saved enablement remain separate from drafts and pending apply; Composer explicitly selects and executes another available model",
@@ -2677,9 +2693,8 @@ async function runFullModelSelection() {
   for (const theme of ["dark", "light"]) {
     await openModelSettings();
     await button("外观").click();
-    await page.getByRole("combobox", { name: "界面主题", exact: true }).click();
     await page
-      .getByRole("option", { name: theme === "dark" ? "深色" : "浅色", exact: true })
+      .getByRole("radio", { name: theme === "dark" ? "深色" : "浅色", exact: true })
       .click();
     await page.waitForFunction(
       (theme) => document.documentElement.classList.contains(`theme-areal-${theme}`),
@@ -2908,9 +2923,9 @@ try {
     "renderer/src/settings/UnsavedChanges.tsx",
     "renderer/src/settings/SettingsWorkspace.tsx",
     "renderer/src/i18n/IntlProvider.tsx",
-    "../../services/workbench/src/desktop/core/model-config.cjs",
-    "../../services/workbench/src/desktop/core/providers.cjs",
-    "../../services/workbench/src/desktop/core/backend.cjs",
+    "../../core/config/src/models.rs",
+    "../../core/host/src/provider_config.rs",
+    "../../core/host/src/workbench_route.rs",
     "../../core/config/src/models.rs",
     "../../core/config/src/lib.rs",
     "../../core/local-service/src/spec.rs",
@@ -2932,7 +2947,6 @@ try {
     "../../core/engine/src/desktop/model_selection.rs",
     "../../core/engine/src/desktop/queue.rs",
     "../../core/protocol/src/desktop.rs",
-    "renderer/src/settings/NewSessionModelSetting.tsx",
     "renderer/src/settings/ModelSettings.css",
     "renderer/src/settings/ModelEditor.tsx",
     "renderer/src/TaskDraft.tsx",

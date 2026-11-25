@@ -1,4 +1,5 @@
 import { ConversationDiagramDialog } from "./ConversationDiagramDialog.js";
+import { sessionLoadTiming } from "@areal/client";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import type { MediaOwner } from "./PlatformReadContext.js";
 import { scheduledRunTask, scheduledTaskName } from "./scheduleText.js";
@@ -32,13 +33,10 @@ import { pendingMessageProjected, setPendingMessage, usePendingMessage } from ".
 import type { ConversationSelectionReference } from "./conversationSelectionReference.js";
 import { projectConversationContent, conversationContentToText } from "./conversationContent.js";
 import { ConversationContentView } from "./ConversationContentView.js";
-import { GenUiCard } from "./GenUiWorkspace.js";
-import { submitMessage, sending, markSending } from "./Composer.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { errorText } from "./errors/errorCopy.js";
 import { WorktreeStatus } from "./WorktreeStatus.js";
 import { TurnUsage } from "./TurnUsage.js";
-import { mcpResultKey, type McpResultSource, type McpResultState } from "./mcp-app-services.js";
 import { useForkHistory } from "./ForkHistory.js";
 import { DeferredHistoryItem, useConversationHistory } from "./ConversationHistory.js";
 import { UnknownToolInspection } from "./UnknownToolInspection.js";
@@ -121,21 +119,13 @@ export function Messages({
   embedded = false,
   showTurnNavigation = true,
   readOnly = false,
-  interactivePages = !readOnly,
   decisionShown = false,
   afterTurns,
   reserveResponseSpace = !embedded,
-  onOpenResult,
-  resultStates,
-  onGenUiFollowUp,
 }: {
-  onGenUiFollowUp?: (prompt: string) => Promise<void>;
-  onOpenResult?: (source: McpResultSource) => Promise<void>;
-  resultStates?: Record<string, McpResultState>;
   embedded?: boolean;
   showTurnNavigation?: boolean;
   readOnly?: boolean;
-  interactivePages?: boolean;
   /** The host renders this thread's pending decision cards (Composer); the transcript tail then does not repeat the wait. */
   decisionShown?: boolean;
   afterTurns?: ReactNode;
@@ -544,31 +534,6 @@ export function Messages({
     },
     [fileOpen, onFile, project.id, thread.id],
   );
-  const sendGenUi = async (prompt: string) => {
-    if (readOnly || !project.state?.connected || localThread.desktop?.archived)
-      throw Error("Conversation unavailable");
-    if (onGenUiFollowUp) return onGenUiFollowUp(prompt);
-    if (
-      localThread.conversation?.kind === "side" &&
-      localThread.conversation.policy?.kind !== "sideExecutableV2"
-    )
-      throw Error("Side submission unavailable");
-    const key = `areal-gui:draft:${project.id}:${localThread.id}`;
-    if (
-      sending.has(key) ||
-      project.pending?.some((entry: Data) => entry.params?.threadId === localThread.id)
-    )
-      throw Error("Submission needs confirmation");
-    markSending(key, true);
-    try {
-      await submitMessage(action, project.id, localThread.id, prompt, [], {
-        appMessage: true,
-        enqueue: !!localThread.turns?.some((turn: Data) => turn.status === "inProgress"),
-      });
-    } finally {
-      markSending(key, false);
-    }
-  };
   const renderAgentMessage = (entry: Data, turn: Data, deferActions = false) => {
     if (!entry.text?.trim()) return null;
     const blocks = projectConversationContent(
@@ -614,29 +579,6 @@ export function Messages({
               {text}
             </MessageResponse>
           )}
-          interactive={(part) =>
-            interactivePages && !inheritedIds.has(turn.id) ? (
-              <GenUiCard
-                key={`${entry.id}:${part.offset}`}
-                source={{
-                  projectId: project.id,
-                  threadId: localThread.id,
-                  turnId: turn.id,
-                  itemId: entry.id,
-                  referenceOffset: part.offset,
-                }}
-                title={part.reference.title ?? t("genUi.title")}
-                dark={dark}
-                send={
-                  readOnly || localThread.desktop?.archived || !project.state?.connected
-                    ? undefined
-                    : live.sendGenUi
-                }
-              />
-            ) : (
-              <p role="status">{t("genUi.unavailable")}</p>
-            )
-          }
         />
       </div>
     );
@@ -827,7 +769,9 @@ export function Messages({
         `[data-side-item-id="${CSS.escape(state.anchor.itemId)}"]`,
       );
       if (!item) return;
-      const control = event.target.querySelector<HTMLElement>(".turn-progress-summary");
+      const control = event.target.querySelector<HTMLElement>(
+        '[data-testid="turn-elapsed"] button, .turn-progress-summary',
+      );
       if (!control) return;
       reading.current = changeReadingIntent(reading.current, {
         kind: "holding",
@@ -864,6 +808,41 @@ export function Messages({
     layoutReading.current();
   });
   useLayoutEffect(() => {
+    if (embedded) return;
+    const timing = sessionLoadTiming(localThread.id);
+    const element = container.current;
+    if (!timing || timing.has("messagesPainted") || !element) return;
+    const hasVisibleMessage = () => {
+      if (document.visibilityState !== "visible") return false;
+      const viewport = element.getBoundingClientRect();
+      return [
+        ...element.querySelectorAll(
+          "[data-side-item-id] .user-bubble, [data-side-item-id] .conversation-markdown",
+        ),
+      ].some((message) => {
+        if (!message.textContent?.trim()) return false;
+        const rect = message.getBoundingClientRect();
+        return (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.right > Math.max(0, viewport.left) &&
+          rect.left < Math.min(window.innerWidth, viewport.right) &&
+          rect.bottom > Math.max(0, viewport.top) &&
+          rect.top < Math.min(window.innerHeight, viewport.bottom)
+        );
+      });
+    };
+    if (!hasVisibleMessage()) return;
+    timing.mark("messagesCommitted");
+    // 下一帧再跨过一次绘制机会；标题、骨架和屏外消息不算首屏完成。
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        if (element.isConnected && hasVisibleMessage()) timing.mark("messagesPainted");
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  });
+  useLayoutEffect(() => {
     return () => {
       if (readingFrame.current !== undefined) cancelAnimationFrame(readingFrame.current);
       readingFrame.current = undefined;
@@ -879,9 +858,7 @@ export function Messages({
     rememberReading,
     renderAgentMessage,
     loadHistory: history.load,
-    sendGenUi,
     onFork,
-    onOpenResult,
     onFile,
     onAgent,
     readTurnReview,
@@ -892,24 +869,12 @@ export function Messages({
   const turnStamp = turnContextStamp(
     project,
     localThread,
-    [
-      owner,
-      dark,
-      readOnly,
-      interactivePages,
-      decisionShown,
-      embedded,
-      canFork,
-      forking,
-      ordinary,
-      editable,
-    ],
+    [owner, dark, readOnly, decisionShown, embedded, canFork, forking, ordinary, editable],
     live,
   ).concat(
     JSON.stringify([
       creationAnchor,
       latestSchedules,
-      resultStates,
       history.failure,
       history.generation,
       turnIdentity(t),
@@ -935,6 +900,7 @@ export function Messages({
         />
       )}
       <div
+        role="presentation"
         className={embedded ? "messages-embedded-content" : "messages"}
         ref={container}
         tabIndex={embedded ? undefined : 0}
@@ -1120,26 +1086,24 @@ export function Messages({
                     <>
                       {canFork && turn.status !== "inProgress" && (
                         <Button
-                          unstyled
-                          data-slot={undefined}
                           type="button"
-                          className="turn-fork-trigger"
+                          variant="ghost-subtle"
+                          size="xs"
                           disabled={forking || !!forkReason}
                           title={forkReason || undefined}
                           aria-label="从此轮创建聊天分支"
                           aria-describedby={forkReason ? `fork-reason-${turn.id}` : undefined}
                           onClick={(event) => forkAt(event.currentTarget)}
                         >
-                          <ForkIcon />
+                          <ForkIcon className="size-3.5" />
                           <span>分支</span>
                         </Button>
                       )}
                       {canFork && inspectTurn && turn.status !== "inProgress" && (
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="ghost-subtle"
                           size="xs"
-                          className="side-bring-action"
                           aria-label={t("chat.selection.inspectSourceTurn")}
                           onClick={() =>
                             document
@@ -1427,26 +1391,6 @@ export function Messages({
                                         // prettier-ignore
                                         detailsError={processRecords.some((record: Data) => record.id === history.failure?.itemId) ? /* raw-error-ok: 历史读取错误已在 ConversationHistory 中转为词条 */ history.failure?.message : undefined}
                                         {...disclosure}
-                                        onOpenResult={
-                                          (ordinary ||
-                                            localThread.conversation?.policy?.kind ===
-                                              "sideExecutableV2") &&
-                                          interactivePages &&
-                                          !isInherited &&
-                                          !localThread.desktop?.archived
-                                            ? live.onOpenResult
-                                            : undefined
-                                        }
-                                        resultState={
-                                          resultStates?.[
-                                            mcpResultKey({
-                                              projectId: project.id,
-                                              threadId: thread.id,
-                                              turnId: turn.id,
-                                              itemId: entry.id,
-                                            })
-                                          ]
-                                        }
                                         onFile={readOnly ? undefined : live.onFile}
                                         onAgent={readOnly || isInherited ? undefined : live.onAgent}
                                         agents={isInherited ? undefined : project.state?.threads}
@@ -1662,11 +1606,11 @@ export function Messages({
           <PopoverContent
             anchor={{ getBoundingClientRect: () => selectedSideText.rect }}
             side="top"
+            variant="compact"
             initialFocus={false}
             finalFocus={false}
             data-testid="transcript-selection-actions"
             aria-label={t("chat.selection.actions")}
-            className="w-auto flex-row gap-inline p-1"
             onMouseDown={(event) => event.preventDefault()}
           >
             {onAddSelection && (

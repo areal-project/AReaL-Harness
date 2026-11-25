@@ -1,7 +1,7 @@
 // 旅程脚本共用的现场：本地假模型、示例 Git 项目、隔离目录里的 Electron 与 Host、按临时目录认领的清理。
 // 只有外部模型是假的；Host、后台、Core 都是真实构建产物，状态全在临时目录里，不碰本机真实数据。
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
@@ -17,10 +17,17 @@ export const reply = "## 已添加 clamp\n\n在 `src/math.ts` 加了 `clamp`，�
 
 /** 假模型：读文件 → 要联网的命令（触发审批）→ 最终回答。每条新用户消息重新走一遍。 */
 export async function startModel() {
+  const requests = [];
+  const heldResponses = new Set();
   const model = createServer((req, res) => {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
+      if (req.url === "/vitest-version") {
+        res.writeHead(200, { "content-type": "text/plain" });
+        res.end("5.0.5\n");
+        return;
+      }
       const request = JSON.parse(body || "{}");
       const messages = request.messages ?? [];
       const tools = (request.tools ?? []).map((tool) => tool.function?.name);
@@ -34,11 +41,41 @@ export async function startModel() {
         }) + chunk({}, "tool_calls");
       res.writeHead(200, { "content-type": "text/event-stream" });
       const lastUser = messages.map((message) => message.role).lastIndexOf("user");
+      const userContent = messages[lastUser]?.content;
+      const userText = Array.isArray(userContent)
+        ? userContent
+            .filter((part) => part.type === "text")
+            .map((part) => part.text)
+            .join("")
+        : userContent;
+      requests.push({ model: request.model ?? null, userText: userText ?? null });
       const toolResults = messages
         .slice(lastUser)
         .filter((message) => message.role === "tool").length;
-      if (!request.stream || !tools.length)
+      if (userText === "触发可取消的长任务") {
+        res.write(chunk({ content: "正在处理长任务…" }));
+        heldResponses.add(res);
+        req.on("close", () => {
+          heldResponses.delete(res);
+          if (!res.writableEnded) res.end();
+        });
+        return;
+      }
+      if (userText === "切换模型后的引导消息")
+        res.write(chunk({ content: "已使用新模型回复" }) + chunk({}, "stop"));
+      else if (userText === "取消后的继续消息")
+        res.write(chunk({ content: "取消后继续完成" }) + chunk({}, "stop"));
+      else if (!request.stream || !tools.length)
         res.write(chunk({ content: "添加 clamp" }) + chunk({}, "stop"));
+      else if (userText === "准备一处侧边审查改动")
+        res.write(
+          toolResults === 0
+            ? call("side-review-create", "fs_create", {
+                path: "src/side-review.ts",
+                text: "export const sideReview = true;\n",
+              })
+            : chunk({ content: "侧边改动已就绪" }) + chunk({}, "stop"),
+        );
       else if (toolResults === 0)
         res.write(
           call("r1", tools.find((name) => /fs_read|read_file/.test(name)) ?? "fs_read", {
@@ -48,7 +85,11 @@ export async function startModel() {
       else if (toolResults === 1)
         res.write(
           call("c1", "run_command", {
-            argv: ["npm", "view", "vitest", "version"],
+            argv: [
+              "node",
+              "-e",
+              `fetch("http://127.0.0.1:${model.address().port}/vitest-version").then((r) => r.text()).then((text) => process.stdout.write(text))`,
+            ],
             permissionRequest: { network: true, justification: "查询 vitest 版本用来补测试。" },
           }),
         );
@@ -59,7 +100,10 @@ export async function startModel() {
   await new Promise((ready) => model.listen(0, "127.0.0.1", ready));
   return {
     port: model.address().port,
+    requests,
     close() {
+      for (const res of heldResponses) if (!res.writableEnded) res.end();
+      heldResponses.clear();
       model.closeAllConnections();
       model.close();
     },
@@ -84,14 +128,17 @@ export async function createScene(prefix) {
     { cwd: project },
   );
 
-  async function environment(name, modelPort) {
+  async function environment(name, modelPort, { extraModels = [] } = {}) {
     const root = join(scratch, name);
     await mkdir(join(root, "home"), { recursive: true });
     const config = join(root, "config.toml");
+    const modelsToml = ["fixture", ...extraModels]
+      .map((id) => `{id="${id}",enabled=true}`)
+      .join(",");
     await writeFile(
       config,
       modelPort
-        ? `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${modelPort}/v1/chat/completions"\n`
+        ? `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${modelPort}/v1/chat/completions"\nmodels=[${modelsToml}]\n`
         : "schema_version=1\n",
     );
     const env = {
@@ -113,8 +160,8 @@ export async function createScene(prefix) {
   }
 
   /** 启动桌面窗口，等输入框出现；返回 Electron 应用、窗口与关闭方法。 */
-  async function launchDesktop(name, modelPort) {
-    const env = await environment(name, modelPort);
+  async function launchDesktop(name, modelPort, options) {
+    const env = await environment(name, modelPort, options);
     const app = await playwright._electron.launch({
       executablePath: require("electron"),
       // Chromium 拒绝以 root 带沙箱启动；只在云端容器这类 root 环境关掉。
@@ -132,14 +179,36 @@ export async function createScene(prefix) {
     await page.getByTestId("chat-input").first().waitFor({ timeout: 90_000 });
     // 后台退出可能等待保存或确认；限时关闭后强制结束这一个 Electron 进程。
     const close = async () => {
+      const proc = app.process();
       await Promise.race([app.close(), new Promise((done) => setTimeout(done, 10_000))]);
-      app.process().kill("SIGKILL");
+      try {
+        proc?.kill("SIGKILL");
+      } catch {}
     };
     return { app, page, env, close };
   }
 
   // 杀掉 Electron 后，它拉起的后台进程可能还在；只按本次临时目录认领，不按名字匹配。
   async function stopLeftovers() {
+    // macOS 没有可读的 /proc；先用本次现场自己的 Host 元数据发出一次
+    // 有界停止，再由 Linux 的 PID 兜底清理 Core/Runtime 子进程。
+    const hostFile = join(scratch, "web", "registry", "host", "host.json");
+    const host = JSON.parse(await readFile(hostFile, "utf8").catch(() => "null"));
+    if (host?.pid) {
+      const env = await environment("web");
+      try {
+        execFileSync(coreBin, ["host", "stop", "--cancel", "--json"], {
+          env,
+          stdio: "ignore",
+          timeout: 10_000,
+        });
+      } catch {
+        // 进程可能已经退出；下面只处理仍由本现场认领的 PID。
+      }
+      try {
+        process.kill(host.pid, "SIGKILL");
+      } catch {}
+    }
     if (process.platform !== "linux") return;
     const owned = (entry) => entry.startsWith("AREAL_") && entry.includes(`=${scratch}/`);
     // Host 与服务进程会互相拉起：先全部暂停再杀，直到一个不剩。
@@ -159,8 +228,18 @@ export async function createScene(prefix) {
     }
   }
 
+  async function unlockTree(dir) {
+    await chmod(dir, 0o700).catch(() => {});
+    for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+      if (entry.isSymbolicLink()) continue;
+      const target = join(dir, entry.name);
+      if (entry.isDirectory()) await unlockTree(target);
+    }
+  }
+
   async function dispose() {
     await stopLeftovers();
+    await unlockTree(scratch);
     await rm(scratch, { recursive: true, force: true, maxRetries: 5 });
   }
 

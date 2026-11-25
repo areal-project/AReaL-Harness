@@ -230,10 +230,10 @@ describe("no-renderer-desktop-bridge", () => {
     'import contract = require("@areal/workbench/desktop-contract");',
     'const contract = require("../../packages/workbench/client/desktop-contract.cjs");',
     'import type { Request } from "../../packages/workbench/client/desktop-contract.js";',
-    'import { ProjectionReader } from "@areal/workbench/state-projection";',
-    'export * from "@areal/workbench/state-projection";',
-    'const projection = import("@areal/workbench/state-projection");',
-    'const projection = require("../../packages/workbench/client/state-projection.cjs");',
+    'import { validateCommand } from "@areal/workbench/desktop-contract/transport";',
+    'export * from "@areal/workbench/desktop-contract/transport";',
+    'const projection = import("@areal/workbench/desktop-contract/transport");',
+    'const projection = require("../../packages/workbench/client/desktop-contract.cjs");',
     'arealDesktop.command("stop");',
     "const bridge = arealDesktop;",
     "const bridge = { arealDesktop };",
@@ -347,7 +347,7 @@ describe("no-renderer-desktop-bridge", () => {
       "window.arealDesktop;",
       "arealHost.connect();",
       'import { validateCommand } from "@areal/workbench/desktop-contract";',
-      'import { ProjectionReader } from "@areal/workbench/state-projection";',
+      'import { validateCommand } from "@areal/workbench/desktop-contract/transport";',
     ]) {
       const result = lint("no-renderer-desktop-bridge", source, filename);
       expect(result.status, result.output).toBe(1);
@@ -371,7 +371,7 @@ describe("no-renderer-desktop-bridge", () => {
   test.each([
     "window.arealDesktop;",
     'import type { DesktopBridge } from "@areal/workbench/desktop-contract";',
-    'import { ProjectionReader } from "@areal/workbench/state-projection";',
+    'import { validateCommand } from "@areal/workbench/desktop-contract/transport";',
     "window.arealDesktop ||= {};",
   ])("rejects boundary violations in test files: %s", (source) => {
     const result = lint(
@@ -396,46 +396,6 @@ describe("no-renderer-desktop-bridge", () => {
   });
 });
 
-describe("no-workbench-core-owner", () => {
-  const filename = "services/workbench/src/desktop/core/new-module.ts";
-  test.each([
-    'import { CoreClient as Renamed } from "@areal/runtime-client/core";',
-    'const client = import("@areal/runtime-client/core");',
-    'const core = require("./core-process.cjs");',
-    'const core = require("../../../../clients/gui/scripts/support/core-process-fixture.cjs");',
-    'const { spawn } = require("node:child_process"); spawn(binary, ["service", "start"]);',
-    'childProcess.execFile(backend.binary, ["service", "start"]);',
-    'const path = backend.binary; execFile(path, ["service", "start"]);',
-    'spawn("/usr/bin/python3", ["-I", "-c", bridge, binary]);',
-    "new CoreClient({});",
-    "new WebSocket(project.endpoint, {});",
-    "const url = new URL(project.endpoint); fetch(url, {});",
-    "fetch(new URL(entry.endpoint));",
-  ])("rejects Core ownership in a newly named module: %s", (source) => {
-    const result = lint("no-workbench-core-owner", source, filename);
-    expect(result.status).toBe(1);
-    expect(result.output).toContain("areal(no-workbench-core-owner)");
-  });
-  test.each([
-    'import type { CoreClient } from "@areal/runtime-client/core";',
-    'import { type CoreClient } from "@areal/runtime-client/core";',
-    'import { parseCoreCapabilities } from "@areal/runtime-client/capabilities";',
-    'host("core.request", { projectId, method: "thread/read", params: {} });',
-    'execFile("/usr/bin/git", ["status"]);',
-    "new WebSocket(relayURL);",
-    "new WebSocketServer({port:0});",
-    "fetch(provider.endpoint, {});",
-  ])("allows retained page/relay/utility behavior: %s", (source) => {
-    expect(lint("no-workbench-core-owner", source, filename).status).toBe(0);
-  });
-  test("leaves the native shell scope to its existing rules", () => {
-    expect(
-      lint("no-workbench-core-owner", "new CoreClient({});", "clients/gui/app/src/native.ts")
-        .status,
-    ).toBe(0);
-  });
-});
-
 describe("no-restyle", () => {
   const header =
     'import { Button, DialogContent } from "@areal/ui";\nimport { ChevronIcon } from "@areal/ui/icons";\n';
@@ -443,6 +403,8 @@ describe("no-restyle", () => {
     '<Button variant="ghost" />',
     '<Button className="w-full sm:max-w-md flex-1" />',
     "<Button className={cn('mt-2', open && 'hidden')} />",
+    '<Button className={open ? undefined : "ml-auto"} />',
+    '<Button className="absolute top-1/2 right-1.5 -translate-y-1/2 pointer-events-auto truncate" />',
     '<ChevronIcon className="text-muted size-3" />',
     '<button className="text-red-500" style={{ color: "red" }} />',
   ])("accepts %s", (jsx) => {
@@ -457,6 +419,26 @@ describe("no-restyle", () => {
     const result = lint("no-restyle", `${header}export const A = () => ${jsx};`);
     expect(result.status).toBe(1);
     expect(result.output).toContain("R-CHECK-022");
+  });
+  test("tracks renderer components/ui re-export wrappers", () => {
+    const wrapperHeader =
+      'import { Button } from "./components/ui/button.js";\nimport { DialogContent } from "../components/ui/dialog.js";\n';
+    expect(
+      lint("no-restyle", `${wrapperHeader}export const A = () => <Button className="w-full" />;`)
+        .status,
+    ).toBe(0);
+    const badButton = lint(
+      "no-restyle",
+      `${wrapperHeader}export const A = () => <Button className="icon-button" />;`,
+    );
+    expect(badButton.status).toBe(1);
+    expect(badButton.output).toContain("R-CHECK-022");
+    const badDialog = lint(
+      "no-restyle",
+      `${wrapperHeader}export const A = () => <DialogContent className="custom-dialog" />;`,
+    );
+    expect(badDialog.status).toBe(1);
+    expect(badDialog.output).toContain("R-CHECK-022");
   });
 });
 

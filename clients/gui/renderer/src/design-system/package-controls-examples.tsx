@@ -22,43 +22,48 @@ import {
 } from "@areal/ui/compositions";
 import {
   type CodeViewerProps,
-  Attachment,
-  AttachmentCard,
-  AttachmentInfo,
-  AttachmentPreview,
-  AttachmentRemove,
-  Attachments,
   Card,
   CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
-  CatalogEmpty,
   CodeViewer,
   Command,
-  CommandDetails,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
   DiffViewer,
-  EmptySettings,
   FeedbackNotice,
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
-  MarkdownBlockquote,
-  MarkdownListItem,
-  MarkdownSurface,
+  Spinner,
+} from "@areal/ui";
+import {
+  Attachment,
+  AttachmentInfo,
+  AttachmentPreview,
+  AttachmentRemove,
+  Attachments,
   MarkdownTable,
   MarkdownTableBody,
   MarkdownTableCell,
   MarkdownTableHead,
   MarkdownTableHeader,
   MarkdownTableRow,
+} from "@areal/ui/compositions";
+import {
+  AttachmentCard,
+  CatalogEmpty,
+  CommandDetails,
+  EmptySettings,
+  MarkdownBlockquote,
+  MarkdownListItem,
+  MarkdownSurface,
   MarkdownUnorderedList,
   MemoTaskItem,
   MessageCodeBlock,
@@ -70,12 +75,11 @@ import {
   SettingsToolbar,
   SidePaneFrame,
   SidePaneLauncher,
-  Spinner,
   TaskTitleOverflowText,
   WorkSurface,
   WorkbenchShell,
   WorkspaceHeader,
-} from "@areal/ui/experimental";
+} from "@areal/ui/compositions";
 
 const UI = {
   ...Stable,
@@ -434,6 +438,56 @@ function Patterns({ id }: { id: string }) {
         <Button onClick={() => setPending((value) => !value)}>切换处理中</Button>
         <UI.Spinner label="包内加载中" />
       </>
+    );
+  if (id === "empty-state")
+    return (
+      <UI.EmptyState
+        title="还没有定时任务"
+        description="按计划自动执行任务，随时查看历史记录。"
+        action={
+          <Button onClick={() => setCount((value) => value + 1)}>新建定时任务 ({count})</Button>
+        }
+      />
+    );
+  if (id === "confirm-dialog")
+    return (
+      <>
+        <Button variant="destructive" onClick={() => setOpen(true)}>
+          移除工作树
+        </Button>
+        <UI.ConfirmDialog
+          open={open}
+          onOpenChange={setOpen}
+          title="移除此工作树？"
+          description="未提交的本地修改将一并清理。"
+          impact="该操作无法撤销。"
+          confirmLabel="移除工作树"
+          cancelLabel="保留工作树"
+          tone="destructive"
+          onConfirm={() => {
+            setCount((value) => value + 1);
+            setOpen(false);
+          }}
+        />
+        <p role="status">已确认 {count} 次</p>
+      </>
+    );
+  if (id === "sheet")
+    return (
+      <UI.Sheet open={open} onOpenChange={setOpen}>
+        <UI.SheetTrigger render={<Button variant="outline" />}>打开详情抽屉</UI.SheetTrigger>
+        <UI.SheetContent side="right" size="md">
+          <UI.SheetHeader>
+            <UI.SheetTitle>上下文详情</UI.SheetTitle>
+            <UI.SheetDescription>编辑附属信息，同时保留主工作区感知。</UI.SheetDescription>
+          </UI.SheetHeader>
+          <UI.SheetBody>抽屉正文由宿主提供。</UI.SheetBody>
+          <UI.SheetFooter>
+            <UI.SheetClose render={<Button variant="outline" />}>关闭</UI.SheetClose>
+            <Button onClick={() => setOpen(false)}>保存修改</Button>
+          </UI.SheetFooter>
+        </UI.SheetContent>
+      </UI.Sheet>
     );
   if (id === "skeleton")
     return (

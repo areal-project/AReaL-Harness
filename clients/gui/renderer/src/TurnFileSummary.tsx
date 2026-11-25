@@ -194,7 +194,7 @@ export function TurnFileSummary({
           <Button
             size="sm"
             variant="outline"
-            className="turn-file-summary-review-action"
+            className="ml-auto shrink-0"
             onClick={() => onReview(turn.id)}
           >
             查看变更
@@ -258,10 +258,10 @@ export function TurnFileSummary({
       </div>
       {entries.length > 5 && (
         <Button
-          unstyled
-          data-slot={undefined}
           type="button"
-          className="turn-file-summary-disclosure"
+          variant="ghost-subtle"
+          size="sm"
+          className="self-start mx-[var(--spacing-inline)] mb-[calc(var(--spacing-inline)/2)]"
           aria-expanded={expanded}
           aria-controls={filesId}
           onClick={() => setExpanded((value) => !value)}

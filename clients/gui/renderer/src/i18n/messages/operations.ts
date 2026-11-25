@@ -1,4 +1,7 @@
 export const operationMessages = {
+  "operations.openRunHistory": { "zh-CN": "查看完整运行历史", en: "Open full run history" },
+  "operations.closeRunHistory": { "zh-CN": "关闭完整运行历史", en: "Close full run history" },
+  "operations.loadingRunHistory": { "zh-CN": "正在读取运行历史…", en: "Loading run history…" },
   "operations.documentFile": { "zh-CN": "HTML 文件：", en: "HTML file: " },
   "operations.documentDirectory": { "zh-CN": "静态资源目录：", en: "Static asset directory: " },
   "operations.documentExactFile": {
@@ -14,16 +17,16 @@ export const operationMessages = {
     en: "View original operation and diagnostics",
   },
   "operations.browserUnconfirmed": {
-    "zh-CN": "浏览器操作未确认，任务已暂停。请核对当前页面后继续。",
+    "zh-CN": "浏览器操作未确认，任务已暂停。请查看当前页面后继续。",
     en: "The browser operation is unconfirmed. Check the current page to continue the paused task.",
   },
   "operations.browserInspected": {
-    "zh-CN": "已记录页面核对，可以继续发送消息。原操作不会重放。",
+    "zh-CN": "已记录页面确认，可继续发送消息，原操作不会重放。",
     en: "Page inspection recorded. You can send another message; the original operation will not be replayed.",
   },
-  "operations.browserInspect": { "zh-CN": "核对浏览器结果", en: "Check browser result" },
+  "operations.browserInspect": { "zh-CN": "查看浏览器结果", en: "Check browser result" },
   "operations.browserInspectionHelp": {
-    "zh-CN": "请核对浏览器当前页面（是否已登录、是否已提交），再发送保留的草稿继续。",
+    "zh-CN": "请先查看浏览器当前页面状态，再发送保留的草稿继续。",
     en: "Check the current browser page (signed in? submitted?), then send your saved draft to continue.",
   },
   "operations.browserInspectionPlaceholder": {
@@ -31,19 +34,19 @@ export const operationMessages = {
     en: "For example: Signed in and the task list is visible. I did not submit again.",
   },
   "operations.browserInspectionChecked": {
-    "zh-CN": "已核对当前页面及操作结果",
+    "zh-CN": "已查看当前页面及操作结果",
     en: "I checked the current page and operation result",
   },
   "operations.browserRecovery": {
-    "zh-CN": "请核对当前页面，需要时先登录，再点“核对后继续”。",
+    "zh-CN": "请查看当前页面，需要时先登录，再继续。",
     en: "Check the current page, sign in if needed, then choose “Check to continue”.",
   },
   "operations.toolRecovery": {
-    "zh-CN": "上次操作的结果待核对。请核查实际状态后继续发送，草稿已保留。",
+    "zh-CN": "上次操作结果待确认。查看实际状态后可继续，草稿已保留。",
     en: "The previous operation needs checking. Inspect its actual result before sending. Your draft is preserved.",
   },
-  "operations.inspectToContinue": { "zh-CN": "核对后继续", en: "Check to continue" },
-  "operations.inspectBeforeSend": { "zh-CN": "核对后发送", en: "Check before sending" },
+  "operations.inspectToContinue": { "zh-CN": "确认后继续", en: "Check to continue" },
+  "operations.inspectBeforeSend": { "zh-CN": "确认后发送", en: "Check before sending" },
   "operations.outputStyles": { "zh-CN": "输出样式", en: "Output styles" },
   "operations.themes": { "zh-CN": "主题", en: "Themes" },
   "operations.languageServers": { "zh-CN": "语言服务器", en: "Language servers" },
@@ -113,8 +116,8 @@ export const operationMessages = {
     en: "View current run",
   },
   "operations.runNowUnsupported": {
-    "zh-CN": "当前 Core 尚不支持立即运行。",
-    en: "This Core does not support Run now.",
+    "zh-CN": "当前后台版本尚不支持立即运行。",
+    en: "This background service version does not support Run now.",
   },
   "operations.runHistory": {
     "zh-CN": "运行记录",
@@ -129,8 +132,8 @@ export const operationMessages = {
     en: "Show all {count, plural, one {# run} other {# runs}}",
   },
   "operations.recentOnly": {
-    "zh-CN": "当前 Core 仅提供最近运行窗口。更新 Core 后可读取更早记录。",
-    en: "This Core provides only recent runs. Update Core to read earlier records.",
+    "zh-CN": "当前仅提供最近运行记录，更新后可读取更早记录。",
+    en: "Only recent runs are available. Update the app to read earlier records.",
   },
   "operations.loadingNotification": {
     "zh-CN": "正在读取通知运行…",
@@ -169,12 +172,12 @@ export const operationMessages = {
     en: "Load earlier runs",
   },
   "operations.admissionUnknown": {
-    "zh-CN": "提交结果尚未确认，请核对受理结果。",
+    "zh-CN": "提交结果尚未确认，请查看提交状态。",
     en: "Submission is unconfirmed. Check whether it was accepted.",
   },
   "operations.checkAdmission": {
-    "zh-CN": "核对受理结果",
-    en: "Check acceptance",
+    "zh-CN": "查看提交状态",
+    en: "Check submission",
   },
   "operations.schedulePreview": {
     "zh-CN": "后续执行预览",
@@ -257,7 +260,7 @@ export const operationMessages = {
     en: "The component declaration is empty.",
   },
   "operations.installSnapshot": {
-    "zh-CN": "安装当前快照",
+    "zh-CN": "安装当前版本",
     en: "Install the current snapshot",
   },
   "operations.enableProject": {
@@ -305,11 +308,11 @@ export const operationMessages = {
     en: "Catalog component support",
   },
   "operations.unverifiedSupport": {
-    "zh-CN": "当前快照的支持报告尚未核实。",
+    "zh-CN": "当前版本的兼容性报告尚未确认。",
     en: "The support report for this snapshot is unverified.",
   },
   "operations.blockedSnapshot": {
-    "zh-CN": "必需组件不兼容，当前快照不可激活。",
+    "zh-CN": "必需组件不兼容，当前版本暂不可启用。",
     en: "Required components are incompatible. This snapshot cannot be activated.",
   },
   "operations.partialComponents": {
@@ -333,11 +336,11 @@ export const operationMessages = {
     en: "View declarations and requirements",
   },
   "operations.snapshot": {
-    "zh-CN": "快照",
+    "zh-CN": "版本记录",
     en: "Snapshot",
   },
   "operations.noComponents": {
-    "zh-CN": "此快照未声明组件。",
+    "zh-CN": "此版本未声明可用组件。",
     en: "This snapshot declares no components.",
   },
   "operations.required": {
@@ -369,7 +372,7 @@ export const operationMessages = {
     en: "Deleting, waiting for execution to settle",
   },
   "operations.schedules.deleted": { "zh-CN": "已删除", en: "Deleted" },
-  "operations.schedules.cancelled": { "zh-CN": "已取消", en: "Cancelled" },
+  "operations.schedules.cancelled": { "zh-CN": "已取消", en: "Canceled" },
   "operations.schedules.paused": { "zh-CN": "已暂停", en: "Paused" },
   "operations.schedules.enabled": { "zh-CN": "已开启", en: "Enabled" },
   "operations.schedules.none": { "zh-CN": "无后续计划", en: "No future occurrence" },
@@ -412,7 +415,7 @@ export const operationMessages = {
     "zh-CN": "操作结果尚未确认，不会自动重发。",
     en: "The operation is unconfirmed and will not be replayed.",
   },
-  "operations.schedules.check": { "zh-CN": "核对受理状态", en: "Check acceptance" },
+  "operations.schedules.check": { "zh-CN": "查看任务状态", en: "Check status" },
   "operations.schedules.threadLabel": {
     "zh-CN": "本会话定时任务",
     en: "Schedules in this conversation",
@@ -451,7 +454,7 @@ export const operationMessages = {
     en: "Open scheduled task {title}",
   },
   "operations.schedules.retryCreation": {
-    "zh-CN": "重试或核对原请求",
+    "zh-CN": "重试或查看原请求",
     en: "Retry or check the original request",
   },
   "operations.schedules.opening": {
@@ -495,7 +498,7 @@ export const operationMessages = {
   },
   "operations.schedules.finishedGroup": { "zh-CN": "已结束", en: "Finished" },
   "operations.schedules.backToList": { "zh-CN": "返回任务列表", en: "Back to task list" },
-  "operations.schedules.pinnedSummary": { "zh-CN": "定时安排摘要", en: "Schedule summary" },
+  "operations.schedules.pinnedSummary": { "zh-CN": "定时任务摘要", en: "Schedule summary" },
   "operations.schedules.location": {
     "zh-CN": "工作目录与来源",
     en: "Working directory and source",
@@ -546,8 +549,8 @@ export const operationMessages = {
   },
   "operations.schedules.showMore": { "zh-CN": "展开显示", en: "Show more" },
   "operations.schedules.statusQueued": {
-    "zh-CN": "已受理，等待开始",
-    en: "Accepted, waiting to start",
+    "zh-CN": "已收到，等待开始",
+    en: "Received, waiting to start",
   },
   "operations.schedules.statusRunning": { "zh-CN": "运行中", en: "Running" },
   "operations.schedules.statusWaitingInput": { "zh-CN": "等待回答", en: "Waiting for an answer" },
@@ -555,10 +558,10 @@ export const operationMessages = {
   "operations.schedules.statusBlocked": { "zh-CN": "受阻", en: "Blocked" },
   "operations.schedules.statusCompleted": { "zh-CN": "已完成", en: "Completed" },
   "operations.schedules.statusFailed": { "zh-CN": "失败", en: "Failed" },
-  "operations.schedules.statusCancelled": { "zh-CN": "已取消", en: "Cancelled" },
+  "operations.schedules.statusCancelled": { "zh-CN": "已取消", en: "Canceled" },
   "operations.schedules.statusCancelling": {
     "zh-CN": "正在取消，等待执行结算",
-    en: "Cancelling, waiting for execution to settle",
+    en: "Canceling, waiting for execution to settle",
   },
   "operations.schedules.statusPausing": {
     "zh-CN": "正在暂停，等待执行结算",

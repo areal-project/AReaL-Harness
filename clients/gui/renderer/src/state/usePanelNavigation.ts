@@ -49,18 +49,18 @@ export function usePanelNavigation(
   };
   const hidePanel = () => {
     const returning =
-      panel === "旁路讨论" ||
-      panel === "历史旁路讨论" ||
+      panel === "side-chat" ||
+      panel === "side-chat-history" ||
       isSideChatTab(panel) ||
-      panel === "子代理" ||
+      panel === "subagents" ||
       panel.startsWith("agent:") ||
       isBrowserTab(panel) ||
       panel.startsWith("file:") ||
-      panel === "改动";
+      panel === "changes";
     const owner = `${projectId}:${threadId}`;
     const trigger = panelReturnTarget.current;
     workspacePanels.hidePanel();
-    if (contextReturn.current && (panel === "子代理" || panel.startsWith("agent:"))) {
+    if (contextReturn.current && (panel === "subagents" || panel.startsWith("agent:"))) {
       const restore = contextReturn.current;
       contextReturn.current = null;
       requestAnimationFrame(restore);
@@ -81,49 +81,53 @@ export function usePanelNavigation(
             ?.focus({ preventScroll: true });
       });
   };
+  const settings = session.services.capabilities?.settings;
+  const settingsRestricted = session.services.capabilities?.mutations === false;
+  const canOpenSettings = !settingsRestricted || !!settings?.length;
   const openSettings = (target: string) => {
-    if (!initialReleased) return;
-    const supported = session.services.capabilities?.settings;
-    if (session.readOnly && !supported?.includes(target)) return;
+    // 设置是连接失败时的恢复入口，不能等待连接恢复后才放行。
+    if (settingsRestricted && !settings?.includes(target)) return;
     if (!session.readOnly) workspacePanels.exposePanel();
     setSettingsTab(target);
     setSettingsOpen(true);
   };
   const showPanel = (name: string) => {
-    if (!initialReleased) return;
     if (
-      ["设置", "Skills", "MCP", "高级诊断", "后台服务", "会话配置"].includes(name) &&
+      ["settings", "Skills", "MCP", "diagnostics", "service", "session"].includes(name) &&
       !(name === "Skills" && thread)
     ) {
-      const supported = session.services.capabilities?.settings;
       openSettings(
-        name === "设置" ? (supported?.[0] ?? "模型服务") : name === "后台服务" ? "高级诊断" : name,
+        name === "settings"
+          ? (settings?.[0] ?? "providers")
+          : name === "service"
+            ? "diagnostics"
+            : name,
       );
       return;
     }
-    if (session.readOnly) return;
-    if (name === "预览") {
+    if (!initialReleased || session.readOnly) return;
+    if (name === "preview") {
       void openBrowser();
       return;
     }
-    if (name === "旁路讨论" && canCreateSide) {
+    if (name === "side-chat" && canCreateSide) {
       newSide();
       return;
     }
-    if (name === "改动") rememberPanelTrigger();
-    if (name === "旁路讨论" || name === "子代理" || name.startsWith("agent:")) {
+    if (name === "changes") rememberPanelTrigger();
+    if (name === "side-chat" || name === "subagents" || name.startsWith("agent:")) {
       if (panel === name) {
         hidePanel();
         return;
       }
       rememberPanelTrigger();
     }
-    workspacePanels.exposePanel(name === "旁路讨论" && matchMedia("(max-width: 1200px)").matches);
-    if (["编辑目标", "执行计划", "上下文", "已保存授权", "进程"].includes(name)) {
+    workspacePanels.exposePanel(name === "side-chat" && matchMedia("(max-width: 1200px)").matches);
+    if (["edit-goal", "plan", "context", "permissions", "processes"].includes(name)) {
       workspacePanels.selectPanel(name);
       return;
     }
-    if (name === "文件") {
+    if (name === "files") {
       showFiles();
       return;
     }
@@ -131,8 +135,8 @@ export function usePanelNavigation(
       workspacePanels.selectPanel("Skills");
       return;
     }
-    if (name === "终端") {
-      if (isTerminalTab(panel) || panel === "终端") workspacePanels.selectPanel("功能");
+    if (name === "terminal") {
+      if (isTerminalTab(panel) || panel === "terminal") workspacePanels.selectPanel("launcher");
       setTerminalOpen((value) => !value);
       return;
     }
@@ -141,7 +145,7 @@ export function usePanelNavigation(
   const subscribeNarrowLayout = () => {
     const query = matchMedia("(max-width: 1200px)");
     const resize = () => {
-      if (panel !== "旁路讨论" && !isSideChatTab(panel)) return;
+      if (panel !== "side-chat" && !isSideChatTab(panel)) return;
       if (query.matches) {
         sideNarrow.current = true;
         if (workspaceView === "split") workspacePanels.selectLayout("panel");
@@ -156,13 +160,12 @@ export function usePanelNavigation(
   };
   const subscribeShortcuts = () => {
     const listener = (event: KeyboardEvent) => {
-      if (!initialReleased || event.isComposing) return;
+      if (event.isComposing) return;
       if (
         session.readOnly &&
         !(
           (event.metaKey || event.ctrlKey) &&
-          (event.key.toLowerCase() === "k" ||
-            (event.key === "," && session.services.capabilities?.settings?.length))
+          (event.key.toLowerCase() === "k" || (event.key === "," && canOpenSettings))
         )
       )
         return;
@@ -172,39 +175,41 @@ export function usePanelNavigation(
         !event.shiftKey &&
         event.key === ","
       ) {
+        if (!canOpenSettings) return;
         event.preventDefault();
         if (!settingsOpen && !document.querySelector('[data-slot="dialog-content"]'))
-          showPanel("设置");
+          showPanel("settings");
         return;
       }
+      if (!initialReleased) return;
       if (project?.id && !settingsOpen && !event.altKey) {
         const key = event.key.toLowerCase();
         const panelShortcut =
           event.ctrlKey && event.shiftKey && key === "g"
-            ? "改动"
+            ? "changes"
             : event.ctrlKey &&
                 !event.metaKey &&
                 !event.shiftKey &&
                 event.code === "Backquote" &&
                 threadId
-              ? "终端"
+              ? "terminal"
               : (event.metaKey || event.ctrlKey) && !event.shiftKey && key === "t"
-                ? "预览"
+                ? "preview"
                 : (event.metaKey || event.ctrlKey) && !event.shiftKey && key === "p"
-                  ? "文件"
+                  ? "files"
                   : "";
         if (panelShortcut) {
           event.preventDefault();
-          if (panelShortcut === "终端") {
+          if (panelShortcut === "terminal") {
             openTerminal();
             return;
           }
-          if (panelShortcut === "预览") {
+          if (panelShortcut === "preview") {
             void openBrowser(true);
             return;
           }
           workspacePanels.exposePanel();
-          if (panelShortcut === "文件") showFiles();
+          if (panelShortcut === "files") showFiles();
           else workspacePanels.selectPanel(panelShortcut);
           return;
         }

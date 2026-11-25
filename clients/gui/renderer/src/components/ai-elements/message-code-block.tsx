@@ -3,7 +3,7 @@ import { Streamdown, useIsCodeFenceIncomplete } from "streamdown";
 import { mermaid } from "@streamdown/mermaid";
 import { memo, type ComponentProps } from "react";
 import { Maximize2 } from "lucide-react";
-import { MessageCodeBlock as View } from "@areal/ui/experimental";
+import { MessageCodeBlock as View } from "@areal/ui/compositions";
 import { CodeViewer } from "../ui/code-viewer.js";
 import { Button } from "../ui/button.js";
 const diagramPlugins = { mermaid };

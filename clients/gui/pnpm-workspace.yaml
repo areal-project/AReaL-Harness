@@ -1,7 +1,6 @@
 packages:
   - app
-  - ../../services/workbench
-  - ../mobile
+  - ../../schemas/provider-config
   - renderer
   - packages/*
   - oxlint-plugin-areal

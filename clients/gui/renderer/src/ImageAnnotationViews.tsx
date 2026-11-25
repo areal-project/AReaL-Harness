@@ -1,3 +1,4 @@
+import { observeResize } from "@areal/ui/observe-resize";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import { ReviewCommentGlyph } from "./interfaceIcons.js";
@@ -61,10 +62,9 @@ export function ImageAnnotationPane({ file, onDone }: { file: File; onDone: () =
         height: Math.max(0, (width * record.height) / record.width),
       });
     };
-    const observer = new ResizeObserver(measure);
-    if (host.current) observer.observe(host.current);
     measure();
-    return () => observer.disconnect();
+    if (!host.current) return;
+    return observeResize(host.current, measure);
   }, [record?.width, record?.height]);
   const update = (value: ImageAnnotationDraft) => setImageAnnotation(file, value);
   const pending = record?.pending.kind !== "idle" ? record?.pending : undefined;
@@ -108,12 +108,11 @@ export function ImageAnnotationPane({ file, onDone }: { file: File; onDone: () =
       );
       setEditorPosition({ left, top, width });
     };
-    const observer = new ResizeObserver(measure);
-    observer.observe(canvas);
+    const disconnect = observeResize(canvas, measure);
     canvas.addEventListener("scroll", measure);
     measure();
     return () => {
-      observer.disconnect();
+      disconnect();
       canvas.removeEventListener("scroll", measure);
     };
   }, [displaySize.width, displaySize.height, point?.x, point?.y, expanded]);
@@ -186,22 +185,26 @@ export function ImageAnnotationPane({ file, onDone }: { file: File; onDone: () =
                 }}
               />
               {record?.points.map((value, index) => (
-                <Button
-                  unstyled
-                  data-slot={undefined}
+                <div
                   key={value.id}
-                  type="button"
                   className="browser-annotation-marker image-annotation-marker"
-                  aria-label={`已确认标注 ${index + 1}`}
-                  title={value.comment}
-                  disabled={!!pending}
                   style={{ left: `${value.x * 100}%`, top: `${value.y * 100}%` }}
-                  onClick={() =>
-                    update({ ...record, pending: { kind: "edit", point: { ...value } } })
-                  }
                 >
-                  {index + 1}
-                </Button>
+                  <Button
+                    unstyled
+                    data-slot={undefined}
+                    type="button"
+                    className="size-full"
+                    aria-label={`已确认标注 ${index + 1}`}
+                    title={value.comment}
+                    disabled={!!pending}
+                    onClick={() =>
+                      update({ ...record, pending: { kind: "edit", point: { ...value } } })
+                    }
+                  >
+                    {index + 1}
+                  </Button>
+                </div>
               ))}
               {point && (
                 <span

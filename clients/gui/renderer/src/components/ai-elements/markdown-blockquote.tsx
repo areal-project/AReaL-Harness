@@ -1,1 +1,1 @@
-export { type MarkdownBlockquoteProps, MarkdownBlockquote } from "@areal/ui/experimental";
+export { type MarkdownBlockquoteProps, MarkdownBlockquote } from "@areal/ui/compositions";

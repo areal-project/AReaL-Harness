@@ -1,4 +1,5 @@
 import { readTurnToolDetails } from "./support/tool-history.mjs";
+import { createFixtureThread, readDesktopSnapshot } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -8,7 +9,11 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSmokeApplication, stopAndAssertFixtureHost } from "./application-cleanup.mjs";
+import {
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
 import {
   selectConversation,
   selectCreatedConversation,
@@ -42,7 +47,7 @@ assert.ok(
 const executable = packaged ? resolve(process.env.AREAL_GUI_EXECUTABLE) : require("electron");
 const resources = packaged ? join(dirname(dirname(executable)), "Resources") : null;
 const bundled = packaged
-  ? require("../../../services/workbench/src/desktop/core/bundle.cjs").verifyCoreBundle(resources, {
+  ? require("../packages/workbench/node/bundle.cjs").verifyCoreBundle(resources, {
       hashes: true,
     })
   : null;
@@ -250,6 +255,7 @@ for (const key of [
   "AREAL_HARNESS_CONFIG",
 ])
   delete env[key];
+env.AREAL_CORE_CONFIG = join(userHome, ".areal", "config.toml");
 if (packaged) delete env.AREAL_CORE_BIN;
 const startedAt = new Date().toISOString(),
   events = {},
@@ -264,11 +270,35 @@ let app,
   nativeId,
   pausedHostPid = null;
 async function snapshot() {
-  return page.evaluate(() => window.arealDesktop.snapshot());
+  return readDesktopSnapshot(page);
 }
 async function command(name, params) {
+  if (name === "create") {
+    const { projectId, ...rest } = params;
+    return createFixtureThread(page, projectId, rest);
+  }
   const result = await page.evaluate(
-    ({ name, params }) => window.arealDesktop.command(name, params),
+    async ({ name, params }) => {
+      const observer = globalThis[Symbol.for("areal.host.read")];
+      if (typeof observer?.call === "function") {
+        try {
+          return { ok: true, value: await observer.call(name, params) };
+        } catch (error) {
+          return {
+            ok: false,
+            error: {
+              code: error?.code ?? "internalError",
+              message: error?.message ?? String(error),
+              ...(error?.submissionUnknown !== undefined
+                ? { submissionUnknown: error.submissionUnknown }
+                : {}),
+              ...(error?.requestId !== undefined ? { requestId: error.requestId } : {}),
+            },
+          };
+        }
+      }
+      return window.arealDesktop.command(name, params);
+    },
     { name, params },
   );
   assert.equal(result.ok, true, JSON.stringify(result));
@@ -405,12 +435,47 @@ try {
       (await snapshot()).projects.find((item) => item.root === workspace && item.state?.connected),
     "project ready",
   );
+  const loadedCoreBinary =
+    project.core?.binary ??
+    (await (async () => {
+      for (const directory of await readdir(join(env.AREAL_HARNESS_SERVICE_HOME, "services"))) {
+        const descriptor = JSON.parse(
+          await readFile(
+            join(env.AREAL_HARNESS_SERVICE_HOME, "services", directory, "service.json"),
+            "utf8",
+          ),
+        );
+        if (descriptor.workspace === workspace && descriptor.state === "ready") {
+          if (descriptor.binary) return descriptor.binary;
+          if (Number.isSafeInteger(descriptor.hostPid) && descriptor.hostPid > 0) {
+            const command = execFileSync(
+              "/bin/ps",
+              ["-p", String(descriptor.hostPid), "-o", "command="],
+              { encoding: "utf8" },
+            ).trim();
+            if (command.endsWith(" service-host")) return command.slice(0, -" service-host".length);
+          }
+        }
+      }
+      return undefined;
+    })());
   assert.equal(
-    await realpath(project.core.binary),
+    await realpath(loadedCoreBinary),
     await realpath(coreBinary),
     "the app uses its expected bundled or source Core",
   );
-  events.loadedCoreBinary = project.core.binary;
+  events.loadedCoreBinary = loadedCoreBinary;
+  assert.ok(
+    project.models.some((model) => model.available),
+    "the isolated fixture configuration provides an executable model",
+  );
+  await until(
+    async () =>
+      (await snapshot()).projects
+        .find((item) => item.id === project.id)
+        ?.profiles?.some((profile) => profile.id === "fixture" && profile.revision === "v1"),
+    "the isolated fixture deployment is loaded before thread creation",
+  );
   projectId = project.id;
   const first = await command("create", {
     projectId,
@@ -418,15 +483,22 @@ try {
     profile: { id: "fixture", revision: "v1" },
   });
   threadId = first.threadId;
-  if (faultMode === "navigation")
+  await selectCreatedConversation(page, projectId, threadId);
+  if (faultMode === "navigation") {
+    const configured = await until(
+      async () =>
+        (await snapshot()).projects.find((item) => item.id === projectId)?.configurations?.[
+          threadId
+        ],
+      "thread configuration loaded",
+    );
     await command("configure", {
       projectId,
       threadId,
-      expectedRevision: (await snapshot()).projects.find((item) => item.id === projectId)
-        .configurations[threadId].revision,
+      expectedRevision: configured.revision,
       options: { permissionPreset: "fullAccess" },
     });
-  await selectCreatedConversation(page, projectId, threadId);
+  }
   await app.evaluate(({ app, BrowserWindow }) => {
     app.focus({ steal: true });
     const window = BrowserWindow.getAllWindows()[0];
@@ -602,7 +674,7 @@ try {
     await input.fill(draft);
     const before = modelCalls.length;
     await page.getByTestId("chat-send-button").click();
-    const inspection = page.getByRole("dialog", { name: "核对浏览器结果", exact: true });
+    const inspection = page.getByRole("dialog", { name: "查看浏览器结果", exact: true });
     await inspection.waitFor();
     assert.equal(
       modelCalls.length,
@@ -620,12 +692,12 @@ try {
     await page.screenshot({ path: join(scratch, "navigation-inspection.png") });
     await inspection.getByRole("button", { name: "取消核查", exact: true }).click();
     assert.equal(await input.innerText(), draft, "cancel keeps the draft");
-    await page.getByRole("button", { name: "核对后继续", exact: true }).click();
+    await page.getByRole("button", { name: "确认后继续", exact: true }).click();
     await inspection
       .getByLabel("核查说明", { exact: true })
       .fill("已在当前浏览器打开测试页面，页面可交互；未重放原超时导航。");
     await inspection
-      .getByRole("checkbox", { name: "已核对当前页面及操作结果", exact: true })
+      .getByRole("checkbox", { name: "已查看当前页面及操作结果", exact: true })
       .check();
     await inspection.getByRole("button", { name: "确认已核查", exact: true }).click();
     await inspection.waitFor({ state: "hidden" });
@@ -1921,6 +1993,8 @@ try {
       /* exact task host already exited */
     }
   }
+  const originalHost = await readFixtureHost(env);
+  const quitPid = app?.process()?.pid ?? null;
   if (app) {
     // 被动保存原生按键和 Main 回执，失败时也能区分快捷键、执行与投影阶段。
     events.browserOpening = await app
@@ -1941,7 +2015,10 @@ try {
       process.exitCode = 1;
     });
   }
-  await stopAndAssertFixtureHost(coreBinary, env, scratch, null).catch((error) => {
+  await settleFixtureHostAfterQuit(coreBinary, env, scratch, {
+    host: originalHost,
+    pid: quitPid,
+  }).catch((error) => {
     errors.push(`Host cleanup: ${error.message}`);
     passed = false;
     process.exitCode = 1;
@@ -1957,7 +2034,8 @@ try {
   const files = [
     "app/src/core/preview.cjs",
     "app/src/core/main.cjs",
-    "../../services/workbench/src/desktop/core/service-protocol.cjs",
+    "app/src/core/service-client.cjs",
+    "../../core/host/src/workbench_frontend.rs",
     "app/src/core/browser-navigation.cjs",
     "app/src/core/preview-native/navigation.cjs",
     "app/src/core/preview-native/read-session.cjs",

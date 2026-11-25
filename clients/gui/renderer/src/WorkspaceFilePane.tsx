@@ -28,6 +28,7 @@ import {
 import { FileDisplayInline } from "./lib/fileDisplay.js";
 import { CodeViewer } from "./components/ui/code-viewer.js";
 import type { Action, PlatformServices, FileOpenTargets } from "./services.js";
+import { isFileOpenTargets } from "./desktop-response.js";
 import { useCodePreferences } from "./settings/preferences.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 const DiagramPreview = lazy(async () => {
@@ -268,11 +269,10 @@ export function WorkspaceFilePane({
     setMessage("");
     try {
       if (target !== undefined) {
-        await fileOpen({ operation: "setDefault", target });
-        const catalog = await fileOpen({ operation: "targets" });
-        if (mounted.current) setOpenTargets(catalog as FileOpenTargets);
+        const catalog = await fileOpen({ operation: "setDefault", target });
+        if (mounted.current && isFileOpenTargets(catalog)) setOpenTargets(catalog);
       }
-      const result = await fileOpen({ operation, projectId, path });
+      const result = await fileOpen({ operation, projectId, path, target });
       if (operation === "saveAs" && "saved" in result && result.saved && mounted.current)
         setMessage("文件已另存");
     } catch (cause) {
@@ -336,7 +336,6 @@ export function WorkspaceFilePane({
             <Button
               size="sm"
               variant="ghost"
-              className="file-preview-control"
               disabled={!doc}
               onClick={() => setMarkdown((value) => !value)}
             >
@@ -345,8 +344,8 @@ export function WorkspaceFilePane({
           )}
           <Button
             size="icon"
-            variant="ghost"
-            className="file-preview-control file-preview-icon"
+            variant="ghost-subtle"
+            active={filesOpen}
             aria-label="切换文件树"
             aria-pressed={filesOpen}
             onClick={onToggleFiles}
@@ -366,8 +365,7 @@ export function WorkspaceFilePane({
           <div className="file-preview-open-group" role="group" aria-label="文件打开操作">
             <Button
               size="sm"
-              variant="ghost"
-              className="file-preview-control file-preview-open"
+              variant="surface"
               aria-label={
                 openTargets ? `在${openTargets.preferredLabel}中打开` : "在默认应用中打开"
               }
@@ -380,12 +378,7 @@ export function WorkspaceFilePane({
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="file-preview-control file-preview-open-options"
-                    aria-label="文件更多"
-                  >
+                  <Button size="icon" variant="surface" className="ml-0.5" aria-label="文件更多">
                     <ChevronDown className="size-3" />
                   </Button>
                 }
@@ -501,16 +494,17 @@ export function WorkspaceFilePane({
               />
             </Suspense>
           ) : doc?.editing ? (
-            <Textarea
-              unstyled
-              data-slot={undefined}
-              className="workspace-file-editor"
-              aria-label={`编辑 ${path}`}
-              spellCheck={false}
-              disabled={busy}
-              value={doc.text}
-              onChange={(e) => update({ ...doc, text: e.target.value })}
-            />
+            <div className="workspace-file-editor flex min-h-0 flex-1">
+              <Textarea
+                variant="bare"
+                className="h-full w-full flex-1"
+                aria-label={`编辑 ${path}`}
+                spellCheck={false}
+                disabled={busy}
+                value={doc.text}
+                onChange={(e) => update({ ...doc, text: e.target.value })}
+              />
+            </div>
           ) : doc ? (
             markdown && isDelimited ? (
               <WorkspaceDelimitedPreview
@@ -551,8 +545,8 @@ export function WorkspaceFilePane({
                 </Suspense>
                 <Button
                   size="icon"
-                  variant="ghost"
-                  className="workspace-markdown-copy"
+                  variant="ghost-subtle"
+                  className="absolute top-[var(--spacing-inline)] right-[var(--spacing-field)]"
                   aria-label="复制 Markdown"
                   onClick={() => {
                     void navigator.clipboard

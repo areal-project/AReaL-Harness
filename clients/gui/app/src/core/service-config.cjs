@@ -27,11 +27,20 @@ function serviceHome(app) {
 function serviceOptions(app) {
   // 配置文件参与后台身份；环境变量选择也必须固定，避免新窗口复用另一份配置的后台。
   const config = process.env.AREAL_CORE_CONFIG || process.env.AREAL_HARNESS_CONFIG;
-  const bundledProfile = require("@areal/workbench-service/desktop/core/desktop-profile.json")
-    .profiles[0];
-  const configHome = resolve(
-    process.env.AREAL_HARNESS_HOME || join(process.env.AREAL_CORE_USER_HOME || homedir(), ".areal"),
-  );
+  const bundledProfile = require("@areal/workbench/desktop-profile").profiles[0];
+  // 开发工作树的 Host 与凭据命名空间独立，不能接管安装版后台。
+  const defaultHostHome =
+    app.isPackaged === false
+      ? join(
+          process.env.AREAL_CORE_USER_HOME || homedir(),
+          ".areal-dev",
+          createHash("sha256")
+            .update(resolve(app.getPath("userData")))
+            .digest("hex")
+            .slice(0, 12),
+        )
+      : join(process.env.AREAL_CORE_USER_HOME || homedir(), ".areal");
+  const configHome = resolve(process.env.AREAL_HARNESS_HOME || defaultHostHome);
   return {
     binary: bootstrap.resolveCoreBinary({
       explicit:
@@ -43,28 +52,26 @@ function serviceOptions(app) {
     home: serviceHome(app),
     guiProfile: app.getPath("userData"),
     hostHome: resolve(
-      process.env.AREAL_HARNESS_SERVICE_HOME ||
-        process.env.AREAL_HARNESS_HOME ||
-        join(process.env.AREAL_CORE_USER_HOME || homedir(), ".areal"),
+      process.env.AREAL_HARNESS_SERVICE_HOME || process.env.AREAL_HARNESS_HOME || defaultHostHome,
     ),
     applicationOwner: process.env.AREAL_GUI_OWNER
-      ? require("@areal/workbench-service/desktop/core/application-owner.cjs").parseOwner(
-          process.env.AREAL_GUI_OWNER,
-        )
+      ? require("@areal/workbench/node/application-owner").parseOwner(process.env.AREAL_GUI_OWNER)
       : undefined,
     // macOS Unix socket 长度有限，注册目录不能嵌入较长的 userData 路径。
     harnessHome:
       process.env.AREAL_HARNESS_SERVICE_HOME ||
       process.env.AREAL_HARNESS_HOME ||
-      join(
-        app.getPath("home"),
-        ".areal",
-        "gui",
-        createHash("sha256")
-          .update(resolve(serviceHome(app)))
-          .digest("hex")
-          .slice(0, 12),
-      ),
+      (app.isPackaged === false
+        ? defaultHostHome
+        : join(
+            app.getPath("home"),
+            ".areal",
+            "gui",
+            createHash("sha256")
+              .update(resolve(serviceHome(app)))
+              .digest("hex")
+              .slice(0, 12),
+          )),
     userHome: process.env.AREAL_CORE_USER_HOME,
     config: config ? resolve(config) : undefined,
     configHome,
@@ -73,13 +80,11 @@ function serviceOptions(app) {
     workgroupPolicy: process.env.AREAL_CORE_WORKGROUP_POLICY,
     workgroupToolchain: process.env.AREAL_CORE_WORKGROUP_TOOLCHAIN,
     desktopConfig:
-      process.env.AREAL_CORE_DESKTOP_CONFIG ||
-      require.resolve("@areal/workbench-service/desktop/core/desktop-profile.json"),
+      process.env.AREAL_CORE_DESKTOP_CONFIG || require.resolve("@areal/workbench/desktop-profile"),
     desktopProcesses: true,
     defaultProfile: !process.env.AREAL_CORE_DESKTOP_CONFIG
       ? { id: bundledProfile.id, revision: bundledProfile.revision }
       : undefined,
   };
 }
-const { serviceIdentity } = require("@areal/workbench-service/desktop/core/service-identity.cjs");
-module.exports = { ...bootstrap, configureUserData, serviceHome, serviceOptions, serviceIdentity };
+module.exports = { ...bootstrap, configureUserData, serviceHome, serviceOptions };

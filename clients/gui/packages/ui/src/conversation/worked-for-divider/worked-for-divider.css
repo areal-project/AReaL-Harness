@@ -1,0 +1,49 @@
+.areal-worked-for-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-inline);
+  min-width: 0;
+  margin-block: var(--spacing-inline);
+  color: var(--color-foreground-subtlest);
+  font-size: var(--text-ui-caption);
+  line-height: var(--line-height-ui-sm);
+  letter-spacing: var(--tracking-ui-subtle);
+}
+
+.areal-worked-for-label,
+.areal-worked-for-trigger {
+  flex: none;
+  color: var(--color-foreground-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.areal-worked-for-trigger {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: var(--interactive-cursor, pointer);
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+
+.areal-worked-for-trigger:hover {
+  color: var(--color-foreground);
+}
+
+.areal-worked-for-trigger:focus-visible {
+  outline: var(--focus-width) solid var(--color-brand);
+  outline-offset: var(--focus-offset);
+  border-radius: var(--radius-micro);
+}
+
+.areal-worked-for-line {
+  flex: 1;
+  height: var(--border-width-default);
+  background: var(--color-border-hairline);
+}
+
+.areal-worked-for-meta {
+  flex: none;
+  font-size: var(--text-ui-sm);
+  color: var(--color-foreground-subtlest);
+}

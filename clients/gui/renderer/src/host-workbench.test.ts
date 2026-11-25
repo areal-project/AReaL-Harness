@@ -7,10 +7,53 @@ import {
   hostPlatformCapabilities,
   openingAuthorization,
   outcomeUnknown,
+  routeDesktopCommand,
 } from "./host-workbench.js";
 import { hostCommandError } from "./desktop-response.js";
 import type { PlatformServices } from "./services.js";
 import { refreshModelCatalogs } from "./host-auxiliary-reads.js";
+
+it("coalesces identical workspace and context reads while preserving distinct targets", async () => {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const command = vi.fn(async () => {
+    await released;
+    return { ok: false, error: { code: "CAPACITY_EXCEEDED", message: "busy" } };
+  });
+  const services = { command } as unknown as PlatformServices;
+  const context = {
+    projectId: "project",
+    threadId: "thread",
+    operation: "context" as const,
+    offset: 0,
+    limit: 1,
+  };
+  const info = { projectId: "project", threadId: "thread", operation: "info" as const };
+  const outcome = Promise.allSettled([
+    call(services, "manage", context),
+    call(services, "manage", { ...context }),
+    call(services, "manage", { ...context, threadId: "other" }),
+    call(services, "workspace", info),
+    call(services, "workspace", { ...info }),
+  ]);
+  try {
+    await vi.waitFor(() => expect(command).toHaveBeenCalledTimes(3));
+    expect(command.mock.calls).toEqual([
+      ["manage", context],
+      ["manage", { ...context, threadId: "other" }],
+      ["workspace", info],
+    ]);
+  } finally {
+    release();
+    await outcome;
+  }
+  await expect(call(services, "workspace", info)).rejects.toMatchObject({
+    code: "CAPACITY_EXCEEDED",
+  });
+  expect(command).toHaveBeenCalledTimes(4);
+});
 
 function setup(answer: (method: string, params: unknown) => unknown) {
   const calls: Array<[string, unknown]> = [];
@@ -77,13 +120,15 @@ describe("workbench routes", () => {
     expect(calls.map(([method]) => method)).toEqual(["analytics.read"]);
   });
 
-  it("falls back to the desktop path when the service is unavailable", async () => {
+  it("reports an unavailable analytics sync without falling back to Node", async () => {
     const { routes } = setup((method) => {
       if (method === "analytics.sync")
         throw Object.assign(new Error("down"), { code: "CAPABILITY_UNAVAILABLE" });
       return {};
     });
-    expect(await routes.call("analytics", { operation: "sync" })).toBeUndefined();
+    await expect(routes.call("analytics", { operation: "sync" })).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+    });
   });
 });
 
@@ -126,11 +171,11 @@ describe("library routes without a desktop adapter", () => {
         title: "Inbox",
       }),
     ).toEqual(state);
-    expect(await routes.call("library", { operation: "settings" })).toBeUndefined();
+    expect(await routes.call("serviceStatus", {})).toBeUndefined();
     expect(commands).toHaveLength(1);
   });
 
-  it("routes navigation preferences but does not expose native library settings", async () => {
+  it("routes navigation preferences through Host", async () => {
     const { routes, commands } = library((commandId) => ({
       commandId,
       method: "library.command",
@@ -141,13 +186,6 @@ describe("library routes without a desktop adapter", () => {
     expect(
       await routes.call("library", { operation: "settings", key: "sidebarSort", value: "manual" }),
     ).toEqual({ value: state });
-    expect(
-      await routes.call("library", {
-        operation: "settings",
-        key: "computerControlEnabled",
-        value: true,
-      }),
-    ).toBeUndefined();
     expect(commands).toHaveLength(1);
   });
 
@@ -378,6 +416,12 @@ describe("plugin store Host routing", () => {
     } as unknown as HostClient;
     const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
     await routes.call("manage", { operation: "plugins", projectId: "project" });
+    await routes.call("manage", {
+      operation: "pluginResolve",
+      projectId: "project",
+      id: "web-search@areal-official",
+      expectedRevision: 1,
+    });
     const install = await routes.call("manage", {
       operation: "pluginInstall",
       projectId: "project",
@@ -409,6 +453,15 @@ describe("plugin store Host routing", () => {
     expect(install).toEqual({ value: { ok: 1 } });
     expect(requests.map(({ method, params }) => [method, params])).toEqual([
       ["plugins.read", { operation: "plugins", projectId: "project" }],
+      [
+        "plugins.command",
+        {
+          operation: "pluginResolve",
+          id: "web-search@areal-official",
+          expectedRevision: 1,
+          projectId: "project",
+        },
+      ],
       [
         "plugins.command",
         {
@@ -691,34 +744,6 @@ describe("provider Host routing", () => {
   });
 });
 
-describe("MCP Apps catalog without a desktop adapter", () => {
-  it("routes the normal manage directory action through pages without command submission", async () => {
-    const calls: unknown[][] = [];
-    const catalog = { data: [{ serverId: "fixture" }], requestEpoch: "epoch" };
-    const client = {
-      writable: () => true,
-      workbench: async (...args: unknown[]) => {
-        calls.push(args);
-        return catalog;
-      },
-    } as unknown as HostClient;
-    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => undefined)!;
-    expect(
-      await routes.call("manage", {
-        operation: "mcpApps",
-        projectId: "project",
-        threadId: "thread",
-      }),
-    ).toEqual({ value: catalog });
-    expect(calls).toEqual([
-      ["pages.command", { operation: "catalog", projectId: "project", threadId: "thread" }],
-    ]);
-    expect(
-      await routes.call("manage", { operation: "mcpForms", projectId: "project" }),
-    ).toBeUndefined();
-  });
-});
-
 describe("authorization pages", () => {
   it("opens plugin and ChatGPT authorization pages and cancels a login it cannot open", async () => {
     const calls: unknown[] = [];
@@ -756,34 +781,38 @@ describe("local web desktop commands", () => {
       ) => {
         calls.push([method, params]);
         if (params.request.fail) throw Object.assign(new Error("Core refused"), { code: "x" });
-        // JSON 通道把后台的 Uint8Array 变成按下标排的对象。
-        if (params.command === "media") return { bytes: { 0: 137, 1: 80 }, mime: "image/png" };
+        if (params.command === "media") return { uploads: [], archived: false };
         return { done: true };
       },
     } as unknown as HostClient;
     const command = hostDesktopCommand(client, hostCommandError);
-    expect(await command("list", { projectId: "p" })).toEqual({ ok: true, value: { done: true } });
+    expect(await command("connect", { projectId: "p" })).toEqual({
+      ok: true,
+      value: { done: true },
+    });
     expect(await command("recovery", { operation: "inspect" })).toEqual({
       ok: true,
       value: { done: true },
     });
-    expect(await command("list", { fail: true } as never)).toEqual({
+    expect(await command("connect", { fail: true } as never)).toEqual({
       ok: false,
       error: { code: "x", message: "Core refused" },
     });
-    await expect(command("computerControl", {} as never)).rejects.toThrow("需要桌面应用");
-    expect(await command("media", { projectId: "p", operation: "read" } as never)).toEqual({
+    expect(await command("media", { projectId: "p", threadId: "t", operation: "list" })).toEqual({
       ok: true,
-      value: { bytes: new Uint8Array([137, 80]), mime: "image/png" },
+      value: { uploads: [], archived: false },
     });
-    expect(calls[0]).toEqual(["desktop.command", { command: "list", request: { projectId: "p" } }]);
+    expect(calls[0]).toEqual([
+      "desktop.command",
+      { command: "connect", request: { projectId: "p" } },
+    ]);
     expect(calls[1]).toEqual([
       "desktop.command",
       { command: "recovery", request: { operation: "inspect" } },
     ]);
     const capabilities = hostPlatformCapabilities(client, undefined, "source");
     expect(capabilities?.mutations).toBe(true);
-    expect(capabilities?.settings).toContain("模型服务");
+    expect(capabilities?.settings).toContain("providers");
     expect(capabilities?.settings).not.toContain("电脑控制");
     expect(hostPlatformCapabilities(client, undefined, undefined)?.mutations).toBe(false);
   });
@@ -801,5 +830,211 @@ describe("local web desktop commands", () => {
       ok: false,
       error: { code: "MIGRATION_PENDING", message: "blocked" },
     });
+  });
+});
+
+it.each([true, false])(
+  "reconnect restores the owning transports before returning on desktop=%s",
+  async (native) => {
+    const events: string[] = [];
+    const client = {
+      retry: async () => {
+        events.push("host");
+      },
+      snapshot: () => ({ connection: "ready" }),
+    } as unknown as HostClient;
+    const desktop = native
+      ? ({
+          command: async () => {
+            events.push("desktop");
+            return { ok: true, value: null };
+          },
+        } as unknown as PlatformServices)
+      : undefined;
+    const routes = createWorkbenchRoutes(client, desktop, undefined, undefined, () => "fixture");
+    expect(await routes.call("connectService", {})).toEqual({ value: null });
+    expect(events).toEqual(native ? ["desktop", "host"] : ["host"]);
+  },
+);
+
+describe("library Host-only routing", () => {
+  it("uses the same confirmed Host receipt for non-native preferences", async () => {
+    const state = {
+      projects: {},
+      threads: {},
+      projectOrder: [],
+      sections: [],
+      sidebarThreadOrder: [],
+      sidebarRevision: 0,
+      settings: {},
+    };
+    const workbench = vi.fn(async (method: string, _params: unknown, commandId: string) => ({
+      commandId,
+      method,
+      admissionState: "accepted",
+      submissionUnknown: false,
+      receipt: state,
+    }));
+    const client = { writable: () => true, workbench } as unknown as HostClient;
+    const native = vi.fn();
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "fixture");
+    expect(
+      await call({ command: native, workbench: routes } as unknown as PlatformServices, "library", {
+        operation: "settings",
+        key: "terminalFontFamily",
+        value: "monospace",
+      }),
+    ).toEqual(state);
+    expect(workbench).toHaveBeenCalledWith(
+      "library.command",
+      {
+        operation: "settings",
+        key: "terminalFontFamily",
+        value: "monospace",
+      },
+      expect.any(String),
+    );
+    expect(native).not.toHaveBeenCalled();
+  });
+
+  it("rejects bypassing the library receipt route without dispatching either transport", async () => {
+    const native = vi.fn();
+    const host = vi.fn();
+    const route = routeDesktopCommand(
+      { command: native } as Pick<PlatformServices, "command">,
+      host,
+      () => true,
+    );
+    await expect(
+      route("library", { operation: "settings", key: "terminalFontFamily", value: "monospace" }),
+    ).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE", submissionUnknown: false });
+    expect(native).not.toHaveBeenCalled();
+    expect(host).not.toHaveBeenCalled();
+  });
+
+  it.each(["analytics", "tasks", "providers"])(
+    "does not send %s through a retired alias",
+    async (name) => {
+      const native = vi.fn();
+      const host = vi.fn();
+      const route = routeDesktopCommand(
+        { command: native } as Pick<PlatformServices, "command">,
+        host,
+        () => true,
+      );
+      await expect(route(name, {})).rejects.toMatchObject({
+        code: "CAPABILITY_UNAVAILABLE",
+        submissionUnknown: false,
+      });
+      expect(native).not.toHaveBeenCalled();
+      expect(host).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { operation: "createSection", title: "Inbox" },
+    { operation: "settings", key: "terminalFontFamily", value: "monospace" },
+  ] as const)(
+    "rejects unavailable library writes before reaching a fallback transport: $operation",
+    async (params) => {
+      const native = vi.fn();
+      const client = { writable: () => false } as unknown as HostClient;
+      const routes = createWorkbenchRoutes(
+        client,
+        undefined,
+        undefined,
+        undefined,
+        () => "fixture",
+      );
+      await expect(
+        call(
+          { workbench: routes, command: native } as unknown as PlatformServices,
+          "library",
+          params,
+        ),
+      ).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE", submissionUnknown: false });
+      expect(native).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    "chatgpt",
+    "configure",
+    "continue",
+    "dismissRecovery",
+    "editMessage",
+    "fork",
+    "manage",
+    "prediction",
+    "queue",
+    "queueEdit",
+    "reconcile",
+    "recovery",
+    "remoteControl",
+    "side",
+    "workspace",
+  ])("never falls back %s to native Main when Host is unready or declines", async (name) => {
+    const native = vi.fn(async () => ({ ok: true as const, value: null }));
+    const host = vi.fn(async () => ({
+      ok: false as const,
+      error: { code: "CAPABILITY_UNAVAILABLE", message: "Host declined" },
+    }));
+    const unready = routeDesktopCommand(
+      { command: native } as Pick<PlatformServices, "command">,
+      host,
+      () => false,
+    );
+    expect(await unready(name, {})).toMatchObject({
+      ok: false,
+      error: { code: "CAPABILITY_UNAVAILABLE" },
+    });
+    expect(native).not.toHaveBeenCalled();
+    expect(host).not.toHaveBeenCalled();
+
+    const ready = routeDesktopCommand(
+      { command: native } as Pick<PlatformServices, "command">,
+      host,
+      () => true,
+    );
+    expect(await ready(name, {})).toMatchObject({
+      ok: false,
+      error: { code: "CAPABILITY_UNAVAILABLE", message: "Host declined" },
+    });
+    expect(host).toHaveBeenCalledOnce();
+    expect(native).not.toHaveBeenCalled();
+  });
+
+  it.each(["processStart", "pluginArchivePick", "pluginArchiveImport"])(
+    "keeps desktop-only manage.%s on native Main",
+    async (operation) => {
+      const native = vi.fn(async () => ({ ok: true as const, value: null }));
+      const host = vi.fn();
+      const route = routeDesktopCommand(
+        { command: native } as Pick<PlatformServices, "command">,
+        host,
+        () => true,
+      );
+      await route("manage", { operation });
+      expect(native).toHaveBeenCalledTimes(1);
+      expect(host).not.toHaveBeenCalled();
+    },
+  );
+});
+
+it("renders the Host pairing payload as a QR code in the shared client", async () => {
+  const client = {
+    writable: () => true,
+    workbench: async () => ({
+      payload: "https://synthetic.invalid/#invite=synthetic",
+      expiresAt: Date.now() + 120000,
+    }),
+  } as unknown as HostClient;
+  const command = hostDesktopCommand(client, hostCommandError);
+  const result = await command("remoteControl", { operation: "pair", transport: "relay" });
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw new Error("Pairing failed");
+  expect(result.value).toMatchObject({
+    payload: "https://synthetic.invalid/#invite=synthetic",
+    qr: expect.stringMatching(/^data:image\/png;base64,/),
   });
 });

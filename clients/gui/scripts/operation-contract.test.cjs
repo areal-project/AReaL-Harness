@@ -15,12 +15,37 @@ test("Side model modes reject malformed references and ambiguous default selecti
     text: "question",
     workspaceAccess: "none",
   };
-  for (const extra of [{}, { resetModel: true }, { model: { providerId: "p", modelId: "C" } }])
+  const reviewComments = [
+    {
+      id: "comment",
+      path: "src/app.ts",
+      root: "/workspace",
+      scope: "branch",
+      ref: "main",
+      token: "token",
+      head: "head",
+      base: "base",
+      side: "additions",
+      start: 3,
+      end: 3,
+      snippet: "const value = 1;",
+      body: "Please extract this value.",
+    },
+  ];
+  for (const extra of [
+    {},
+    { resetModel: true },
+    { model: { providerId: "p", modelId: "C" } },
+    { contextParts: [{ type: "reviewComment", comment: reviewComments[0] }] },
+  ])
     assert.doesNotThrow(() => validateCommand("side", { ...start, ...extra }));
   for (const extra of [
     { resetModel: true, model: { providerId: "p", modelId: "C" } },
     { model: {} },
     { workspaceAccess: "write" },
+    {
+      contextParts: [{ type: "reviewComment", comment: { ...reviewComments[0], side: "invalid" } }],
+    },
   ])
     assert.throws(() => validateCommand("side", { ...start, ...extra }));
 });
@@ -63,21 +88,6 @@ test("saved-key reveal accepts only a bounded provider/revision request and key 
   );
   for (const bad of [{}, { apiKey: "" }, { apiKey: 1 }, { apiKey: "key", snapshot: {} }])
     assert.throws(() => validateCommandResponse("providers", request, bad));
-});
-
-test("remote control cannot reveal local provider credentials", async () => {
-  const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-  const service = {
-    backend: { command: () => assert.fail("Remote reveal must not reach credentials") },
-  };
-  await assert.rejects(
-    DesktopService.prototype.executeRemote.call(service, "providers", {
-      operation: "revealKey",
-      id: "p",
-      expectedRevision: "r",
-    }),
-    /本机/,
-  );
 });
 
 test("Cloud reconnect is an explicit identity-bound mutation", () => {
@@ -127,58 +137,72 @@ test("Native directory metadata uses the read command contract without an admiss
     assert.throws(() => validateCommandResponse("workspace", request, result));
 });
 
-test("Native directory metadata stats real external directories and preserves the selected path", async (t) => {
-  const fs = require("node:fs/promises");
-  const path = require("node:path");
-  const root = await fs.mkdtemp(
-    path.join(require("node:os").tmpdir(), "areal-directory-reference-"),
-  );
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const workspace = path.join(root, "workspace");
-  const external = path.join(root, " 中文 notes (v2)#1> ");
-  await fs.mkdir(workspace);
-  await fs.mkdir(external);
-  const file = path.join(root, "notes.txt");
-  await fs.writeFile(file, "ordinary file");
-  const { workspaceCommand } = require("@areal/workbench-service/desktop/core/workspace.cjs");
-  const backend = { rustDomains: [], saved: [{ id: "project", root: workspace }] };
-  const request = { projectId: "project", operation: "localDirectoryReference" };
-  assert.deepEqual(await workspaceCommand(backend, { ...request, path: external }), {
-    path: external,
-    name: " 中文 notes (v2)#1> ",
-    type: "directory",
-  });
-  const selected = path.join(root, "selected-link");
-  await fs.symlink(external, selected, "dir");
-  assert.equal((await workspaceCommand(backend, { ...request, path: selected })).path, selected);
-  const filesystemRoot = path.parse(root).root;
-  assert.equal(
-    (await workspaceCommand(backend, { ...request, path: filesystemRoot })).path,
-    filesystemRoot,
-  );
-  await assert.rejects(workspaceCommand(backend, { ...request, path: file }), /不是目录/);
-  await assert.rejects(
-    workspaceCommand(backend, { ...request, path: path.join(root, "missing") }),
-    /ENOENT/,
-  );
-  await assert.rejects(
-    workspaceCommand(backend, { ...request, path: "relative/path" }),
-    /无效本机目录路径/,
-  );
-  await assert.rejects(
-    workspaceCommand(backend, { ...request, projectId: "unknown", path: external }),
-    /未知工作区/,
-  );
-  await assert.rejects(
-    workspaceCommand(backend, { projectId: "project", operation: "list", path: external }),
-    /工作区内/,
-  );
-});
-
 test("scheduled scratch keeps its fixed owner without injecting caller submission IDs", () => {
   const request = { operation: "scratch" };
   assert.doesNotThrow(() => validateCommand("projectless", request));
   assert.deepEqual(commandSemantics("projectless", request), { effect: "mutation" });
   for (const extra of [{ requestId: "caller" }, { directory: "/outside" }])
     assert.throws(() => validateCommand("projectless", { ...request, ...extra }));
+});
+
+test("context reads preserve model capacity when the estimate is unavailable", () => {
+  const capacity = {
+    windowTokens: 64000,
+    outputReserveTokens: 4096,
+    inputLimitTokens: 59904,
+    windowSource: "user",
+  };
+  const response = {
+    budget: {
+      ...capacity,
+      targetTokens: 35942,
+      outputLimitTokens: null,
+      historyEstimatedTokens: 120,
+      estimateScope: "historyWithRecordedInstructionsAndCurrentTools",
+      retentionStrategy: "automatic",
+    },
+    threadId: "thread",
+    view: "historyProjectionForNextRequest",
+    systemInstructionsIncluded: true,
+    instructionSnapshot: "fixture instructions",
+    checkpoint: null,
+    offset: 0,
+    nextOffset: null,
+    data: [],
+    contextUsage: {
+      kind: "unavailable",
+      basis: {
+        provider: "fixture",
+        model: "alpha",
+        configurationRevision: 2,
+        defaultModelRevision: null,
+        turnId: "previous-turn",
+      },
+      budget: capacity,
+      reason: "instructionBasisChanged",
+    },
+    sessionUsage: {
+      scope: "ownTurns",
+      usage: { inputTokens: 120, cachedInputTokens: 20, outputTokens: 30 },
+      generation: {
+        outputTokens: 30,
+        durationMs: 200,
+        measuredRequests: 1,
+        unmeasuredRequests: 0,
+        usageRequests: 1,
+        missingUsageRequests: 0,
+      },
+      knownTurns: 1,
+      unknownTurns: 0,
+      partialTurns: 0,
+    },
+  };
+  const request = { operation: "context", projectId: "project", threadId: "thread" };
+  assert.doesNotThrow(() => validateCommandResponse("manage", request, response));
+  assert.throws(() =>
+    validateCommandResponse("manage", request, {
+      ...response,
+      budget: { ...response.budget, estimatedInputTokens: -1 },
+    }),
+  );
 });

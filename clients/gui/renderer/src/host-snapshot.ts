@@ -77,18 +77,25 @@ export function settleHostCommand(
     typeof error.code === "string"
       ? error.code
       : undefined;
+  const detail =
+    error && typeof error === "object" && !Array.isArray(error)
+      ? (error as Record<string, unknown>)
+      : undefined;
+  const message =
+    typeof detail?.message === "string" && detail.message ? detail.message : "Host 拒绝了该操作";
   const outcome = rejected
     ? { kind: "rejected" }
     : operation
       ? { kind: "unconfirmed", operation }
       : undefined;
   throw Object.assign(
-    new Error(rejected ? "Host 拒绝了该操作" : "操作结果尚未确认。正在核对原请求，不会自动重发。"),
+    new Error(rejected ? message : "操作结果尚未确认。正在核对原请求，不会自动重发。"),
     {
       commandId: result.commandId,
       requestId: result.commandId,
       submissionUnknown: !rejected,
       ...(code ? { code } : {}),
+      ...(typeof detail?.reason === "string" ? { reason: detail.reason } : {}),
       outcome,
     },
   );
@@ -175,8 +182,10 @@ type ExecutionView = {
     serviceGeneration: string | null;
   };
   executionConnected: boolean;
+  executionLocalReady?: boolean;
   executionHostState?: ShellProject["state"];
   executionError: null;
+  cloud?: NavigationSummary["cloud"];
   worktree?: WorktreeDisplay;
 };
 export type ReadProject = Record<string, unknown> & {
@@ -210,7 +219,6 @@ export const SHELL_SNAPSHOT_KEYS = [
   "serviceSummary",
   "backendUpdate",
   "lifecycle",
-  "computerControl",
   "subscription",
   "projectless",
 ] as const;
@@ -218,6 +226,7 @@ export const SHELL_SNAPSHOT_KEYS = [
 export const SHELL_SETTING_KEYS = ["httpProxy", "httpProxyNoProxy", "httpProxyCaCertPath"] as const;
 export type ShellSnapshot = Partial<Pick<Snapshot, (typeof SHELL_SNAPSHOT_KEYS)[number]>> & {
   settings?: Record<string, unknown>;
+  connectionStage?: string;
 };
 
 export function shellSnapshot(value: Snapshot): ShellSnapshot {
@@ -226,37 +235,67 @@ export function shellSnapshot(value: Snapshot): ShellSnapshot {
     ...Object.fromEntries(
       SHELL_SNAPSHOT_KEYS.flatMap((key) => (key in value ? [[key, value[key]]] : [])),
     ),
+    ...(value.connection?.stage ? { connectionStage: value.connection.stage } : {}),
     settings: Object.fromEntries(
       SHELL_SETTING_KEYS.flatMap((key) => (key in settings ? [[key, settings[key]]] : [])),
     ),
   };
 }
 
-type WatchedRead = { value?: { projectId: string; snapshot: unknown }; previous?: unknown };
-/** 按读结果对象缓存解析，同一份附加会话不重复解析，投影缓存才能按引用命中。 */
-export function createWatchedThreads(
-  reads: () => Iterable<WatchedRead>,
-  parse: (snapshot: unknown) => Observation["thread"],
+export function projectReadingWindow(
+  thread: Observation["thread"],
+  readingWindow: ReadingWindow,
+  freshness: string | undefined,
 ) {
-  const parsed = new WeakMap<object, Observation["thread"] | null>();
-  return () => {
-    const byProject = new Map<string, Observation["thread"][]>();
-    for (const read of reads()) {
-      const value = (read.value ?? read.previous) as WatchedRead["value"];
-      if (!value) continue;
-      let thread = parsed.get(value);
-      if (thread === undefined) {
-        try {
-          thread = parse(value.snapshot);
-        } catch {
-          thread = null;
-        }
-        parsed.set(value, thread);
-      }
-      if (thread)
-        byProject.set(value.projectId, [...(byProject.get(value.projectId) ?? []), thread]);
-    }
-    return byProject;
+  const pages = [...readingWindow.pages].sort(
+    (a, b) =>
+      readingWindow.pageRecords.findIndex((record) => record.id === b.pageId) -
+      readingWindow.pageRecords.findIndex((record) => record.id === a.pageId),
+  );
+  const gaps = historyGaps(readingWindow);
+  const entries = [...readingWindow.stalePages, ...pages].flatMap((page) => page.data);
+  const sources = new Map(entries.map((entry) => [entry.sourceItemId, entry]));
+  const merged = mergeHistory(thread, entries);
+  return {
+    ...merged,
+    turns: merged.turns.map((turn) => ({
+      ...turn,
+      items: turn.items.map((item) => {
+        const source = sources.get(item.id);
+        const expanded = readingWindow.items.get(item.id);
+        const value =
+          item.type === "historyDeferred" && expanded && expanded.version === item.version
+            ? expanded.entry.item
+            : item;
+        return source
+          ? {
+              ...value,
+              historySource: {
+                threadId: source.sourceThreadId,
+                turnId: source.sourceTurnId,
+                itemId: source.sourceItemId,
+              },
+            }
+          : value;
+      }),
+    })),
+    displayHistory: {
+      supported: readingWindow.observation.history !== undefined,
+      viewGeneration: readingWindow.viewGeneration,
+      revision: readingWindow.session.sequence,
+      complete: readingWindow.complete && !gaps.some((gap) => gap.atTop),
+      gaps,
+      omitted: readingWindow.pageRecords.length > readingWindow.pages.length,
+      pageTopology: readingWindow.pageRecords
+        .filter((record) => record.items.length)
+        .map(({ id, items }) => ({ id, items })),
+      restoringItems: readingWindow.stalePages.flatMap((page) =>
+        page.data.map((entry) => entry.sourceItemId),
+      ),
+      baselineFirstItemId: readingWindow.baselineFirstItemId,
+      freshness,
+      loadingOlder: !!readingWindow.olderRead,
+    },
   };
 }
 
@@ -279,6 +318,7 @@ export function createHostSnapshotProjector(
   > = new Map(),
 ) {
   let revision = 0;
+  let lastSourceId: string | undefined;
   const projectViews = new Map<
     string,
     {
@@ -289,7 +329,10 @@ export function createHostSnapshotProjector(
       session?: SessionRead;
       historyVersion: number;
       fresh: boolean;
+      localExecutionReady?: boolean;
       sessionFreshness?: string;
+      sessionState?: ReturnType<HostClient["readsSnapshot"]>["session"];
+      sessionTarget?: ReturnType<HostClient["readsSnapshot"]>["sessionTarget"];
       outcomes?: Record<string, JsonObject>;
       tasks?: Record<string, unknown>;
       watched: Observation["thread"][];
@@ -304,20 +347,20 @@ export function createHostSnapshotProjector(
     native: Observation | undefined,
     {
       shellExtras,
+      desktopSnapshot,
       watched,
       tasks,
       readingWindow,
-      observation,
       session,
       historyVersion,
       commandOutcomes,
     }: {
       shellExtras?: ShellSnapshot;
+      desktopSnapshot?: Snapshot;
       /** 附加观察（侧边讨论）的会话，按 Host 项目归组。 */
       watched: ReadonlyMap<string, Observation["thread"][]>;
       tasks: ReadonlyMap<string, Record<string, unknown>>;
       readingWindow?: ReadingWindow;
-      observation?: Observation;
       session?: SessionRead;
       historyVersion: number;
       commandOutcomes: ReadonlyMap<string, Record<string, JsonObject>>;
@@ -327,9 +370,9 @@ export function createHostSnapshotProjector(
     threadTargets.clear();
     for (const [target, execution] of creationTargets) threadTargets.set(target, execution);
     const connection = client.snapshot();
-    const preferredSourceId =
-      options.preferredSourceId ??
-      (connection.connection === "ready" ? connection.identity.preferredSourceId : undefined);
+    if (connection.connection === "ready") lastSourceId = connection.identity.preferredSourceId;
+    const preferredSourceId = options.preferredSourceId ?? lastSourceId;
+    fresh = fresh && connection.connection === "ready";
     const sources = shell?.snapshot.navigation ?? [];
     const navigation = preferredSourceId
       ? sources.find((source) => source.sourceId === preferredSourceId)
@@ -371,6 +414,16 @@ export function createHostSnapshotProjector(
         inspectionEntry.identity === configurationIdentity(configuration)
           ? inspectionEntry.value
           : undefined;
+      const localExecutionReady = desktop
+        ? desktopSnapshot?.connection?.state === "ready" &&
+          connection.connection === "ready" &&
+          desktopSnapshot.verifiedDesktopHost?.hostId === connection.identity.hostId &&
+          desktopSnapshot.verifiedDesktopHost?.generation === connection.identity.hostGeneration &&
+          fresh &&
+          project.state === "ready" &&
+          !!project.serviceGeneration &&
+          project.scheduleActivationSuppressed !== true
+        : undefined;
       const cached = projectViews.get(project.projectId);
       const outcomes =
         connection.connection === "ready"
@@ -378,6 +431,13 @@ export function createHostSnapshotProjector(
           : undefined;
       const displayVersion = selectedSession ? historyVersion : 0;
       const sessionFreshness = selectedSession ? client.readsSnapshot().session.state : undefined;
+      const reads = client.readsSnapshot();
+      const sessionTarget =
+        reads.sessionTarget?.projectId === project.projectId &&
+        reads.sessionTarget.serviceGeneration === project.serviceGeneration
+          ? reads.sessionTarget
+          : undefined;
+      const sessionState = sessionTarget ? reads.session : undefined;
       if (
         cached &&
         cached.source === project &&
@@ -387,7 +447,10 @@ export function createHostSnapshotProjector(
         cached.session === selectedSession &&
         cached.historyVersion === displayVersion &&
         cached.fresh === fresh &&
+        cached.localExecutionReady === localExecutionReady &&
         cached.sessionFreshness === sessionFreshness &&
+        cached.sessionState === sessionState &&
+        cached.sessionTarget === sessionTarget &&
         cached.outcomes === outcomes &&
         cached.tasks === projectTasks &&
         cached.watched.length === sideThreads.length &&
@@ -409,68 +472,22 @@ export function createHostSnapshotProjector(
       let thread = selectedSession ? native?.thread : undefined;
       if (thread && selectedSession?.access?.kind === "persisted")
         thread = { ...thread, persistedHistory: true };
-      if (thread && session && readingWindow) {
-        const pages = [...readingWindow.pages].sort(
-          (a, b) =>
-            readingWindow!.pageRecords.findIndex((record) => record.id === b.pageId) -
-            readingWindow!.pageRecords.findIndex((record) => record.id === a.pageId),
-        );
-        const gaps = historyGaps(readingWindow);
-        const entries = [...readingWindow.stalePages, ...pages].flatMap((page) => page.data);
-        const sources = new Map(entries.map((entry) => [entry.sourceItemId, entry]));
-        const merged = mergeHistory(thread, entries);
-        thread = {
-          ...merged,
-          turns: merged.turns.map((turn) => ({
-            ...turn,
-            items: turn.items.map((item) => {
-              const source = sources.get(item.id);
-              const expanded = readingWindow!.items.get(item.id);
-              const value =
-                item.type === "historyDeferred" && expanded && expanded.version === item.version
-                  ? expanded.entry.item
-                  : item;
-              return source
-                ? {
-                    ...value,
-                    historySource: {
-                      threadId: source.sourceThreadId,
-                      turnId: source.sourceTurnId,
-                      itemId: source.sourceItemId,
-                    },
-                  }
-                : value;
-            }),
-          })),
-          displayHistory: {
-            supported: observation?.history !== undefined,
-            viewGeneration: readingWindow.viewGeneration,
-            revision: session.sequence,
-            complete: readingWindow.complete && !gaps.some((gap) => gap.atTop),
-            gaps,
-            omitted: readingWindow.pageRecords.length > readingWindow.pages.length,
-            pageTopology: readingWindow.pageRecords
-              .filter((record) => record.items.length)
-              .map(({ id, items }) => ({ id, items })),
-            restoringItems: readingWindow.stalePages.flatMap((page) =>
-              page.data.map((entry) => entry.sourceItemId),
-            ),
-            baselineFirstItemId: readingWindow.baselineFirstItemId,
-            freshness: sessionFreshness,
-            loadingOlder: !!readingWindow.olderRead,
-          },
-        };
-      }
+      if (thread && session && readingWindow)
+        thread = projectReadingWindow(thread, readingWindow, sessionFreshness);
       const executionCore = {
         connectionGeneration: project.serviceGeneration ?? "",
         instanceId: project.serviceGeneration ?? "",
         serviceGeneration: project.serviceGeneration ?? null,
       };
+      const cloud = project.summaries.items.find((summary) => summary.cloud)?.cloud;
       const execution = {
+        ...(cloud ? { cloud } : {}),
         executionProjectId: id,
         executionRoot: project.workspace,
         executionCore,
-        executionConnected: fresh && project.state === "ready",
+        executionConnected:
+          fresh && project.state === "ready" && (!desktop || localExecutionReady === true),
+        ...(desktop ? { executionLocalReady: localExecutionReady } : {}),
         executionHostState: fresh ? project.state : undefined,
         executionError: null,
         ...(project.worktree ? { worktree: project.worktree } : {}),
@@ -480,7 +497,7 @@ export function createHostSnapshotProjector(
         threadTargets.set(`${logicalId}:${summary.id}`, project.projectId);
         return { ...summary, ...execution };
       });
-      const desktop = thread?.desktop;
+      const threadDesktop = thread?.desktop;
       const taskThreadIds = new Set(
         Object.values(projectTasks ?? {}).flatMap((task) => taskThreads(task)),
       );
@@ -497,6 +514,8 @@ export function createHostSnapshotProjector(
         profiles: Array.isArray(auxiliary?.profiles) ? auxiliary.profiles : [],
         id,
         hostProjectId: project.projectId,
+        ...(desktop ? { localExecutionReady } : {}),
+        scheduling: { suppressed: project.scheduleActivationSuppressed === true },
         root: project.workspace,
         projectless: project.projectless,
         logicalProjectId: project.logicalProjectId
@@ -511,8 +530,21 @@ export function createHostSnapshotProjector(
           instanceId: project.serviceGeneration ?? "",
         },
         state: {
-          ...(projectTasks ? { tasks: projectTasks } : {}),
-          connected: fresh && project.state === "ready",
+          ...(projectTasks
+            ? {
+                tasks: Object.fromEntries(
+                  Object.entries(projectTasks).map(([id, task]) => [
+                    id,
+                    Object.assign({}, task, {
+                      executionConnected: execution.executionConnected,
+                      executionCore,
+                    }),
+                  ]),
+                ),
+              }
+            : {}),
+          connected:
+            fresh && project.state === "ready" && (!desktop || localExecutionReady === true),
           hostState: fresh ? project.state : undefined,
           error: null,
           threads: {
@@ -527,7 +559,7 @@ export function createHostSnapshotProjector(
                 .filter(([, side]) => side.desktop?.queue)
                 .map(([key, side]) => [key, side.desktop!.queue]),
             ),
-            ...(thread && desktop?.queue ? { [thread.id]: desktop.queue } : {}),
+            ...(thread && threadDesktop?.queue ? { [thread.id]: threadDesktop.queue } : {}),
           },
           interactions: {
             ...Object.fromEntries(
@@ -541,11 +573,11 @@ export function createHostSnapshotProjector(
                   },
                 ]),
             ),
-            ...(thread && desktop?.interactions
+            ...(thread && threadDesktop?.interactions
               ? {
                   [thread.id]: {
-                    revision: desktop.interactionRevision ?? 0,
-                    data: desktop.interactions,
+                    revision: threadDesktop.interactionRevision ?? 0,
+                    data: threadDesktop.interactions,
                   },
                 }
               : {}),
@@ -557,10 +589,10 @@ export function createHostSnapshotProjector(
               .filter(([, side]) => side.desktop?.configuration)
               .map(([key, side]) => [key, side.desktop!.configuration]),
           ),
-          ...(thread && desktop?.configuration
+          ...(thread && threadDesktop?.configuration
             ? {
                 [thread.id]: {
-                  ...desktop.configuration,
+                  ...threadDesktop.configuration,
                   // 会话配置不带解析后的模型名；网页经后台 inspect 补上，与桌面一致。
                   ...inspection,
                 },
@@ -573,7 +605,24 @@ export function createHostSnapshotProjector(
         pending: [],
         outcomes: outcomes ?? {},
         error: null,
-        observationErrors: {},
+        conversationReads:
+          sessionTarget && sessionState
+            ? {
+                [sessionTarget.threadId]: {
+                  state: sessionState.state,
+                  connectionGeneration: sessionTarget.serviceGeneration ?? "",
+                },
+              }
+            : {},
+        observationErrors:
+          sessionTarget && sessionState && "error" in sessionState && sessionState.error
+            ? {
+                [sessionTarget.threadId]: {
+                  message: sessionState.error,
+                  connectionGeneration: sessionTarget.serviceGeneration ?? "",
+                },
+              }
+            : {},
         attention: project.attention,
       };
       projectViews.set(project.projectId, {
@@ -584,7 +633,10 @@ export function createHostSnapshotProjector(
         session: selectedSession,
         historyVersion: displayVersion,
         fresh,
+        localExecutionReady,
         sessionFreshness,
+        sessionState,
+        sessionTarget,
         outcomes,
         tasks: projectTasks,
         watched: sideThreads,
@@ -615,8 +667,20 @@ export function createHostSnapshotProjector(
             owners.flatMap((owner) => Object.entries(owner.configurations)),
           ),
           outcomes: Object.assign({}, ...owners.map((owner) => owner.outcomes)),
+          conversationReads: Object.assign({}, ...owners.map((owner) => owner.conversationReads)),
+          observationErrors: Object.assign({}, ...owners.map((owner) => owner.observationErrors)),
           summaries: owners.flatMap((owner) => owner.summaries),
           summariesLoaded: owners.every((owner) => owner.summariesLoaded),
+          // 多工作树项目聚合 freshness：任一所有者尚未 fresh 时按 cached/unknown 聚合，
+          // 避免 summariesLoaded=false 与逻辑项目 summariesFreshness="fresh" 组合误触发全列表 statePending 闪烁。
+          summariesFreshness: owners.every((owner) => owner.summariesFreshness === "fresh")
+            ? "fresh"
+            : owners.some(
+                  (owner) =>
+                    owner.summariesFreshness === "cached" || owner.summariesFreshness === "fresh",
+                )
+              ? "cached"
+              : "unknown",
           state: {
             ...logical.state,
             ...(owners.some((owner) => owner.state.tasks)
@@ -668,21 +732,24 @@ export function createHostSnapshotProjector(
       const value = navigation?.preferences[key];
       if (value !== undefined) navigationSettings[key] = value;
     }
-    const { settings: shellSettings, ...shellState } = shellExtras ?? {};
+    const { settings: shellSettings, connectionStage, ...shellState } = shellExtras ?? {};
     Object.assign(navigationSettings, shellSettings);
     return {
       sourceId,
       snapshot: {
         ...shellState,
         projects,
+        providerRevision: navigation?.providerRevision,
         revision: ++revision,
-        connection: {
-          state: fresh
-            ? "ready"
-            : client.snapshot().connection === "connecting"
-              ? "connecting"
-              : "unavailable",
-        },
+        // 握手、目录基线和自动退避都属于加载；仅桌面连接所有者的明确失败提供恢复入口。
+        connection: fresh
+          ? { state: "ready" }
+          : desktopSnapshot?.connection?.state === "unavailable"
+            ? desktopSnapshot.connection
+            : {
+                state: "connecting",
+                ...(connectionStage ? { stage: connectionStage } : {}),
+              },
         desktopCapabilities: { currentCommands: desktop !== undefined },
         library: {
           projects: projectedNavigation,

@@ -108,9 +108,7 @@ try {
         sections: [],
       },
     };
-    let listener,
-      projectionListener,
-      sequence = 0;
+    let listener;
     let fail = true,
       sendSequence = 0,
       delayedOpen;
@@ -337,35 +335,14 @@ try {
       );
     window.arealDesktop = {
       snapshot: async () => structuredClone(snapshot),
-      onProjection: (callback) => {
-        projectionListener = callback;
-        listener = (value) =>
-          callback({
-            frame: {
-              projection: 1,
-              stream: "diagnosis-fixture",
-              sequence: ++sequence,
-              kind: "full",
-              snapshot: value,
-            },
-          });
+      nativeState: async () => structuredClone(snapshot),
+      onNativeState: (callback) => {
+        listener = callback;
         return () => {};
       },
-      requestProjection: (requestId) =>
-        projectionListener({
-          requestId,
-          frame: {
-            projection: 1,
-            stream: "diagnosis-fixture",
-            sequence: ++sequence,
-            kind: "full",
-            snapshot: structuredClone(snapshot),
-          },
-        }),
       setInterfaceLocale: () => {},
       theme: async () => ({ platform: "darwin", dark: false, id: "light" }),
       onTheme: () => () => {},
-      onMcpAppEvent: () => () => {},
       onPreviewEvent: () => () => {},
       onUpdate: () => () => {},
       updateState: async () => ({ enabled: false, status: "idle" }),
@@ -390,8 +367,6 @@ try {
         if (name === "reconcile")
           return { ok: true, value: { outcomes: structuredClone(project.outcomes) } };
         if (name === "library") return { ok: true, value: structuredClone(snapshot.library) };
-        if (name === "manage" && params.operation === "mcpApps")
-          return { ok: true, value: { data: [], requestEpoch: "fixture-epoch" } };
         if (name === "manage" && params.operation === "pluginCapabilities")
           return { ok: true, value: { enabled: true } };
         if (name === "manage" && params.operation === "plugins")

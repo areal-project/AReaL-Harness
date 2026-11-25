@@ -32,7 +32,7 @@ make baseline-diff BASE=... CMD='pnpm --dir clients/gui exec vp test run' PREPAR
 
 ## 体积
 
-`make check-rust-size`（`make check-changed` 已包含）要求 Rust 产品代码单文件不超过 1500 行；存量超限的 27 个文件登记在 `scripts/check-rust-size-baseline.json`，不得超过登记行数，拆分后运行 `python3 scripts/check-rust-size.py --write` 收紧。GUI 各区域的行数预算由 `gui-health` 检查。
+`make check-rust-size`（`make check-changed` 已包含）输出 `AGENT_OPTIMIZATION_SIGNAL`，提示 Rust 产品代码中超过 1500 行参考线或相对观察快照增长的文件。它是 Agent 的拆分和职责优化信号，不是失败门禁；`scripts/check-rust-size-baseline.json` 只作为增长对照，拆分或删减后可运行 `python3 scripts/check-rust-size.py --write` 更新观察快照。GUI 各区域的行数预算由 `gui-health` 检查。
 
 ## 验证分层
 
@@ -63,6 +63,6 @@ make baseline-diff BASE=... CMD='pnpm --dir clients/gui exec vp test run' PREPAR
 3. 自动更新：检查、下载、应用、失败后恢复资源。
 4. 真实数据升级：用本机数据副本升级，项目、历史、Arena 配置都在。
 5. 手机配对：扫码配对、中继连接、推送。
-6. 电脑控制：辅助功能与录屏权限申请、授权后可用、撤销后提示。
+6. 嵌入浏览器：验证原会话中的页面预览、一次审批和实际 `browser_v1` 调用。
 7. 截图：快捷键、权限、截图进入对话。
 8. 安装命令行工具、深链接打开、系统通知点击跳转。

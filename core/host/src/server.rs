@@ -1,15 +1,29 @@
+#[path = "analytics.rs"]
+mod analytics;
+#[path = "bots.rs"]
+pub(crate) mod bots;
+#[path = "cloud.rs"]
+mod cloud;
+#[path = "cloud_sessions.rs"]
+mod cloud_sessions;
 #[path = "conversation_media.rs"]
 pub(crate) mod conversation_media;
 #[path = "conversation_read.rs"]
 mod conversation_read;
+#[path = "execution_preparation.rs"]
+mod execution_preparation;
+#[path = "feedback.rs"]
+mod feedback;
+#[path = "feedback_context.rs"]
+mod feedback_context;
+#[path = "frontend_notices.rs"]
+mod frontend_notices;
 #[path = "gateway/owner.rs"]
 mod gateway_owner;
-#[path = "space/import.rs"]
-mod space_import;
-#[cfg(test)]
-#[path = "vault_liveness_tests.rs"]
-mod vault_liveness_tests;
-pub(crate) use gateway_owner::error_code;
+#[path = "gui_project.rs"]
+mod gui_project;
+#[path = "idle.rs"]
+mod idle;
 #[path = "library_commands.rs"]
 mod library_commands;
 #[path = "library_service.rs"]
@@ -18,30 +32,60 @@ mod library_service;
 mod library_store;
 #[path = "loopback.rs"]
 mod loopback;
+#[path = "manage_service.rs"]
+mod manage_service;
 #[path = "plugins.rs"]
 mod plugins;
 #[path = "power.rs"]
 mod power;
+#[path = "projectless.rs"]
+mod projectless;
+#[path = "provider_catalog.rs"]
+mod provider_catalog;
+#[path = "provider_config.rs"]
+mod provider_config;
+#[path = "provider_probe.rs"]
+mod provider_probe;
+#[path = "remote_commands.rs"]
+mod remote_commands;
+#[path = "resource_inspections.rs"]
+mod resource_inspections;
+#[path = "resources.rs"]
+mod resources;
 #[path = "schedule_connection.rs"]
 mod schedule_connection;
 #[path = "schedules.rs"]
 mod schedules;
+#[path = "session_commands.rs"]
+mod session_commands;
 #[path = "shell_subscription.rs"]
 mod shell_subscription;
+#[path = "side_owners.rs"]
+mod side_owners;
+#[path = "space/import.rs"]
+mod space_import;
 #[path = "subscription/host.rs"]
 mod subscriptions;
 #[path = "task_catalog.rs"]
 mod task_catalog;
+#[path = "trajectory.rs"]
+mod trajectory;
 #[path = "updates.rs"]
 pub(crate) mod updates;
+#[cfg(test)]
+#[path = "vault_liveness_tests.rs"]
+mod vault_liveness_tests;
 #[path = "workbench_lifecycle.rs"]
 mod workbench_lifecycle;
+
 #[path = "workbench_route.rs"]
 mod workbench_route;
 #[path = "workbench_submissions.rs"]
 mod workbench_submissions;
 #[path = "workbench_utility.rs"]
 mod workbench_utility;
+#[path = "workspace_ops.rs"]
+mod workspace_ops;
 #[path = "worktree_catalog.rs"]
 mod worktree_catalog;
 use crate::{
@@ -52,7 +96,6 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 use areal_local_service::{LifetimeWriter, OwnerLifetime, storage};
 use areal_protocol::service::{Owner, Service, State, StopOperation, StopOperationState};
-use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -67,8 +110,10 @@ use std::{
 use tokio::{
     io::BufReader,
     net::{UnixListener, UnixStream},
-    sync::{Mutex, Notify, RwLock, watch},
+    sync::{Mutex, Notify, OwnedRwLockWriteGuard, RwLock, watch},
 };
+
+const DESKTOP_CORE_MAX_FRAME: usize = 64 * 1024 * 1024;
 
 pub struct RunOptions {
     pub home: PathBuf,
@@ -98,7 +143,111 @@ impl HostExit {
         }
     }
 }
+#[derive(Clone)]
+struct LiveEnsure {
+    request_id: String,
+    admitted: Rc<std::cell::Cell<bool>>,
+    done: Rc<watch::Sender<bool>>,
+}
+
+struct LiveEnsureGuard {
+    host: Rc<Host>,
+    project_id: String,
+    entry: LiveEnsure,
+}
+impl Drop for LiveEnsureGuard {
+    fn drop(&mut self) {
+        if let Some(slot) = self.host.slots.borrow_mut().get_mut(&self.project_id)
+            && slot
+                .live_ensure
+                .as_ref()
+                .is_some_and(|current| Rc::ptr_eq(&current.done, &self.entry.done))
+        {
+            slot.live_ensure = None;
+        }
+        let _ = self.entry.done.send(true);
+    }
+}
+
+struct ScopedLiveEnsureGuard<'a> {
+    host: &'a Host,
+    project_id: String,
+    entry: LiveEnsure,
+}
+impl Drop for ScopedLiveEnsureGuard<'_> {
+    fn drop(&mut self) {
+        if let Some(slot) = self.host.slots.borrow_mut().get_mut(&self.project_id)
+            && slot
+                .live_ensure
+                .as_ref()
+                .is_some_and(|current| Rc::ptr_eq(&current.done, &self.entry.done))
+        {
+            slot.live_ensure = None;
+        }
+        let _ = self.entry.done.send(true);
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct LiveIdleStop {
+    pub(super) request_id: String,
+    pub(super) service_generation: String,
+    pub(super) done: Rc<watch::Sender<bool>>,
+}
+
+struct ScopedLiveIdleStopGuard<'a> {
+    host: &'a Host,
+    project_id: String,
+    entry: LiveIdleStop,
+}
+impl Drop for ScopedLiveIdleStopGuard<'_> {
+    fn drop(&mut self) {
+        if let Some(slot) = self.host.slots.borrow_mut().get_mut(&self.project_id)
+            && slot
+                .live_idle_stop
+                .as_ref()
+                .is_some_and(|current| Rc::ptr_eq(&current.done, &self.entry.done))
+        {
+            slot.live_idle_stop = None;
+        }
+        let _ = self.entry.done.send(true);
+    }
+}
+
+pub(super) enum ActivationOutcome {
+    Ready {
+        service_generation: String,
+        activation_id: Option<String>,
+    },
+    Pending {
+        activation_id: Option<String>,
+        reason: &'static str,
+    },
+    Blocked {
+        activation_id: Option<String>,
+        reason: &'static str,
+    },
+}
+
+async fn wait_watch_true(tx: &watch::Sender<bool>, deadline: tokio::time::Instant) -> bool {
+    let mut rx = tx.subscribe();
+    if *rx.borrow() {
+        return true;
+    }
+    tokio::time::timeout_at(deadline, async {
+        while !*rx.borrow() {
+            if rx.changed().await.is_err() {
+                return true;
+            }
+        }
+        true
+    })
+    .await
+    .unwrap_or(false)
+}
+
 struct Slot {
+    idle: idle::IdleWindow,
     registration: ProjectRegistration,
     // 状态与活动观察可以并行；激活、停止和凭据切换仍需独占项目。
     gate: Arc<RwLock<()>>,
@@ -110,8 +259,11 @@ struct Slot {
     migration: Option<Value>,
     credentials: BTreeMap<String, String>,
     imported_credentials: BTreeSet<String>,
+    live_ensure: Option<LiveEnsure>,
+    live_idle_stop: Option<LiveIdleStop>,
 }
 struct Host {
+    clients: RefCell<BTreeMap<String, Option<u32>>>,
     home: PathBuf,
     bin: PathBuf,
     identity: HostIdentity,
@@ -127,6 +279,7 @@ struct Host {
     gateway: gateway_owner::Gateway,
     subscriptions: subscriptions::Subscriptions,
     schedules: schedules::Schedules,
+    bots: bots::Bots,
     power: power::Power,
     loopback: loopback::Loopback,
     read_models: shell_subscription::ReadModels,
@@ -134,6 +287,7 @@ struct Host {
 impl Slot {
     fn imported(registration: ProjectRegistration) -> Self {
         Self {
+            idle: Default::default(),
             registration,
             gate: Arc::new(RwLock::new(())),
             writer: None,
@@ -144,6 +298,8 @@ impl Slot {
             migration: None,
             credentials: BTreeMap::new(),
             imported_credentials: BTreeSet::new(),
+            live_ensure: None,
+            live_idle_stop: None,
         }
     }
 }
@@ -154,10 +310,16 @@ struct ConnectionGuard {
 }
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
+        self.host.clients.borrow_mut().remove(&self.id);
+        self.host.changed();
         self.host
             .schedules
             .connections
             .frontend_disconnect(&self.id);
+        self.host
+            .gateway
+            .workbench
+            .disconnect_connection(&self.host, &self.id);
         self.host.migration.disconnect(&self.id);
         let _ = self.host.journal.disconnect(&self.id);
         self.host.remote.disconnect(&self.id);
@@ -272,22 +434,22 @@ pub async fn run(options: RunOptions) -> Result<HostExit> {
 }
 pub async fn run_managed(options: RunOptions) -> Result<HostExit> {
     tokio::task::LocalSet::new()
-        .run_until(run_local_mode(options, true))
+        .run_until(run_local_mode(options, true, false))
         .await
 }
 async fn run_local(options: RunOptions) -> Result<HostExit> {
-    run_local_mode(options, false).await
+    run_local_mode(options, false, false).await
 }
-async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> {
+pub(crate) async fn run_local_mode(
+    options: RunOptions,
+    managed: bool,
+    wait_for_lock: bool,
+) -> Result<HostExit> {
     let home = storage::prepare_host_home(&options.home)?;
-    let lock = Arc::new(storage::open_private(&home.join("host.lock"), true)?);
-    match lock.try_lock_exclusive() {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-            return Ok(HostExit::AlreadyRunning);
-        }
-        Err(e) => return Err(e.into()),
-    }
+    let Some(lock) = crate::service_run::acquire_host_lock(&home, wait_for_lock).await? else {
+        return Ok(HostExit::AlreadyRunning);
+    };
+    let lock = Arc::new(lock);
     let directory = home.join("host");
     storage::private_dir(&directory)?;
     let Some(delay) = crate::service_run::ServiceRun::prepare(&home, managed)? else {
@@ -326,6 +488,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         auth_file: directory.join("auth.json"),
         pid: std::process::id(),
         executable_version: env!("CARGO_PKG_VERSION").into(),
+        executable_digest: Some(storage::digest(&std::fs::read(std::env::current_exe()?)?)),
     };
     storage::write(&identity.auth_file, &token)?;
     let mut slots = BTreeMap::new();
@@ -333,18 +496,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         let registration: ProjectRegistration = storage::read(&path)?;
         slots.insert(
             registration.project_id.clone(),
-            Slot {
-                registration,
-                gate: Arc::new(RwLock::new(())),
-                writer: None,
-                uncertain_start: false,
-                lifetime: None,
-                state: "stopped".into(),
-                service: None,
-                migration: None,
-                credentials: BTreeMap::new(),
-                imported_credentials: BTreeSet::new(),
-            },
+            Slot::imported(registration),
         );
     }
     let mut migration = crate::migration::Migration::new(&home)?;
@@ -371,6 +523,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     let (changes, _) = watch::channel(0);
     let host = Rc::new(Host {
         schedules: schedules::Schedules::load(&home)?,
+        bots: bots::Bots::load(&home)?,
         home,
         bin: options.bin_dir.canonicalize()?,
         identity,
@@ -378,6 +531,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         slots: RefCell::new(slots),
         stop: RefCell::new(stop),
         host_stop_gate: Mutex::new(()),
+        clients: Default::default(),
         changes,
         exit: Notify::new(),
         migration: migration.into(),
@@ -389,6 +543,20 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         read_models: Default::default(),
         loopback: loopback::Loopback::default(),
     });
+    let interrupted_stop = host
+        .stop
+        .borrow()
+        .as_ref()
+        .and_then(|receipt| receipt["requestId"].as_str())
+        .map(str::to_owned);
+    if let Some(request_id) = interrupted_stop
+        && host
+            .receipt(&request_id)?
+            .is_some_and(|record| record.receipt["preparationPending"] == true)
+    {
+        // 新进程已持有 Host 锁；仅结算原准备中断，不重放停止或放行已派发的 UNKNOWN。
+        host.reconcile(&request_id).await?;
+    }
     let registrations = host.registrations();
     host.schedules.import(&host.migration, &registrations)?;
     plugins::import(&host, &registrations);
@@ -420,9 +588,13 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     let gateway = gateway_owner::run(host.clone());
     let subscriptions = host.run_subscriptions();
     let power = power::run(host.clone());
+    // 生命周期巡检持有停止操作 future；堆上固定，避免把完整清理状态机叠进 Host 主循环栈。
+    let idle = Box::pin(idle::run(host.clone()));
+    let release = Box::pin(idle::release_unused(host.clone()));
+    let read_models = Box::pin(shell_subscription::run(host.clone()));
     let discovery = crate::service_run::until_discovery_lost(&host.home, &host.identity.generation);
     tokio::pin!(scheduler, connections, gateway);
-    tokio::pin!(subscriptions, power, discovery);
+    tokio::pin!(subscriptions, power, discovery, idle, release, read_models);
     let orphaned = loop {
         tokio::select! {
             _=host.exit.notified()=>break false,
@@ -438,11 +610,14 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
             _=&mut gateway=>unreachable!("Gateway lives with the Host"),
             _=&mut subscriptions=>unreachable!("subscription owners live with the Host"),
             _=&mut power=>unreachable!("power protection lives with the Host"),
+            _=&mut idle=>unreachable!("idle collection lives with the Host"),
+            _=&mut release=>unreachable!("release policy lives with the Host"),
+            _=&mut read_models=>unreachable!("read projections live with the Host"),
             connection=listener.accept()=> {let (stream,_)=connection?;let host=host.clone();tokio::task::spawn_local(async move {let _=connection_loop(host,stream).await;});}
         }
     };
     drop(loopback);
-    host.gateway.workbench.stop_backend().await;
+    host.gateway.workbench.cloud.sessions.close_all(&host);
     host.gateway.workbench.stop().await;
     host.close_subscriptions().await;
     host.power.close().await;
@@ -473,8 +648,9 @@ async fn write_local_frame(
 }
 
 async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
+    let credentials = stream.peer_cred()?;
     ensure!(
-        stream.peer_cred()?.uid() == unsafe { libc::geteuid() },
+        credentials.uid() == unsafe { libc::geteuid() },
         "unauthorized peer"
     );
     let socket = std::os::fd::AsRawFd::as_raw_fd(&stream);
@@ -491,7 +667,7 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     let hello: Hello = serde_json::from_value(request.params)?;
     ensure!(hello.auth_token == host.token, "unauthorized");
     let response = if hello.protocol_versions.contains(&VERSION) {
-        json!({"version":VERSION,"id":request.id,"result":areal_protocol::host::LocalHelloResult { version: VERSION.into(), host_id: host.identity.host_id.clone(), generation: host.identity.generation.clone(), capabilities: CAPABILITIES.iter().map(|value| (*value).to_owned()).collect(), executable_version: host.identity.executable_version.clone() }})
+        json!({"version":VERSION,"id":request.id,"result":areal_protocol::host::LocalHelloResult { version: VERSION.into(), host_id: host.identity.host_id.clone(), generation: host.identity.generation.clone(), capabilities: CAPABILITIES.iter().map(|value| (*value).to_owned()).collect(), executable_version: host.identity.executable_version.clone(), executable_digest: host.identity.executable_digest.clone() }})
     } else {
         json!({"version":VERSION,"id":request.id,"error":{"code":"versionMismatch","message":"Host requires protocol version 1"}})
     };
@@ -504,7 +680,7 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
         .iter()
         .any(|capability| capability == "desktopCore");
     let frame_limit = if desktop_core {
-        crate::workbench::MAX_FRAME
+        DESKTOP_CORE_MAX_FRAME
     } else {
         wire::MAX_FRAME
     };
@@ -513,6 +689,10 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
         id: uuid::Uuid::new_v4().to_string(),
         socket,
     };
+    host.clients.borrow_mut().insert(
+        connection.id.clone(),
+        credentials.pid().and_then(|pid| u32::try_from(pid).ok()),
+    );
     let mut subscription: Option<(String, u64)> = None;
     let mut changes = host.changes.subscribe();
     let mut tick = tokio::time::interval(Duration::from_secs(1));
@@ -569,18 +749,21 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
                     struct Query { source_id:String }
                     let input:Query=serde_json::from_value(request.params)?;
 
-                    (|| -> Result<Value> {
+                    async {
                         ensure!(gateway_subscription.as_ref().is_none_or(|(source,_,_,_)|source==&input.source_id),error("sourceNotFound","connection already subscribes to another Remote source"));
-                        let state=host.gateway_state(&input.source_id)?;
+                        let state=host.gateway_state_async(&input.source_id).await?;
                         let id=uuid::Uuid::new_v4().to_string();
                         gateway_subscription=Some((input.source_id,id.clone(),0,state.clone()));
                         Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"state":state}))
-                    })()
+                    }.await
                 } else if request.method=="desktop.core.subscribe" {
                     ensure!(frontend_events.is_none(),error("invalidRequest","desktop attachment already exists"));
-                    let source=request.params["sourceId"].as_str().context("INVALID_PARAMS")?;
-                    let (result,events)=host.schedules.connections.frontend_subscribe(&host,&connection.id,source,request.params["options"].clone())?;
-                    frontend_events=Some(events);Ok(result)
+                    let input:areal_protocol::host::LocalDesktopCoreSubscribeParams=serde_json::from_value(request.params)?;
+                    let (result,events)=host.schedules.connections.frontend_subscribe(&host,&connection.id,&input.source_id,serde_json::to_value(input.options)?,input.environment_credentials.map(|values|values.additional_properties))?;
+                    frontend_events=Some(events);
+                    let projects=host.slots.borrow().iter().filter(|(_,slot)|slot.state=="ready").map(|(id,_)|id.clone()).collect::<Vec<_>>();
+                    for project in projects {host.schedules.connections.frontend_project_ready(&host,&project);}
+                    Ok(result)
                 } else {host.dispatch_connection(&request.method,request.params,&connection).await};
                 let response=match result {Ok(value)=>json!({"version":VERSION,"id":request.id,"result":value}),Err(e)=>json!({"version":VERSION,"id":request.id,"error":local_command_error(&e)})};
                 let sent=write_local_frame(&mut writer,&response,frame_limit).await;
@@ -929,7 +1112,18 @@ impl Host {
             .join(format!("{}.json", storage::digest(id.as_bytes())))
     }
     fn receipt(&self, id: &str) -> Result<Option<Operation>> {
-        storage::read_optional(&wire::operation_path(&self.home, id))
+        let mut record: Option<Operation> =
+            storage::read_optional(&wire::operation_path(&self.home, id))?;
+        if let Some(record) = &mut record
+            && record.receipt["method"] == "host.stop"
+            && !record.receipt["projects"].is_array()
+        {
+            record.receipt = crate::restore_host_stop(
+                record.receipt.clone(),
+                storage::read_optional(&self.home.join("host/stop.json"))?,
+            );
+        }
+        Ok(record)
     }
     fn save(&self, id: &str, digest: &str, receipt: &Value) -> Result<()> {
         storage::write(
@@ -970,7 +1164,12 @@ impl Host {
             }
             return Ok((digest, Some(operation.receipt)));
         }
-        let receipt = json!({"version":VERSION,"requestId":id,"method":method,"hostId":self.identity.host_id,"generation":self.identity.generation,"projectId":project_id,"state":"acceptedPending"});
+        let mut receipt = json!({"version":VERSION,"requestId":id,"method":method,"hostId":self.identity.host_id,"generation":self.identity.generation,"projectId":project_id,"state":"acceptedPending"});
+        if method == "host.stop" {
+            receipt["strategy"] = serde_json::to_value(params)?["strategy"].clone();
+            receipt["projects"] = json!([]);
+            receipt["preparationPending"] = json!(true);
+        }
         let evidence = if method == "projects.register" {
             let value = serde_json::to_value(params)?;
             json!({"registration":value["registration"],"created":!self.slots.borrow().contains_key(project_id),"bindExisting":value["bindExisting"]})
@@ -995,10 +1194,17 @@ impl Host {
     }
     async fn status(&self) -> HostStatus {
         let ids: Vec<_> = self.slots.borrow().keys().cloned().collect();
-        let mut projects = Vec::new();
         for id in ids {
-            projects.push(self.project_status(&id).await);
+            self.project_status(&id).await;
         }
+        self.status_snapshot()
+    }
+    fn status_snapshot(&self) -> HostStatus {
+        let ids: Vec<_> = self.slots.borrow().keys().cloned().collect();
+        let mut projects: Vec<_> = ids
+            .iter()
+            .map(|id| self.project_status_snapshot(id))
+            .collect();
         for (registration, migration_id) in self.migration.pending_projects().unwrap_or_default() {
             if projects
                 .iter()
@@ -1143,12 +1349,12 @@ impl Host {
         };
         if let Ok(_guard) = tokio::time::timeout(Duration::from_millis(500), gate.read()).await {
             let instance = Self::service_id(&registration);
-            if let Ok(Ok(service)) = tokio::time::timeout(
+            let observed = tokio::time::timeout(
                 Duration::from_millis(500),
                 areal_local_service::status(&self.home, &instance),
             )
-            .await
-            {
+            .await;
+            if let Ok(Ok(service)) = observed {
                 let mut slots = self.slots.borrow_mut();
                 let slot = slots.get_mut(id).unwrap();
                 slot.state = match service.state {
@@ -1167,15 +1373,41 @@ impl Host {
                 .into();
                 slot.service = Some(service);
             } else {
+                // 探测失败只代表本次观察没有完成；执行身份由服务回执与连接自身确认。
+                let reason = if observed.is_err() {
+                    "timeout"
+                } else {
+                    "probe_error"
+                };
+                let connection_allows_observation = observed.is_err()
+                    && self
+                        .schedules
+                        .connections
+                        .observation_can_keep_identity(self, id);
                 let mut slots = self.slots.borrow_mut();
                 let slot = slots.get_mut(id).unwrap();
-                if slot.service.is_some() || slot.writer.is_some() {
+                let supervised = slot.writer.is_some()
+                    && slot
+                        .service
+                        .as_ref()
+                        .is_some_and(|service| service.owner.as_ref() == Some(&self.owner()));
+                // 超时不能撤销仍有权威身份的连接；连接已关闭时也不能沿缓存继续声明 ready。
+                if slot.state == "ready"
+                    && !(connection_allows_observation && supervised && !slot.uncertain_start)
+                {
                     slot.state = "unavailable".into();
+                }
+                if slot.service.is_some() {
+                    eprintln!("Host service observation incomplete: project={id} reason={reason}");
                 }
             }
         }
+        self.project_status_snapshot(id)
+    }
+    fn project_status_snapshot(&self, id: &str) -> ProjectStatus {
         let slots = self.slots.borrow();
         let slot = &slots[id];
+        let registration = slot.registration.clone();
         ProjectStatus {uses_shared_model_config:self.project_uses_shared_config(&registration),schedule_activation_suppressed:self.schedules.suppressed(id),schedule_activation_error:self.schedules.error(id),registration,state:slot.state.clone(),service:slot.service.clone().filter(|s|s.owner.as_ref()==Some(&self.owner()) && slot.writer.is_some() && slot.state=="ready"),migration:slot.migration.clone().or_else(||slot.service.as_ref().filter(|s|s.owner.is_none() && s.state==State::Ready).map(|s|json!({"serviceId":s.identity.service_id,"generation":s.identity.generation,"phase":"legacyPending"})))}
     }
     async fn dispatch_connection(
@@ -1184,6 +1416,20 @@ impl Host {
         params: Value,
         connection: &ConnectionGuard,
     ) -> Result<Value> {
+        if method == "lifecycle.read" {
+            let input: areal_protocol::host::LocalLifecycleReadParams =
+                serde_json::from_value(params.clone()).context("INVALID_PARAMS")?;
+            let profile = std::fs::canonicalize(&input.profile)?;
+            let source = self
+                .migration
+                .navigation_source_id(&profile)?
+                .context("FORBIDDEN")?;
+            let operation = params["operation"].as_str().context("INVALID_PARAMS")?;
+            return Box::pin(workbench_lifecycle::read_request(
+                self, &source, operation, &params,
+            ))
+            .await;
+        }
         if method == "desktop.core.terminals.close" {
             ensure!(
                 params.as_object().is_some_and(|params| params.len() == 1),
@@ -1201,12 +1447,20 @@ impl Host {
                 .frontend_call(self, &params)
                 .await;
         }
+        if method == "desktop.command" {
+            let input = serde_json::from_value(params).context("INVALID_PARAMS")?;
+            return self
+                .schedules
+                .connections
+                .frontend_desktop_command(self, input)
+                .await;
+        }
         if method == "desktop.core.callback" {
             return self.schedules.connections.frontend_reply(&params);
         }
         if method == "tasks.read" {
             serde_json::from_value::<areal_protocol::host::LocalTasksReadParams>(params.clone())?;
-            return task_catalog::read(self, &params).await;
+            return task_catalog::read(self, "local", &params).await;
         }
         if method == "tasks.command" {
             serde_json::from_value::<areal_protocol::host::LocalTasksCommandParams>(
@@ -1227,6 +1481,9 @@ impl Host {
             )?;
             return workbench_route::backend_command(self,"local",&json!({"method":method,"commandId":params["commandId"],"params":params["request"]})).await;
         }
+        if bots::METHODS.contains(&method) {
+            return bots::request(self, method, &params).await;
+        }
         if method == "backend.credentialNames" {
             serde_json::from_value::<areal_protocol::host::LocalBackendEnsureParams>(
                 params.clone(),
@@ -1236,22 +1493,19 @@ impl Host {
                 .workbench
                 .credential_names(self, serde_json::from_value(params)?);
         }
-        if method == "backend.ensure" {
-            serde_json::from_value::<areal_protocol::host::LocalBackendEnsureParams>(
-                params.clone(),
-            )?;
-            return self
-                .gateway
-                .workbench
-                .ensure_backend(self, serde_json::from_value(params)?)
-                .await;
-        }
         if method == "backend.status" {
             serde_json::from_value::<Empty>(params)?;
-            return self.gateway.workbench.backend_status(self).await;
+            // 升级客户端用同一查询区分持有旧子进程的上一代 Host。
+            return Ok(json!({
+                "hostId": self.identity.host_id,
+                "generation": self.identity.generation,
+                "owned": false,
+                "service": null,
+            }));
         }
         if method == "web.ticket" {
             let input: areal_protocol::host::LocalWebTicketParams = serde_json::from_value(params)?;
+            let gui = input.origin == "areal-ui://app" && input.profile.is_some();
             let preferred = input
                 .profile
                 .as_deref()
@@ -1262,6 +1516,9 @@ impl Host {
                 .transpose()?
                 .flatten();
             let mut ticket = self.loopback.ticket(input)?;
+            if gui {
+                self.retain_for_gui()?;
+            }
             ticket.preferred_source_id = preferred;
             return Ok(serde_json::to_value(ticket)?);
         }
@@ -1284,6 +1541,13 @@ impl Host {
         }
         if method == "web.revoke" {
             return self.loopback.revoke(self, params);
+        }
+        if method == "remote.gateway.state" {
+            self.validate_client_state(method, &params)?;
+            let source = params["sourceId"]
+                .as_str()
+                .context("missing Remote source")?;
+            return self.gateway_state_async(source).await;
         }
         if method == "remote.gateway.control" {
             return connection.host.gateway_control(params).await;
@@ -1362,6 +1626,9 @@ impl Host {
     }
     async fn dispatch(&self, method: &str, params: Value) -> Result<Value> {
         match method {
+            "providers.revealKey" => {
+                provider_config::reveal_key(self, serde_json::from_value(params)?).await
+            }
             "recovery.importProvider" => self.import_provider(serde_json::from_value(params)?),
             "recovery.history" => {
                 crate::space::history::for_host(&self.home, serde_json::from_value(params)?).await
@@ -1398,6 +1665,7 @@ impl Host {
             "project.ensure" => self.ensure(serde_json::from_value(params)?).await,
             "project.stop" => self.stop_project(serde_json::from_value(params)?).await,
             "host.stop" => self.stop_host(serde_json::from_value(params)?).await,
+            "host.release" => self.release_when_unused(serde_json::from_value(params)?),
             "host.operation" => {
                 let query: OperationQuery = serde_json::from_value(params)?;
                 wire::request_id(&query.request_id)?;
@@ -1427,7 +1695,6 @@ impl Host {
                 self.update_status()
             }
             "host.update" => self.update(serde_json::from_value(params)?).await,
-            "library.write" => library_store::write(self, serde_json::from_value(params)?),
             _ => Err(error("methodNotFound", "unknown Host method")),
         }
     }
@@ -1565,21 +1832,7 @@ impl Host {
                 slot.registration = r.clone();
                 return Ok(json!({"registration":r,"created":false}));
             }
-            slots.insert(
-                r.project_id.clone(),
-                Slot {
-                    registration: r.clone(),
-                    gate: Arc::new(RwLock::new(())),
-                    writer: None,
-                    uncertain_start: false,
-                    lifetime: None,
-                    state: "stopped".into(),
-                    service: None,
-                    migration: None,
-                    credentials: BTreeMap::new(),
-                    imported_credentials: BTreeSet::new(),
-                },
-            );
+            slots.insert(r.project_id.clone(), Slot::imported(r.clone()));
             Ok(json!({"registration":r,"created":created}))
         })();
         let result = self.finish_mutation(&input.request_id, &digest, outcome);
@@ -1640,16 +1893,373 @@ impl Host {
     async fn ensure_cause(&self, input: Ensure, scheduled: bool) -> Result<Value> {
         self.ensure_generation(input, scheduled, None).await
     }
+    fn install_live_ensure(
+        self: &Rc<Self>,
+        project_id: &str,
+        request_id: &str,
+    ) -> Result<LiveEnsureGuard> {
+        let mut slots = self.slots.borrow_mut();
+        let slot = slots
+            .get_mut(project_id)
+            .ok_or_else(|| error("projectNotFound", "unknown projectId"))?;
+        let (done, _) = watch::channel(false);
+        let entry = LiveEnsure {
+            request_id: request_id.to_owned(),
+            admitted: Rc::new(std::cell::Cell::new(false)),
+            done: Rc::new(done),
+        };
+        slot.live_ensure = Some(entry.clone());
+        Ok(LiveEnsureGuard {
+            host: self.clone(),
+            project_id: project_id.to_owned(),
+            entry,
+        })
+    }
+    fn install_scoped_live_ensure(
+        &self,
+        project_id: &str,
+        request_id: &str,
+    ) -> Option<ScopedLiveEnsureGuard<'_>> {
+        let mut slots = self.slots.borrow_mut();
+        let slot = slots.get_mut(project_id)?;
+        let (done, _) = watch::channel(false);
+        let entry = LiveEnsure {
+            request_id: request_id.to_owned(),
+            admitted: Rc::new(std::cell::Cell::new(true)),
+            done: Rc::new(done),
+        };
+        slot.live_ensure = Some(entry.clone());
+        Some(ScopedLiveEnsureGuard {
+            host: self,
+            project_id: project_id.to_owned(),
+            entry,
+        })
+    }
+    fn install_live_idle_stop(
+        &self,
+        project_id: &str,
+        request_id: &str,
+        service_generation: &str,
+    ) -> Option<ScopedLiveIdleStopGuard<'_>> {
+        let mut slots = self.slots.borrow_mut();
+        let slot = slots.get_mut(project_id)?;
+        let (done, _) = watch::channel(false);
+        let entry = LiveIdleStop {
+            request_id: request_id.to_owned(),
+            service_generation: service_generation.to_owned(),
+            done: Rc::new(done),
+        };
+        slot.live_idle_stop = Some(entry.clone());
+        Some(ScopedLiveIdleStopGuard {
+            host: self,
+            project_id: project_id.to_owned(),
+            entry,
+        })
+    }
+    fn ready_generation(&self, id: &str) -> Option<String> {
+        let slots = self.slots.borrow();
+        let slot = slots.get(id)?;
+        if slot.state != "ready" || slot.uncertain_start {
+            return None;
+        }
+        slot.service
+            .as_ref()
+            .map(|service| service.identity.generation.clone())
+    }
+    async fn finish_activation_receipt(
+        &self,
+        id: &str,
+        activation: &str,
+        receipt: &Value,
+        deadline: tokio::time::Instant,
+    ) -> Result<ActivationOutcome> {
+        if self.schedules.suppressed(id) {
+            return Ok(ActivationOutcome::Blocked {
+                activation_id: Some(activation.to_owned()),
+                reason: "explicitlyStopped",
+            });
+        }
+        if receipt["state"] == "completed"
+            && let Some(generation) = self.ready_generation(id)
+        {
+            let connected = self
+                .schedules
+                .connections
+                .ready_until(self, id, &generation, deadline)
+                .await;
+            if self.schedules.suppressed(id) {
+                return Ok(ActivationOutcome::Blocked {
+                    activation_id: Some(activation.to_owned()),
+                    reason: "explicitlyStopped",
+                });
+            }
+            if connected.is_ok()
+                && self.ready_generation(id).as_deref() == Some(generation.as_str())
+            {
+                return Ok(ActivationOutcome::Ready {
+                    service_generation: generation,
+                    activation_id: Some(activation.to_owned()),
+                });
+            }
+            return Ok(ActivationOutcome::Pending {
+                activation_id: Some(activation.to_owned()),
+                reason: "activationIncomplete",
+            });
+        }
+        let blocked = receipt["state"] == "blocked" || receipt["state"] == "completed";
+        Ok(if blocked {
+            ActivationOutcome::Blocked {
+                activation_id: Some(activation.to_owned()),
+                reason: "activationIncomplete",
+            }
+        } else {
+            ActivationOutcome::Pending {
+                activation_id: Some(activation.to_owned()),
+                reason: "activationIncomplete",
+            }
+        })
+    }
+    pub(super) async fn wait_live_ensure_if_any(
+        &self,
+        id: &str,
+        deadline: tokio::time::Instant,
+    ) -> Result<Option<(String, bool, bool)>> {
+        let live = {
+            self.slots
+                .borrow()
+                .get(id)
+                .and_then(|slot| slot.live_ensure.clone())
+        };
+        let Some(live) = live else {
+            return Ok(None);
+        };
+        let finished = wait_watch_true(&live.done, deadline).await;
+        let admitted = live.admitted.get() || self.receipt(&live.request_id)?.is_some();
+        Ok(Some((live.request_id, finished, admitted)))
+    }
+    /// 规范普通唤醒入口：合并同项目在途启动、等待已有代际共享连接、并在安全边界内衔接 `ifIdle` 休眠。
+    /// 显式恢复调度与崩溃遗留的 UNKNOWN 回执仍严格按原回执语义处理，绝不重放未知启动。
+    pub(super) async fn activate_project_normal(
+        self: &Rc<Self>,
+        id: &str,
+        deadline: tokio::time::Instant,
+    ) -> Result<ActivationOutcome> {
+        const MAX_ROUNDS: usize = 4;
+        for _ in 0..MAX_ROUNDS {
+            self.admission()?;
+            if self.schedules.suppressed(id) {
+                return Ok(ActivationOutcome::Blocked {
+                    activation_id: None,
+                    reason: "explicitlyStopped",
+                });
+            }
+            // 仅对活跃的 `ifIdle` 自动休眠等待交接；调度资源刷新等其他停止不抢占。
+            // 先在同步块内拷贝句柄并释放 slots 借用，避免 `if let` 临时 Ref 跨越 `.await`。
+            let idle_stop = if schedule_connection::refresh_path(self, id).exists() {
+                None
+            } else {
+                self.slots.borrow().get(id).and_then(|slot| {
+                    let stop = slot.live_idle_stop.as_ref()?;
+                    let same_generation = slot.service.as_ref().is_none_or(|service| {
+                        service.identity.generation == stop.service_generation
+                    });
+                    same_generation.then(|| stop.clone())
+                })
+            };
+            if let Some(idle_stop) = idle_stop {
+                if !wait_watch_true(&idle_stop.done, deadline).await {
+                    return Ok(ActivationOutcome::Pending {
+                        activation_id: None,
+                        reason: "activationIncomplete",
+                    });
+                }
+                self.admission()?;
+                if self.schedules.suppressed(id) {
+                    return Ok(ActivationOutcome::Blocked {
+                        activation_id: None,
+                        reason: "explicitlyStopped",
+                    });
+                }
+                if let Some(receipt) = self.reconcile(&idle_stop.request_id).await?
+                    && !ReceiptState::settled(ReceiptState::of(&receipt))
+                {
+                    return Ok(ActivationOutcome::Pending {
+                        activation_id: None,
+                        reason: "activationIncomplete",
+                    });
+                }
+                continue;
+            }
+            if let Some((request_id, finished, admitted)) =
+                self.wait_live_ensure_if_any(id, deadline).await?
+            {
+                if !finished {
+                    return Ok(ActivationOutcome::Pending {
+                        activation_id: admitted.then_some(request_id),
+                        reason: "activationIncomplete",
+                    });
+                }
+                self.admission()?;
+                if self.schedules.suppressed(id) {
+                    return Ok(ActivationOutcome::Blocked {
+                        activation_id: admitted.then_some(request_id),
+                        reason: "explicitlyStopped",
+                    });
+                }
+                if let Some(record) = self.receipt(&request_id)? {
+                    return self
+                        .finish_activation_receipt(id, &request_id, &record.receipt, deadline)
+                        .await;
+                }
+                continue;
+            }
+            if let Some(generation) = self.ready_generation(id) {
+                let connected = self
+                    .schedules
+                    .connections
+                    .ready_until(self, id, &generation, deadline)
+                    .await;
+                if self.schedules.suppressed(id) {
+                    return Ok(ActivationOutcome::Blocked {
+                        activation_id: None,
+                        reason: "explicitlyStopped",
+                    });
+                }
+                if connected.is_ok()
+                    && self.ready_generation(id).as_deref() == Some(generation.as_str())
+                {
+                    return Ok(ActivationOutcome::Ready {
+                        service_generation: generation,
+                        activation_id: None,
+                    });
+                }
+                let can_handoff = tokio::time::Instant::now() < deadline
+                    && self.admission().is_ok()
+                    && !schedule_connection::refresh_path(self, id).exists()
+                    && self.slots.borrow().get(id).is_some_and(|slot| {
+                        slot.live_idle_stop.is_some()
+                            || slot.state == "stopped"
+                            || (slot.state == "ready"
+                                && slot.service.as_ref().is_some_and(|service| {
+                                    service.identity.generation != generation
+                                }))
+                    });
+                if can_handoff {
+                    continue;
+                }
+                return Ok(ActivationOutcome::Pending {
+                    activation_id: None,
+                    reason: "activationIncomplete",
+                });
+            }
+            // 启动是 Host 拥有的幂等资源操作。崩溃遗留或无活跃任务的未决回执只核对原 ensure，不重放未知启动。
+            for path in storage::json_records(&self.home.join("host/operations"), false)? {
+                let record: Operation = storage::read(&path)?;
+                if record.receipt["method"] == "project.ensure"
+                    && record.receipt["projectId"] == id
+                    && !record.settled()
+                {
+                    let request = record.receipt["requestId"]
+                        .as_str()
+                        .context("CORE_UNAVAILABLE")?;
+                    let receipt = self.reconcile(request).await?.context("CORE_UNAVAILABLE")?;
+                    return self
+                        .finish_activation_receipt(id, request, &receipt, deadline)
+                        .await;
+                }
+            }
+            // 单线程 LocalSet 内同步登记活跃启动，覆盖“等待准入”与“已准入执行”两个阶段，避免并发重复受理。
+            let activation = uuid::Uuid::new_v4().to_string();
+            let live_guard = self.install_live_ensure(id, &activation)?;
+            let live_entry = live_guard.entry.clone();
+            let run = self.ensure_from_gateway_tracked(
+                Ensure {
+                    request_id: activation.clone(),
+                    expected_generation: self.identity.generation.clone(),
+                    project_id: id.to_owned(),
+                    launch_inputs: None,
+                    credentials: Default::default(),
+                    no_auto_restart: false,
+                    resume_scheduling: false,
+                },
+                Some(live_guard),
+            );
+            let outcome = match tokio::time::timeout_at(deadline, run).await {
+                Ok(result) => result,
+                Err(_) => {
+                    let admitted =
+                        live_entry.admitted.get() || self.receipt(&activation)?.is_some();
+                    return Ok(ActivationOutcome::Pending {
+                        activation_id: admitted.then_some(activation),
+                        reason: "activationIncomplete",
+                    });
+                }
+            };
+            if let Some(record) = self.receipt(&activation)? {
+                return self
+                    .finish_activation_receipt(id, &activation, &record.receipt, deadline)
+                    .await;
+            }
+            outcome?;
+            anyhow::bail!("CORE_UNAVAILABLE");
+        }
+        Ok(ActivationOutcome::Pending {
+            activation_id: None,
+            reason: "activationIncomplete",
+        })
+    }
+    async fn ensure_from_gateway_tracked(
+        self: &Rc<Self>,
+        input: Ensure,
+        live: Option<LiveEnsureGuard>,
+    ) -> Result<Value> {
+        let live = match live {
+            Some(guard) => Some(guard),
+            None => self
+                .install_live_ensure(&input.project_id, &input.request_id)
+                .ok(),
+        };
+        let (guard, digest, previous) = self
+            .admit_ensure(&input, true, None, live.as_ref().map(|g| &g.entry))
+            .await?;
+        if let Some(previous) = previous {
+            return previous_result(previous);
+        }
+        // 受理之后由 Host 持有原项目锁、活跃启动登记和回执。Renderer 重载只撤回等待结果的连接。
+        let host = self.clone();
+        tokio::task::spawn_local(async move {
+            let _guard = guard;
+            let _live = live;
+            host.finish_ensure(&input, true, &digest).await
+        })
+        .await
+        .context("project activation task failed")?
+    }
     async fn ensure_generation(
         &self,
         input: Ensure,
         scheduled: bool,
         service_generation: Option<&str>,
     ) -> Result<Value> {
+        let (_guard, digest, previous) = self
+            .admit_ensure(&input, scheduled, service_generation, None)
+            .await?;
+        if let Some(previous) = previous {
+            return previous_result(previous);
+        }
+        let _live = self.install_scoped_live_ensure(&input.project_id, &input.request_id);
+        self.finish_ensure(&input, scheduled, &digest).await
+    }
+    async fn admit_ensure(
+        &self,
+        input: &Ensure,
+        scheduled: bool,
+        service_generation: Option<&str>,
+        live: Option<&LiveEnsure>,
+    ) -> Result<(OwnedRwLockWriteGuard<()>, String, Option<Value>)> {
         self.generation(&input.expected_generation)?;
         self.admission()?;
-        let gate = self.gate(&input.project_id)?;
-        let _guard = gate.write().await;
+        let guard = self.gate(&input.project_id)?.write_owned().await;
         self.admission()?;
         if let Some(generation) = service_generation {
             let instance = Self::service_id(&self.slots.borrow()[&input.project_id].registration);
@@ -1684,15 +2294,17 @@ impl Host {
         let (digest, previous) = self.accepted(
             &input.request_id,
             "project.ensure",
-            &input,
+            input,
             &input.project_id,
         )?;
-        if let Some(previous) = previous {
-            self.apply_scheduling_intent(&input.request_id)?;
-            return previous_result(previous);
+        if let Some(live) = live {
+            live.admitted.set(true);
         }
         self.apply_scheduling_intent(&input.request_id)?;
-        let result = self.ensure_inner(&input).await;
+        Ok((guard, digest, previous))
+    }
+    async fn finish_ensure(&self, input: &Ensure, scheduled: bool, digest: &str) -> Result<Value> {
+        let result = self.ensure_inner(input).await;
         if result.is_err() {
             self.slots
                 .borrow_mut()
@@ -1700,7 +2312,7 @@ impl Host {
                 .unwrap()
                 .state = "unavailable".into();
         }
-        let result = self.finish_mutation(&input.request_id, &digest, result);
+        let result = self.finish_mutation(&input.request_id, digest, result);
         if !scheduled && input.launch_inputs.is_some() {
             self.schedules.wake.notify_one();
         }
@@ -1711,6 +2323,7 @@ impl Host {
         project: &str,
         fingerprint: &str,
         current: Option<&Service>,
+        model_catalog_managed: bool,
     ) {
         {
             let mut slots = self.slots.borrow_mut();
@@ -1721,12 +2334,16 @@ impl Host {
                     && service.owner.as_ref() == Some(&self.owner())
                     && service.identity.config_fingerprint == fingerprint
                     && slot.state == "ready"
+                    && !slot.uncertain_start
                     && slot.writer.is_some()
                     && slot.service.as_ref().is_some_and(|previous| {
                         previous.identity == service.identity && previous.owner == service.owner
                     })
             });
+            // 托管模型的同配置复用不会进入模型热更新超时重启；真正启动仍在 before_launch 设置围栏。
+            slot.uncertain_start = !reusing_ready || !model_catalog_managed;
             if !reusing_ready {
+                slot.idle.reset();
                 slot.state = "starting".into();
             }
         }
@@ -1746,21 +2363,26 @@ impl Host {
             .join("host/launch")
             .join(storage::digest(input.project_id.as_bytes()))
             .join("inputs.json");
-        let mut inputs = match &input.launch_inputs {
-            Some(v) => v.clone(),
-            None => storage::read_optional(&saved_path)?.ok_or_else(|| {
-                error(
-                    "configurationConflict",
-                    "first activation requires launchInputs",
-                )
-            })?,
+        let (mut inputs, using_saved_inputs) = match &input.launch_inputs {
+            Some(v) => (v.clone(), false),
+            None => match storage::read_optional(&saved_path)? {
+                Some(inputs) => (inputs, true),
+                None => (
+                    gui_project::missing_inputs(self, &registration).await?,
+                    false,
+                ),
+            },
         };
         let uses_shared_host_config = self.uses_shared_host_config(&inputs);
         if uses_shared_host_config && self.home.join("config.toml").exists() {
-            let config = areal_config::load_management_config(&areal_config::ConfigInputs {
+            let (config, _) = areal_config::load_service_config(&areal_config::ConfigInputs {
                 cwd: inputs.cwd.clone(),
                 homedir: inputs.homedir.clone(),
                 config_file: Some(self.home.join("config.toml")),
+                overrides: areal_config::ConfigOverrides {
+                    data_dir: Some(registration.data_dir.clone()),
+                    ..Default::default()
+                },
                 ..Default::default()
             })?;
             for name in config.model.api_key_env.iter().chain(
@@ -1774,10 +2396,33 @@ impl Host {
                     inputs.credential_names.push(name.clone());
                 }
             }
+        } else if matches!(registration.source, crate::ProjectSource::Gui { .. }) {
+            let mut cfg_inputs = launch::config_inputs(&self.home, &inputs, &BTreeMap::new());
+            cfg_inputs.overrides.data_dir = Some(registration.data_dir.clone());
+            if let Ok((config, _)) = areal_config::load_service_config(&cfg_inputs) {
+                for name in config.model.api_key_env.iter().chain(
+                    config
+                        .model_catalog
+                        .iter()
+                        .filter_map(|provider| provider.api_key_env.as_ref()),
+                ) {
+                    if name.starts_with("AREAL_CREDENTIAL_")
+                        && !inputs.credential_names.contains(name)
+                    {
+                        inputs.credential_names.push(name.clone());
+                    }
+                }
+            }
         }
         let credential_source = self
             .migration
             .shared_credential_source(&registration, uses_shared_host_config)?;
+        if let crate::ProjectSource::Gui { .. } = registration.source
+            && let Some(source) = &credential_source
+        {
+            let network = self.gateway.workbench.model_network(self, source).await?;
+            crate::network::apply_model_proxy(network, &mut inputs.environment);
+        }
         let environment_credentials = self.gateway.workbench.project_environment_credentials(
             &registration,
             credential_source.as_deref(),
@@ -1803,16 +2448,13 @@ impl Host {
             "invalidRequest: credentials must be named by launch inputs"
         );
 
-        let selected_credential = launch::selected_credential(&self.home, &inputs);
         let mut deferred_credentials = BTreeSet::new();
         let mut imported_credentials = BTreeMap::new();
+        let mut pending_credentials = Vec::new();
         for name in &inputs.credential_names {
             if let Some(source) = &credential_source
                 && name.starts_with("AREAL_CREDENTIAL_")
             {
-                let optional = selected_credential
-                    .as_ref()
-                    .is_some_and(|selected| selected != name);
                 let credential_slot = if name == "AREAL_CREDENTIAL_areal_openai" {
                     crate::vault::Slot::SubscriptionTransport {
                         source_id: source.clone(),
@@ -1823,37 +2465,50 @@ impl Host {
                         reference: name.clone(),
                     }
                 };
-                if optional && self.migration.vault.slot_in_flight(&credential_slot) {
+                if self.migration.vault.slot_in_flight(&credential_slot) {
                     deferred_credentials.insert(name.clone());
                     continue;
                 }
-                let credential = match self
-                    .migration
-                    .credential_for_source_async(source, name)
-                    .await
-                {
-                    Ok(value) => value,
-                    Err(cause)
-                        if optional
-                            && cause
-                                .downcast_ref::<wire::Error>()
-                                .is_some_and(|error| error.code == "migrationPending") =>
-                    {
-                        deferred_credentials.insert(name.clone());
-                        continue;
-                    }
-                    Err(cause)
-                        if cause.downcast_ref::<wire::Error>().is_some_and(|error| {
-                            matches!(error.code, "storageLocked" | "storageMissing")
-                        }) =>
-                    {
-                        eprintln!("Host project credential unavailable: {cause}");
-                        None
-                    }
-                    Err(cause) => return Err(cause),
-                };
-                imported_credentials.insert(name.clone(), credential);
+                pending_credentials.push((source.clone(), name.clone()));
             }
+        }
+        // 多服务凭证并发读取，避免冷启动时受串行 Keychain 往返累加拖慢。
+        let credential_results =
+            futures_util::future::join_all(pending_credentials.into_iter().map(
+                |(source, name)| async move {
+                    let outcome = self
+                        .migration
+                        .credential_for_source_async(&source, &name)
+                        .await;
+                    (name, outcome)
+                },
+            ))
+            .await;
+        for (name, outcome) in credential_results {
+            let credential = match outcome {
+                Ok(value) => value,
+                Err(cause)
+                    if cause
+                        .downcast_ref::<wire::Error>()
+                        .is_some_and(|error| error.code == "migrationPending") =>
+                {
+                    deferred_credentials.insert(name);
+                    continue;
+                }
+                Err(cause)
+                    if cause.downcast_ref::<wire::Error>().is_some_and(|error| {
+                        matches!(
+                            error.code,
+                            "storageLocked" | "storageMissing" | "storageAuthorizationRequired"
+                        )
+                    }) =>
+                {
+                    eprintln!("Host project credential unavailable: {cause}");
+                    None
+                }
+                Err(cause) => return Err(cause),
+            };
+            imported_credentials.insert(name, credential);
         }
         for (name, value) in environment_credentials {
             imported_credentials.insert(name, Some(value));
@@ -1889,30 +2544,21 @@ impl Host {
                 .map(|(name, value)| (name.clone(), value.clone()))
                 .collect()
         };
-        // 未依赖的在途或迁移中凭据只从本次启动投影暂缓，不清除缓存或改写原回执。
+        // 在途或迁移中凭据只从本次启动投影暂缓，历史启动不清除缓存或改写原回执。
         inputs
             .credential_names
             .retain(|name| !deferred_credentials.contains(name));
-        let (mut spec, _) =
-            launch::prepare(&self.home, &self.bin, &registration, &inputs, &credentials)?;
-        let mut journal = self
-            .receipt(&input.request_id)?
-            .context("missing activation receipt")?;
-        let previous = storage::read_optional::<Service>(&spec.directory()?.join("service.json"))?;
-        journal.evidence = json!({"serviceId":spec.service_id,"fingerprint":spec.fingerprint,"owner":self.owner(),"registration":registration,"previousService":previous,"components":spec.components});
-        storage::write(
-            &wire::operation_path(&self.home, &input.request_id),
-            &journal,
-        )?;
+        let service_id = Self::service_id(&registration);
+        let directory = storage::registry(&self.home, &service_id)?;
+        let previous = storage::read_optional::<Service>(&directory.join("service.json"))?;
         let current = if previous.is_some() {
-            let service = areal_local_service::status(&self.home, &spec.service_id)
+            let service = areal_local_service::status(&self.home, &service_id)
                 .await
                 .map_err(|cause| {
                     error(
                         "migrationBlocked",
                         format!(
-                            "cannot inspect existing service {} before activation: {cause:#}",
-                            spec.service_id
+                            "cannot inspect existing service {service_id} before activation: {cause:#}",
                         ),
                     )
                 })?;
@@ -1920,6 +2566,24 @@ impl Host {
         } else {
             None
         };
+        // 只给下一代 Core 使用当前网络和工具设置；继续复用运行中代际的原始启动输入。
+        if using_saved_inputs
+            && current
+                .as_ref()
+                .is_none_or(|service| service.state == State::Stopped)
+        {
+            gui_project::refresh_saved_configuration(self, &registration, &mut inputs).await?;
+        }
+        let (mut spec, _) =
+            launch::prepare(&self.home, &self.bin, &registration, &inputs, &credentials)?;
+        let mut journal = self
+            .receipt(&input.request_id)?
+            .context("missing activation receipt")?;
+        journal.evidence = json!({"serviceId":spec.service_id,"fingerprint":spec.fingerprint,"owner":self.owner(),"registration":registration,"previousService":previous,"components":spec.components});
+        storage::write(
+            &wire::operation_path(&self.home, &input.request_id),
+            &journal,
+        )?;
         let mut prior_boot_activation = false;
         if let Some(previous) = current.as_ref().filter(|s| {
             s.owner.as_ref() != Some(&self.owner())
@@ -2017,7 +2681,12 @@ impl Host {
             }
         }
         spec.owner = Some(self.owner());
-        self.begin_project_activation(&input.project_id, &spec.fingerprint, current.as_ref());
+        self.begin_project_activation(
+            &input.project_id,
+            &spec.fingerprint,
+            current.as_ref(),
+            spec.model_catalog_managed,
+        );
         let lifetime = {
             let mut slots = self.slots.borrow_mut();
             let slot = slots.get_mut(&input.project_id).unwrap();
@@ -2031,13 +2700,13 @@ impl Host {
                 lifetime
             }
         };
-        self.slots
-            .borrow_mut()
-            .get_mut(&input.project_id)
-            .unwrap()
-            .uncertain_start = true;
         let activation_checked = std::cell::Cell::new(false);
         let before_launch = || -> Result<()> {
+            self.slots
+                .borrow_mut()
+                .get_mut(&input.project_id)
+                .unwrap()
+                .uncertain_start = true;
             if !prior_boot_activation {
                 activation_checked.set(true);
                 return Ok(());
@@ -2176,7 +2845,7 @@ impl Host {
             "original generation has no confirmed Runtime cleanup receipt",
         ))
     }
-    async fn check_pending(&self, project_id: &str, current: &str) -> Result<()> {
+    async fn find_pending_blocker(&self, project_id: &str, current: &str) -> Result<Option<Value>> {
         for path in storage::json_records(&self.home.join("host/operations"), false)? {
             let record: Operation = storage::read(&path)?;
             if record.receipt["requestId"] != current
@@ -2189,10 +2858,12 @@ impl Host {
                         })
                     })
             {
-                return Err(error(
-                    "admissionUnknown",
-                    "an earlier Host stop target must be reconciled before changing project lifecycle",
-                ));
+                return Ok(Some(json!({
+                    "projectId": project_id,
+                    "requestId": record.receipt["requestId"],
+                    "state": record.receipt["state"],
+                    "reason": "an earlier Host stop target must be reconciled before changing project lifecycle",
+                })));
             }
             if record.receipt["requestId"] == current || record.receipt["projectId"] != project_id {
                 continue;
@@ -2205,19 +2876,89 @@ impl Host {
                         | ReceiptState::SettlementIncomplete
                 )
             ) {
-                return Err(error(
-                    "admissionUnknown",
-                    "an earlier project operation must be reconciled before activation",
-                ));
+                return Ok(Some(json!({
+                    "projectId": project_id,
+                    "requestId": record.receipt["requestId"],
+                    "state": record.receipt["state"],
+                    "serviceId": record.receipt["serviceId"],
+                    "serviceGeneration": record.receipt["serviceGeneration"],
+                    "reason": "an earlier project operation must be reconciled before activation",
+                })));
             }
             if let Some(migration) = record.receipt.get("migration")
                 && migration["phase"] == "draining"
             {
-                return Err(error(
-                    "admissionUnknown",
-                    "legacy drain must be reconciled before activation",
-                ));
+                return Ok(Some(json!({
+                    "projectId": project_id,
+                    "requestId": record.receipt["requestId"],
+                    "state": "draining",
+                    "reason": "legacy drain must be reconciled before activation",
+                })));
             }
+        }
+        Ok(None)
+    }
+    /// 在调用方已持有该项目 gate 写锁的前提下，核对旧单项目停止回执是否已有权威服务回执。
+    async fn reconcile_pending_blockers_locked(
+        &self,
+        project_id: &str,
+        current: &str,
+    ) -> Result<()> {
+        for path in storage::json_records(&self.home.join("host/operations"), false)? {
+            let mut record: Operation = storage::read(&path)?;
+            if record.receipt["requestId"] == current
+                || record.receipt["projectId"] != project_id
+                || record.receipt["projects"].is_array()
+            {
+                continue;
+            }
+            if !matches!(
+                ReceiptState::of(&record.receipt),
+                Some(
+                    ReceiptState::AcceptedPending
+                        | ReceiptState::AdmissionUnknown
+                        | ReceiptState::SettlementIncomplete
+                )
+            ) {
+                continue;
+            }
+            let (Some(req_id), Some(instance), Some(generation)) = (
+                record.receipt["requestId"].as_str().map(str::to_owned),
+                record.receipt["serviceId"].as_str().map(str::to_owned),
+                record.receipt["serviceGeneration"]
+                    .as_str()
+                    .map(str::to_owned),
+            ) else {
+                continue;
+            };
+            let Ok(strategy) =
+                serde_json::from_value::<StopStrategy>(record.receipt["strategy"].clone())
+            else {
+                continue;
+            };
+            if let Some(op) =
+                areal_local_service::operation(&self.home, &instance, &generation, &req_id).await?
+                && op.request_id == req_id
+                && op.service_id == instance
+                && op.generation == generation
+                && op.cancel == strategy.cancel()
+            {
+                record.receipt = stop_receipt(project_id, strategy, &op);
+                self.save(&req_id, &record.digest, &record.receipt)?;
+            }
+        }
+        Ok(())
+    }
+    async fn check_pending(&self, project_id: &str, current: &str) -> Result<()> {
+        if let Some(blocker) = self.find_pending_blocker(project_id, current).await? {
+            let reason = blocker["reason"]
+                .as_str()
+                .unwrap_or("an earlier project operation must be reconciled before activation");
+            let req = blocker["requestId"].as_str().unwrap_or("unknown");
+            return Err(error(
+                "admissionUnknown",
+                format!("{reason} (project {project_id}, requestId {req})"),
+            ));
         }
         Ok(())
     }
@@ -2250,6 +2991,7 @@ impl Host {
     ) -> Value {
         self.slots.borrow_mut().get_mut(project_id).unwrap().state = "stopping".into();
         self.changed();
+        self.schedules.connections.changed.notify_waiters();
         let operation = areal_local_service::stop_operation(
             &self.home,
             &service.identity.service_id,
@@ -2272,6 +3014,9 @@ impl Host {
         };
         let receipt = match operation {
             Ok(op) => stop_receipt(project_id, strategy, &op),
+            Err(err) if areal_local_service::is_stop_not_dispatched(&err) => {
+                json!({"version":VERSION,"requestId":request_id,"projectId":project_id,"serviceId":service.identity.service_id,"serviceGeneration":service.identity.generation,"strategy":strategy,"state":"blocked","message":format!("{err:#}")})
+            }
             Err(_) => {
                 json!({"version":VERSION,"requestId":request_id,"projectId":project_id,"serviceId":service.identity.service_id,"serviceGeneration":service.identity.generation,"strategy":strategy,"state":"admissionUnknown","message":"Read the original operation to reconcile admission"})
             }
@@ -2288,6 +3033,7 @@ impl Host {
             slot.service = None;
         }
         self.changed();
+        self.schedules.connections.changed.notify_waiters();
         receipt
     }
     async fn stop_project(&self, input: Stop) -> Result<Value> {
@@ -2308,6 +3054,8 @@ impl Host {
                 .context("missing operation");
         }
         self.admission()?;
+        self.reconcile_pending_blockers_locked(id, &input.request_id)
+            .await?;
         self.check_pending(id, &input.request_id).await?;
         let instance = Self::service_id(&self.slots.borrow()[id].registration);
         let service = areal_local_service::status(&self.home, &instance).await?;
@@ -2315,6 +3063,12 @@ impl Host {
             return Err(error("generationMismatch", "service generation changed"));
         }
         self.admission()?;
+        let _live_idle_stop = (matches!(input.strategy, StopStrategy::IfIdle)
+            && !input.suppress_scheduling)
+            .then(|| {
+                self.install_live_idle_stop(id, &input.request_id, &service.identity.generation)
+            })
+            .flatten();
         let already_stopped = !input.suppress_scheduling
             && service.state == State::Stopped
             && areal_local_service::operation(
@@ -2405,28 +3159,40 @@ impl Host {
         }
         let projects: Vec<_> = self.slots.borrow().keys().cloned().collect();
         for id in &projects {
-            if self.check_pending(id, &input.request_id).await.is_err() {
+            if self
+                .find_pending_blocker(id, &input.request_id)
+                .await?
+                .is_some()
+            {
                 // 活跃的激活操作也先记 pending；等原操作释放锁后再区分完成与遗留 UNKNOWN。
                 let _guard = self.gate(id)?.write_owned().await;
+                self.reconcile_pending_blockers_locked(id, &input.request_id)
+                    .await?;
                 self.check_pending(id, &input.request_id).await?;
             }
         }
         let (digest, _) = self.accepted(&input.request_id, "host.stop", &input, "")?;
         let mut receipt = json!({"version":VERSION,"requestId":input.request_id,"hostId":self.identity.host_id,"generation":self.identity.generation,"strategy":input.strategy,"state":"acceptedPending","projects":[],"localRelay":{"state":"acceptedPending"}});
-        storage::write(&self.home.join("host/stop.json"), &receipt)?;
+        receipt["preparationPending"] = json!(true);
+        self.save_host_stop(&input.request_id, &digest, &receipt)?;
         *self.stop.borrow_mut() = Some(receipt.clone());
         self.gateway.local_relay.quiesce(true);
         self.changed();
         let ids: Vec<_> = self.slots.borrow().keys().cloned().collect();
         let mut guards = Vec::new();
         for id in &ids {
+            eprintln!("Host stop preparation: acquiring project gate {id}");
             guards.push(self.gate(id)?.write_owned().await);
         }
+        eprintln!("Host stop preparation: project gates acquired");
         for id in &ids {
+            self.reconcile_pending_blockers_locked(id, &input.request_id)
+                .await?;
             self.check_pending(id, &input.request_id).await?;
         }
         let mut services = Vec::new();
         for id in ids {
+            eprintln!("Host stop preparation: reading service {id}");
             let instance = Self::service_id(&self.slots.borrow()[&id].registration);
             let service = match areal_local_service::status(&self.home, &instance).await {
                 Ok(service) => Some(service),
@@ -2434,6 +3200,7 @@ impl Host {
                     &storage::registry(&self.home, &instance)?.join("service.json"),
                 )?,
             };
+            eprintln!("Host stop preparation: service read {id}");
             if let Some(service) = service {
                 if service.state != State::Stopped || self.cleanup_proof(&service).await.is_err() {
                     receipt["projects"].as_array_mut().unwrap().push(json!({"projectId":id,"serviceId":instance,"serviceGeneration":service.identity.generation,"requestId":uuid::Uuid::new_v4().to_string(),"dispatch":"notStarted"}));
@@ -2445,6 +3212,10 @@ impl Host {
                 return Ok(receipt);
             }
         }
+        receipt
+            .as_object_mut()
+            .unwrap()
+            .remove("preparationPending");
         self.save_host_stop(&input.request_id, &digest, &receipt)?;
         for (i, service) in services.iter().enumerate() {
             receipt["projects"][i]["dispatch"] = json!("started");
@@ -2511,6 +3282,9 @@ impl Host {
         let Some(mut record) = self.receipt(id)? else {
             return Ok(None);
         };
+        if record.receipt["preparationInterrupted"] == true && settled_refusal(&record.receipt) {
+            return Ok(Some(record.receipt));
+        }
         let _host_guard =
             if record.receipt["projects"].is_array() || record.receipt["method"] == "host.stop" {
                 match self.host_stop_gate.try_lock() {
@@ -2520,6 +3294,35 @@ impl Host {
             } else {
                 None
             };
+        if record.receipt["preparationPending"] == true {
+            // 已获得原停止锁且尚未派发任何目标，原准备已中断；拒绝原请求，不重放停止。
+            let strategy = record.receipt["strategy"].clone();
+            for target in record.receipt["projects"].as_array_mut().unwrap() {
+                ensure!(
+                    target["dispatch"] == "notStarted",
+                    "stop preparation contains a dispatched target"
+                );
+                target["receipt"] = json!({"version":VERSION,"requestId":target["requestId"],"projectId":target["projectId"],"serviceId":target["serviceId"],"serviceGeneration":target["serviceGeneration"],"strategy":strategy,"state":"blocked"});
+            }
+            record.receipt["state"] = json!(ReceiptState::Blocked);
+            record.receipt["preparationInterrupted"] = json!(true);
+            record
+                .receipt
+                .as_object_mut()
+                .unwrap()
+                .remove("preparationPending");
+            let current = self
+                .stop
+                .borrow()
+                .as_ref()
+                .is_some_and(|stop| stop["requestId"] == id);
+            if current {
+                self.save_host_stop(id, &record.digest, &record.receipt)?;
+            } else {
+                self.save(id, &record.digest, &record.receipt)?;
+            }
+            return Ok(Some(record.receipt));
+        }
         let project_ids: std::collections::BTreeSet<_> = record.receipt["projectId"]
             .as_str()
             .filter(|id| !id.is_empty())
@@ -2762,6 +3565,15 @@ pub(crate) fn settled_refusal(receipt: &Value) -> bool {
     let Some(targets) = receipt["projects"].as_array() else {
         return false;
     };
+    if ReceiptState::is(receipt, ReceiptState::Blocked)
+        && receipt["preparationInterrupted"] == true
+        && targets.iter().all(|target| {
+            target["dispatch"] == "notStarted"
+                && ReceiptState::is(&target["receipt"], ReceiptState::Blocked)
+        })
+    {
+        return true;
+    }
     matches!(
         ReceiptState::of(receipt),
         Some(ReceiptState::Blocked | ReceiptState::Partial)

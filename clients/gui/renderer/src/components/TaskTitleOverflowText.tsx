@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { TaskTitleOverflowText as View } from "@areal/ui/experimental";
+import { TaskTitleOverflowText as View } from "@areal/ui/compositions";
 import { useReducedMotion } from "../settings/applicationPreferences.js";
 export function TaskTitleOverflowText(props: ComponentProps<typeof View>) {
   const reducedMotion = useReducedMotion();

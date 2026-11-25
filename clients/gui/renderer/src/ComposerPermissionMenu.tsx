@@ -17,6 +17,7 @@ export function ComposerPermissionMenu({
   configuration,
   permissionsSupported,
   fullAccessAvailable,
+  capabilitiesPending = false,
   disabled,
   lockedReadOnly,
   onChange,
@@ -28,25 +29,32 @@ export function ComposerPermissionMenu({
   configuration?: Data;
   permissionsSupported?: boolean;
   fullAccessAvailable?: boolean;
+  /** 项目尚未拿到本代能力目录时为 true：保留已选偏好展示，锁定高风险选项，不误报“不支持”。 */
+  capabilitiesPending?: boolean;
   disabled?: boolean;
   lockedReadOnly?: boolean;
   onChange: (value: PermissionPreset) => void;
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  const supported = permissionsSupported === true || !!configuration?.permissions;
-  const fullAccess = configuration?.permissions
-    ? configuration.permissions.fullAccessAvailable === true
-    : fullAccessAvailable === true;
+  const supported =
+    !capabilitiesPending && (permissionsSupported === true || !!configuration?.permissions);
+  const fullAccess =
+    !capabilitiesPending &&
+    (configuration?.permissions
+      ? configuration.permissions.fullAccessAvailable === true
+      : fullAccessAvailable === true);
   const explicitPreset = configuration ? configuration.options?.permissionPreset != null : true;
   const effectiveValue =
     value === "readOnly"
       ? value
-      : explicitPreset && !supported
-        ? "unsupported"
-        : value === "fullAccess" && !fullAccess
-          ? "restricted"
-          : value;
+      : capabilitiesPending
+        ? value
+        : explicitPreset && !supported
+          ? "unsupported"
+          : value === "fullAccess" && !fullAccess
+            ? "restricted"
+            : value;
   const selected = permissionChoices.find((option) => option.id === effectiveValue);
   const requested = configuration?.options?.permissionPreset ?? value;
   const Icon = effectiveValue === "ask" ? AskPermissionIcon : AutoPermissionIcon;
@@ -55,7 +63,11 @@ export function ComposerPermissionMenu({
     return {
       option,
       disabled:
-        disabled || lockedReadOnly || !supported || (option.id === "fullAccess" && !fullAccess),
+        disabled ||
+        lockedReadOnly ||
+        (capabilitiesPending
+          ? option.id === "fullAccess"
+          : !supported || (option.id === "fullAccess" && !fullAccess)),
       content: (
         <>
           <ChoiceIcon />
@@ -82,57 +94,67 @@ export function ComposerPermissionMenu({
           <Button
             key={option.id}
             variant={value === option.id ? "secondary" : "ghost"}
+            size="auto"
+            align="start"
             aria-pressed={value === option.id}
             data-permission-preset={option.id}
             disabled={disabled}
             onClick={() => onChange(option.id)}
-            className="min-h-[var(--size-touch-target)] h-auto w-full justify-start gap-inline whitespace-normal text-start"
+            className="min-h-(--size-touch-target) w-full"
           >
             {content}
           </Button>
         ))}
+        {capabilitiesPending && (
+          <p className="px-2 text-ui-sm text-foreground-subtle">
+            {t("chat.permissions.pendingNotice")}
+          </p>
+        )}
       </div>
     );
   return (
     <DropdownMenu>
-      <ControlHintTooltip title={t("chat.permissions.change")}>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={disabled}
-              aria-label={t("chat.permissions.change")}
-              data-composer-collapse-priority="0"
-              className="group/permission size-7 gap-1 rounded-navigation p-0 text-ui-caption text-foreground-subtle @xl/composer:w-auto @xl/composer:px-2 data-[composer-compact=true]:w-7 data-[composer-compact=true]:px-0"
-            >
-              <Icon />
-              <span className="hidden @xl/composer:inline group-data-[composer-compact=true]/permission:hidden">
-                {selected
-                  ? t(selected.labelId)
-                  : t(
-                      effectiveValue === "readOnly"
-                        ? "chat.permissions.readOnly"
-                        : effectiveValue === "plan"
-                          ? "chat.permissions.plan"
-                          : effectiveValue === "auto"
-                            ? "chat.permissions.auto"
-                            : effectiveValue === "restricted"
-                              ? "chat.permissions.restricted"
-                              : effectiveValue === "unsupported"
-                                ? "chat.permissions.unsupported"
-                                : "chat.permissions.custom",
-                    )}
-              </span>
-            </Button>
-          }
-        />
-      </ControlHintTooltip>
+      <span className="group/permission inline-flex" data-composer-collapse-priority="0">
+        <ControlHintTooltip title={t("chat.permissions.change")}>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost-subtle"
+                size="none"
+                disabled={disabled}
+                aria-label={t("chat.permissions.change")}
+                className="size-7 @xl/composer:w-auto group-data-[composer-compact=true]/permission:w-7"
+              >
+                <span className="inline-flex items-center gap-1 px-0 @xl/composer:px-2 group-data-[composer-compact=true]/permission:px-0">
+                  <Icon />
+                  <span className="hidden @xl/composer:inline group-data-[composer-compact=true]/permission:hidden">
+                    {selected
+                      ? t(selected.labelId)
+                      : t(
+                          effectiveValue === "readOnly"
+                            ? "chat.permissions.readOnly"
+                            : effectiveValue === "plan"
+                              ? "chat.permissions.plan"
+                              : effectiveValue === "auto"
+                                ? "chat.permissions.auto"
+                                : effectiveValue === "restricted"
+                                  ? "chat.permissions.restricted"
+                                  : effectiveValue === "unsupported"
+                                    ? "chat.permissions.unsupported"
+                                    : "chat.permissions.custom",
+                        )}
+                  </span>
+                </span>
+              </Button>
+            }
+          />
+        </ControlHintTooltip>
+      </span>
       <DropdownMenuContent
         side="top"
         sideOffset={4}
-        className="composer-permission-menu w-[300px]"
+        className="w-75"
         aria-label={t("chat.permissions.choose")}
         finalFocus={() => {
           onClose();
@@ -147,12 +169,7 @@ export function ComposerPermissionMenu({
           }}
         >
           {choices.map(({ option, disabled, content }) => (
-            <DropdownMenuRadioItem
-              key={option.id}
-              value={option.id}
-              disabled={disabled}
-              className="permission-choice items-start gap-2 text-ui-caption [&_[data-slot=dropdown-menu-radio-item-indicator]]:top-1/2 [&_[data-slot=dropdown-menu-radio-item-indicator]]:-translate-y-1/2"
-            >
+            <DropdownMenuRadioItem key={option.id} value={option.id} disabled={disabled} multiline>
               {content}
             </DropdownMenuRadioItem>
           ))}
@@ -160,11 +177,13 @@ export function ComposerPermissionMenu({
         <p className="px-3 py-2 text-ui-caption text-foreground-subtle">
           {lockedReadOnly
             ? t("chat.permissions.readOnlySession")
-            : !supported
-              ? t("chat.permissions.unsupportedBackend")
-              : requested === "autoReview" && configuration?.permissions?.reviewer === "human"
-                ? t("chat.permissions.humanFallback")
-                : t("chat.permissions.limitsNotice")}
+            : capabilitiesPending
+              ? t("chat.permissions.pendingNotice")
+              : !supported
+                ? t("chat.permissions.unsupportedBackend")
+                : requested === "autoReview" && configuration?.permissions?.reviewer === "human"
+                  ? t("chat.permissions.humanFallback")
+                  : t("chat.permissions.limitsNotice")}
         </p>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -77,7 +77,18 @@ export function useTranscriptSelection({
       const chosen = selectionSnapshot.current;
       if (chosen && !selectionIsCurrent(chosen)) setSelectedSideText(null);
     };
-    const dismiss = () => setSelectedSideText(null);
+    const dismiss = (event?: Event) => {
+      if (
+        event?.type === "scroll" &&
+        event.target instanceof Node &&
+        container.current &&
+        event.target !== container.current &&
+        event.target !== document &&
+        !event.target.contains(container.current)
+      )
+        return;
+      setSelectedSideText(null);
+    };
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || !selectionSnapshot.current) return;
       event.preventDefault();

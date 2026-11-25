@@ -61,6 +61,29 @@ fn unavailable_tool_host_retains_determinate_rejection() {
     );
 }
 
+#[test]
+fn configuration_rejections_preserve_safe_public_causes() {
+    for (reason, expected) in [
+        ("CREDENTIAL_UNAVAILABLE", "PROVIDER_CREDENTIAL_REQUIRED"),
+        (
+            "MODEL_CREDENTIAL_UNAVAILABLE",
+            "PROVIDER_CREDENTIAL_REQUIRED",
+        ),
+        (
+            "EXECUTION_CONFIGURATION_UNAVAILABLE",
+            "EXECUTION_CONFIGURATION_UNAVAILABLE",
+        ),
+    ] {
+        let record = json!({"method":"areal/turn/start","admissionState":"rejected",
+            "remote":{"method":"session.send"},
+            "error":{"code":-32602,"message":"private credential details", "data":{"reason":reason}}});
+        let result = Session::command_view(Some(&record), "original");
+        assert_eq!(result["error"]["code"], expected);
+        assert_eq!(result["submissionUnknown"], false);
+        assert!(!result.to_string().contains("private credential"));
+    }
+}
+
 enum CoreResponse {
     Message(Value),
     Disconnect,
@@ -314,6 +337,7 @@ impl Fixture {
             local: false,
             browser_device: None,
             uploads: Default::default(),
+            download: None,
             token_key: [7; 32],
         }
     }
@@ -1292,6 +1316,564 @@ async fn conversation_open_discards_reply_after_grant_or_core_generation_changes
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn cold_project_create_reports_no_admission_for_new_command() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            f.host.slots.borrow_mut().get_mut("project").unwrap().state = "starting".into();
+            let command = uuid::Uuid::new_v4().to_string();
+            let request = f.request("session.create", json!({}), Some(&command));
+            let error = f.session("a").request(&request).await.unwrap_err();
+            assert_eq!(error.to_string(), "CORE_UNAVAILABLE");
+            assert!(!submission_unknown("CORE_UNAVAILABLE", &error));
+            assert!(submission_unknown(
+                "CORE_UNAVAILABLE",
+                &fail("CORE_UNAVAILABLE")
+            ));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn outdated_generation_rejects_unadmitted_creation() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            let command = uuid::Uuid::new_v4().to_string();
+            let mut request = f.request("session.create", json!({}), Some(&command));
+            request["context"]["serviceGeneration"] = json!("outdated-core");
+            let rejected = f.session("a").request(&request).await.unwrap();
+            assert_eq!(rejected["commandId"], command);
+            assert_eq!(rejected["admissionState"], "rejected");
+            assert_eq!(rejected["submissionUnknown"], false);
+            assert_eq!(rejected["error"]["code"], "RESYNC_REQUIRED");
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn project_activation_requires_submit_but_not_manage_and_preserves_explicit_stop() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            f.grant("a", |grant| {
+                grant["capabilities"] = json!(["observe", "submit"])
+            });
+            let request = f.request("project.activate", json!({}), None);
+            let ready = f.session("a").request(&request).await.unwrap();
+            assert_eq!(ready["state"], "ready");
+            assert_eq!(ready["serviceGeneration"], "core-generation");
+            f.host.schedules.suppress("project", true).unwrap();
+            let stopped = f.session("a").request(&request).await.unwrap();
+            assert_eq!(stopped["state"], "blocked");
+            assert_eq!(stopped["reason"], "explicitlyStopped");
+            f.grant("a", |grant| grant["capabilities"] = json!(["observe"]));
+            assert_eq!(
+                f.session("a")
+                    .request(&request)
+                    .await
+                    .unwrap_err()
+                    .to_string(),
+                "FORBIDDEN"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn project_activation_reconciles_the_original_unknown_ensure_without_replay() {
+    tokio::task::LocalSet::new().run_until(async {
+        let f = Fixture::new().await;
+        let gate = f.host.gate("project").unwrap();
+        let _starting = gate.write().await;
+        { let mut slots = f.host.slots.borrow_mut(); let slot = slots.get_mut("project").unwrap();
+          slot.state = "starting".into(); slot.service = None; }
+        let original = uuid::Uuid::new_v4().to_string();
+        storage::write(&crate::wire::operation_path(&f.host.home, &original), &json!({
+            "digest":"original", "receipt":{"requestId":original,"method":"project.ensure","projectId":"project","state":"acceptedPending"},"evidence":{}
+        })).unwrap();
+        let request = f.request("project.activate", json!({}), None);
+        for _ in 0..2 {
+            let pending = f.session("a").request(&request).await.unwrap();
+            assert_eq!(pending["state"], "pending");
+            assert_eq!(pending["activationId"], original);
+        }
+        assert_eq!(storage::json_records(&f.host.home.join("host/operations"), false).unwrap().len(), 1);
+        assert!(f.host.gateway.workbench.active_source().is_none());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn project_activation_coalesces_live_in_flight_ensure_and_waits_for_completion() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            let saved_service = f.host.slots.borrow()["project"].service.clone().unwrap();
+            let live_id = uuid::Uuid::new_v4().to_string();
+            let live_guard = f.host.install_live_ensure("project", &live_id).unwrap();
+            {
+                let mut slots = f.host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                slot.state = "starting".into();
+                slot.service = None;
+            }
+            let host = f.host.clone();
+            let id_for_task = live_id.clone();
+            tokio::task::spawn_local(async move {
+                let _live = live_guard;
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                storage::write(
+                    &crate::wire::operation_path(&host.home, &id_for_task),
+                    &json!({
+                        "digest": "live",
+                        "receipt": {
+                            "requestId": id_for_task,
+                            "method": "project.ensure",
+                            "projectId": "project",
+                            "state": "completed"
+                        },
+                        "evidence": {}
+                    }),
+                )
+                .unwrap();
+                {
+                    let mut slots = host.slots.borrow_mut();
+                    let slot = slots.get_mut("project").unwrap();
+                    slot.state = "ready".into();
+                    slot.service = Some(saved_service);
+                }
+                host.changed();
+            });
+            let request = f.request("project.activate", json!({}), None);
+            let ready = f.session("a").request(&request).await.unwrap();
+            assert_eq!(ready["state"], "ready");
+            assert_eq!(ready["serviceGeneration"], "core-generation");
+            assert_eq!(ready["activationId"], live_id);
+            assert_eq!(
+                storage::json_records(&f.host.home.join("host/operations"), false)
+                    .unwrap()
+                    .len(),
+                1
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn project_activation_waits_for_live_idle_stop_and_never_replays_unknown_stop() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            // 场景 1：ifIdle 停止因 Core 忙被拒绝（blocked），原实例恢复 ready，唤醒直接复用旧代际。
+            let stop_id = uuid::Uuid::new_v4().to_string();
+            {
+                let host = f.host.clone();
+                let stop_req = stop_id.clone();
+                let (done, _) = tokio::sync::watch::channel(false);
+                let done = Rc::new(done);
+                {
+                    let mut slots = host.slots.borrow_mut();
+                    let slot = slots.get_mut("project").unwrap();
+                    slot.state = "stopping".into();
+                    slot.live_idle_stop = Some(crate::server::LiveIdleStop {
+                        request_id: stop_req.clone(),
+                        service_generation: "core-generation".into(),
+                        done: done.clone(),
+                    });
+                }
+                tokio::task::spawn_local(async move {
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                    storage::write(
+                        &crate::wire::operation_path(&host.home, &stop_req),
+                        &json!({
+                            "digest": "stop-blocked",
+                            "receipt": {
+                                "requestId": stop_req,
+                                "method": "project.stop",
+                                "projectId": "project",
+                                "strategy": "ifIdle",
+                                "state": "blocked"
+                            },
+                            "evidence": {}
+                        }),
+                    )
+                    .unwrap();
+                    {
+                        let mut slots = host.slots.borrow_mut();
+                        let slot = slots.get_mut("project").unwrap();
+                        slot.state = "ready".into();
+                        slot.live_idle_stop = None;
+                    }
+                    let _ = done.send(true);
+                    host.changed();
+                });
+            }
+            let request = f.request("project.activate", json!({}), None);
+            let ready = f.session("a").request(&request).await.unwrap();
+            assert_eq!(ready["state"], "ready");
+            assert_eq!(ready["serviceGeneration"], "core-generation");
+
+            // 场景 2：ifIdle 停止结果未知（admissionUnknown），绝不能启动后继代际。
+            let unknown_stop_id = uuid::Uuid::new_v4().to_string();
+            {
+                let host = f.host.clone();
+                let stop_req = unknown_stop_id.clone();
+                let (done, _) = tokio::sync::watch::channel(false);
+                let done = Rc::new(done);
+                {
+                    let mut slots = host.slots.borrow_mut();
+                    let slot = slots.get_mut("project").unwrap();
+                    slot.state = "stopping".into();
+                    slot.live_idle_stop = Some(crate::server::LiveIdleStop {
+                        request_id: stop_req.clone(),
+                        service_generation: "core-generation".into(),
+                        done: done.clone(),
+                    });
+                }
+                tokio::task::spawn_local(async move {
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                    storage::write(
+                        &crate::wire::operation_path(&host.home, &stop_req),
+                        &json!({
+                            "digest": "stop-unknown",
+                            "receipt": {
+                                "requestId": stop_req,
+                                "method": "project.stop",
+                                "projectId": "project",
+                                "strategy": "ifIdle",
+                                "state": "admissionUnknown"
+                            },
+                            "evidence": {}
+                        }),
+                    )
+                    .unwrap();
+                    {
+                        let mut slots = host.slots.borrow_mut();
+                        let slot = slots.get_mut("project").unwrap();
+                        slot.state = "stopped".into();
+                        slot.service = None;
+                        slot.live_idle_stop = None;
+                    }
+                    let _ = done.send(true);
+                    host.changed();
+                });
+            }
+            let pending = f.session("a").request(&request).await.unwrap();
+            assert_eq!(pending["state"], "pending");
+            assert_eq!(pending["reason"], "activationIncomplete");
+            assert!(
+                storage::json_records(&f.host.home.join("host/operations"), false)
+                    .unwrap()
+                    .iter()
+                    .all(|path| {
+                        let op: crate::server::Operation = storage::read(path).unwrap();
+                        op.receipt["method"] != "project.ensure"
+                    })
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stopped_project_models_are_native_redacted_and_do_not_activate_execution() {
+    tokio::task::LocalSet::new().run_until(async {
+        let f = Fixture::new().await;
+        std::fs::write(f.host.home.join("config.toml"), "schema_version=2\n[model]\nprovider='fixture'\nname='saved-model'\n[model.providers.fixture]\nname='Saved provider'\nendpoint='https://private.example/v1/responses'\nprotocol='responses'\nmodels=[{id='saved-model',display_name='Saved model',parameters={}}]\n").unwrap();
+        {
+            let mut slots = f.host.slots.borrow_mut();
+            let slot = slots.get_mut("project").unwrap();
+            slot.state = "stopped".into();
+            slot.service = None;
+        }
+        let mut session = f.session("a");
+        let request = f.request("project.models", json!({}), None);
+        let result = session.request(&request).await.unwrap();
+        assert_eq!(result["models"][0]["modelId"], "saved-model");
+        assert_eq!(result["models"][0]["displayName"], "Saved model");
+        assert!(!result.to_string().contains("private.example"));
+        assert!(result.get("serviceGeneration").is_none());
+        assert!(result.get("features").is_none());
+        assert!(f.host.gateway.workbench.active_source().is_none());
+        assert_eq!(f.host.slots.borrow()["project"].state, "stopped");
+        assert!(serde_json::from_value::<areal_protocol::host::RemoteProjectModelsResult>(result).is_ok());
+        storage::write(
+            &f.host.migration.power_sources().unwrap()[&f.source].join("model-selection.json"),
+            &json!({"model":{"providerId":"fixture","modelId":"saved-model"},"modelId":"saved-model","reasoningEffort":null,"acceptedAt":1}),
+        )
+        .unwrap();
+        let mut gui_session = f.session("a");
+        gui_session.gui_read = true;
+        let gui_result = gui_session.request(&request).await.unwrap();
+        assert_eq!(gui_result["lastAcceptedModel"]["model"]["modelId"], "saved-model");
+        assert!(serde_json::from_value::<areal_protocol::host::RemoteProjectModelsResult>(gui_result).is_ok());
+        let mut denied = request;
+        denied["context"]["projectId"] = json!("not-granted");
+        assert_eq!(session.request(&denied).await.unwrap_err().to_string(), "FORBIDDEN");
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_project_catalog_returns_before_core_metadata_and_discards_old_generation() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let mut session = f.session("a");
+            session.gui_read = true;
+            let request = f.request("project.models", json!({}), None);
+            let mut reading = Fixture::dispatch(session, request.clone());
+            let (mut session, first) =
+                tokio::time::timeout(Duration::from_millis(50), &mut reading)
+                    .await
+                    .expect("model menu must not wait for Core metadata")
+                    .unwrap();
+            assert!(first.unwrap()["models"].is_array());
+            let before = f
+                .host
+                .schedules
+                .connections
+                .model_catalog_revision(&f.host, "project")
+                .unwrap();
+            let models = f.call("areal/model/list").await;
+            // Core 不回答时，后续读取也必须直接返回；不创建第二批元数据请求。
+            assert!(
+                tokio::time::timeout(Duration::from_millis(50), session.request(&request))
+                    .await
+                    .unwrap()
+                    .is_ok()
+            );
+            models.reply(json!({"data":[{"providerId":"dynamic","modelId":"live"}]}));
+            f.call("areal/capabilities")
+                .await
+                .reply(json!({"methods":[],"features":{}}));
+            let profiles = f.call("areal/profile/list").await;
+            f.host
+                .slots
+                .borrow_mut()
+                .get_mut("project")
+                .unwrap()
+                .service
+                .as_mut()
+                .unwrap()
+                .identity
+                .generation = "replacement".into();
+            profiles.reply(json!({"data":[{"id":"old-profile","revision":"1"}]}));
+            assert_ne!(
+                f.host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(&f.host, "project")
+                    .ok(),
+                Some(before)
+            );
+            f.reconnect().await;
+            let mut session = f.session("a");
+            session.gui_read = true;
+            let result = session.request(&request).await.unwrap();
+            assert!(!result.to_string().contains("old-profile"));
+            assert!(!result.to_string().contains("dynamic"));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn session_model_projection_does_not_block_history_on_core_or_broken_desired_config() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            std::fs::write(f.host.home.join("config.toml"), "this is not valid toml").unwrap();
+            let session = f.session("a");
+            let result = tokio::time::timeout(
+                Duration::from_millis(50),
+                session.model_catalog(&f.alias, "core-generation", || Ok(None)),
+            )
+            .await
+            .expect("history model projection cannot wait for Core")
+            .unwrap();
+            assert_eq!(result["models"], json!([]));
+            let _pending = f.call("areal/model/list").await;
+            assert!(
+                session
+                    .project_models(
+                        &f.alias,
+                        "core-generation",
+                        &f.request("project.models", json!({}), None)
+                    )
+                    .await
+                    .is_err(),
+                "设置目录仍必须明确报告配置解析错误"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn project_model_metadata_publishes_only_the_current_revision_without_read_loops() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let mut session = f.session("a");
+            session.gui_read = true;
+            let request = f.request("project.models", json!({}), None);
+            let before = f.host.read_models.shell(&f.host).await.unwrap();
+            session.request(&request).await.unwrap();
+            let first = f.call("areal/model/list").await;
+            let mut changes = f.host.changes.subscribe();
+            let revision = f
+                .host
+                .schedules
+                .connections
+                .model_catalog_revision(&f.host, "project")
+                .unwrap();
+            first
+                .responses
+                .send(CoreResponse::Message(
+                    json!({"method":"areal/model/catalogChanged","params":{"revision":1}}),
+                ))
+                .unwrap();
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while f
+                    .host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(&f.host, "project")
+                    .unwrap()
+                    == revision
+                {
+                    changes.changed().await.unwrap();
+                }
+            })
+            .await
+            .unwrap();
+            let checking = f
+                .host
+                .schedules
+                .connections
+                .model_catalog_revision(&f.host, "project")
+                .unwrap();
+            first.reply(json!({"data":[{"providerId":"outdated","modelId":"old"}]}));
+            f.call("areal/capabilities")
+                .await
+                .reply(json!({"methods":[],"features":{}}));
+            f.call("areal/profile/list")
+                .await
+                .reply(json!({"data":[{"id":"old","revision":"1"}]}));
+            let current = f.call("areal/model/list").await;
+            let core_events = current.responses.clone();
+            assert_eq!(
+                f.host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(&f.host, "project")
+                    .unwrap(),
+                checking
+            );
+            let interim = session.request(&request).await.unwrap();
+            assert!(!interim.to_string().contains("outdated"));
+            current.reply(
+                json!({"data":[{"providerId":"dynamic","modelId":"current","available":true}]}),
+            );
+            f.call("areal/capabilities")
+                .await
+                .reply(json!({"methods":[],"features":{"permissionPresets":true}}));
+            f.call("areal/profile/list")
+                .await
+                .reply(json!({"data":[{"id":"current","revision":"2"}]}));
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while f
+                    .host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(&f.host, "project")
+                    .unwrap()
+                    == checking
+                {
+                    changes.changed().await.unwrap();
+                }
+            })
+            .await
+            .unwrap();
+            let result = session.request(&request).await.unwrap();
+            assert_eq!(result["models"][0]["modelId"], "current");
+            assert_eq!(result["profiles"], json!([{"id":"current","revision":"2"}]));
+            assert_eq!(result["features"]["permissionPresets"], true);
+            // 同一代 Core 目录版本再递增、尚未重读完成时，不能丢失当前代已声明的能力。
+            let after_first_publish = f
+                .host
+                .schedules
+                .connections
+                .model_catalog_revision(&f.host, "project")
+                .unwrap();
+            core_events
+                .send(CoreResponse::Message(
+                    json!({"method":"areal/model/catalogChanged","params":{"revision":2}}),
+                ))
+                .unwrap();
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while f
+                    .host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(&f.host, "project")
+                    .unwrap()
+                    == after_first_publish
+                {
+                    changes.changed().await.unwrap();
+                }
+            })
+            .await
+            .unwrap();
+            let reloading = session.request(&request).await.unwrap();
+            assert_eq!(
+                reloading["features"]["permissionPresets"], true,
+                "同一代 Core 目录重读期间必须保留当前代能力"
+            );
+            let third = f.call("areal/model/list").await;
+            let pending = f
+                .host
+                .schedules
+                .connections
+                .model_catalog_revision(&f.host, "project")
+                .unwrap();
+            third.reply(
+                json!({"data":[{"providerId":"dynamic","modelId":"current","available":true}]}),
+            );
+            f.call("areal/capabilities")
+                .await
+                .reply(json!({"methods":[],"features":{"permissionPresets":true}}));
+            f.call("areal/profile/list")
+                .await
+                .reply(json!({"data":[{"id":"current","revision":"2"}]}));
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while f
+                    .host
+                    .schedules
+                    .connections
+                    .model_catalog_revision(&f.host, "project")
+                    .unwrap()
+                    == pending
+                {
+                    changes.changed().await.unwrap();
+                }
+            })
+            .await
+            .unwrap();
+            let after = f.host.read_models.shell(&f.host).await.unwrap();
+            assert_ne!(
+                before.projects[0].model_catalog_revision, after.projects[0].model_catalog_revision,
+                "Shell 本地缓存必须反映元数据发布，客户端才能收到重读身份"
+            );
+            session.request(&request).await.unwrap();
+            assert!(
+                tokio::time::timeout(Duration::from_millis(25), f.calls.recv())
+                    .await
+                    .is_err(),
+                "读取已发布目录不能再触发刷新循环"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -1299,6 +1881,8 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
             let command = uuid::Uuid::new_v4().to_string();
             let read = f.native_read_request("command.read", json!({"commandId":command}));
             let mut session = f.session("a");
+            let request_size = std::mem::size_of_val(&session.request(&read));
+            assert!(request_size < 64 * 1024, "Gateway request future must not embed domain execution state: {request_size} bytes");
             session.gui_read = true;
             assert_eq!(
                 session.request(&read).await.unwrap_err().to_string(),
@@ -1312,18 +1896,28 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
             for project in ["project".to_owned(), f.alias.clone()] {
                 let mut models = f.request("project.models", json!({}), None);
                 models["context"]["projectId"] = json!(project);
-                let listing = Fixture::dispatch(session, models);
-                f.call("areal/model/list")
-                    .await
-                    .reply(json!({"data":[{"providerId":"fixture","modelId":"model"}]}));
-                f.call("areal/capabilities")
-                    .await
-                    .reply(json!({"methods":["areal/side/create","areal/side/close","areal/side/start"],
+                if project == "project" {
+                    let before = f.host.schedules.connections.model_catalog_revision(&f.host, "project").unwrap();
+                    let mut changes = f.host.changes.subscribe();
+                    let first = session.request(&models).await.unwrap();
+                    assert!(first["profiles"].as_array().unwrap().is_empty());
+                    f.call("areal/model/list").await.reply(json!({"data":[{"providerId":"fixture","modelId":"model","capabilities":null}],
+                        "lastAcceptedModel":{"model":{"providerId":"fixture","modelId":"model"},"modelId":"model","acceptedAt":2,"reasoningEffort":null}}));
+                    f.call("areal/capabilities").await.reply(json!({"methods":["areal/side/create","areal/side/close","areal/side/start"],
                         "features":{"permissionPresets":true,"sideExecutableV2":true,
                             "conversationDerivationV1":{"sideWorkspaceAccess":["readOnly"]}}}));
-                let (next, result) = listing.await.unwrap();
-                let result = result.unwrap();
+                    f.call("areal/profile/list").await.reply(json!({"data":[{"id":"reviewer","revision":"v1","private":"redacted"}]}));
+                    tokio::time::timeout(Duration::from_secs(5), async {
+                        while f.host.schedules.connections.model_catalog_revision(&f.host, "project").unwrap() == before {
+                            changes.changed().await.unwrap();
+                        }
+                    }).await.unwrap();
+                }
+                let result = session.request(&models).await.unwrap();
+                assert_eq!(result["profiles"], json!([{"id":"reviewer","revision":"v1"}]));
                 assert_eq!(result["models"][0]["modelId"], "model");
+                assert_eq!(result["lastAcceptedModel"]["acceptedAt"], 2);
+                assert!(f.host.gateway.workbench.active_source().is_none());
                 let features = &result["features"];
                 assert_eq!(features["permissionPresets"], true);
                 assert_eq!(features["permissionFullAccess"], false);
@@ -1336,7 +1930,6 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                     areal_protocol::host::RemoteProjectModelsResult,
                 >(result.clone())
                 .is_ok());
-                session = next;
             }
             let mut send = f.request(
                 "session.send",
@@ -1376,8 +1969,23 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 "FORBIDDEN"
             );
             // 桌面命令通道只给本机已批准写入的网页；手机和远程即使有 gui-write 也拒绝。
-            let desktop = json!({"id":"desktop","method":"desktop.command","params":{"sourceId":"source","command":"list","request":{}}});
+            let desktop = json!({"id":"desktop","method":"desktop.command","params":{"sourceId":"source","command":"media","request":{"operation":"list","projectId":"project","threadId":"thread"}}});
             assert_eq!(session.request(&desktop).await.unwrap_err().to_string(), "FORBIDDEN");
+            let reveal = json!({"operation":"revealKey","id":"fixture","expectedRevision":"revision"});
+            let reveal_method = f.request(
+                "providers.revealKey",
+                json!({"id":"fixture","expectedRevision":"revision"}),
+                None,
+            );
+            assert_eq!(
+                Box::pin(session.request(&reveal_method)).await.unwrap_err().to_string(),
+                "INVALID_PARAMS"
+            );
+            let reveal_command = json!({"id":"reveal","method":"desktop.command","params":{"command":"providers","request":reveal}});
+            assert_eq!(
+                Box::pin(session.request(&reveal_command)).await.unwrap_err().to_string(),
+                "FORBIDDEN"
+            );
             let mut local = f.session("a");
             local.local = true;
             assert_eq!(local.request(&desktop).await.unwrap_err().to_string(), "FORBIDDEN");
@@ -1388,15 +1996,10 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 error.downcast_ref::<crate::wire::Error>().map(|error| error.code),
                 Some("CAPABILITY_UNAVAILABLE")
             );
-            // 来源可省略（新装桌面登记来源前），由 Host 按当前后台认定，同样先要求后台在运行。
-            let unsourced = json!({"id":"desktop","method":"desktop.command","params":{"command":"list","request":{}}});
-            let error = local.request(&unsourced).await.unwrap_err();
-            assert_eq!(
-                error.downcast_ref::<crate::wire::Error>().map(|error| error.code),
-                Some("CAPABILITY_UNAVAILABLE")
-            );
-            // 元数据图片是页面入口的合法操作，不能被参数校验挡在 Host。
-            serde_json::from_value::<areal_protocol::host::WorkbenchPageCommandParams>(json!({"operation":"metadataImage","source":"https://example.invalid/icon.png","projectId":"project"})).unwrap();
+            // 已移除的命令在本机写会话中也不能再次派发。
+            let retired = json!({"id":"desktop","method":"desktop.command","params":{"command":"history","request":{"operation":"acquire","projectId":"project","threadId":"thread"}}});
+            assert_eq!(local.request(&retired).await.unwrap_err().to_string(), "INVALID_PARAMS");
+            // 省略来源时，Host 仍要求存在已登记的当前来源。
             let unsourced = json!({"id":"providers","method":"providers.read","params":{"operation":"list"}});
             assert_eq!(local.request(&unsourced).await.unwrap_err().to_string(), "CAPABILITY_UNAVAILABLE");
             f.grant("a", |grant| grant["projectIds"] = json!([]));
@@ -1419,7 +2022,7 @@ async fn gui_write_negotiation_accepts_desktop_rich_input_only_for_declaring_cli
     tokio::task::LocalSet::new()
         .run_until(async {
             let mut f = Fixture::new().await;
-            let rich = json!({"threadId":"thread","expectedConfigRevision":1,"text":"look","conversationQuotes":[{"text":"quoted"}],"attachments":[{"type":"image","url":"areal://blob/img_1"},{"type":"file","url":"areal://blob/doc-2","name":"spec.pdf","mimeType":"application/pdf","_meta":{"source":"snap"}}],"mcpContent":[{"type":"text","text":"tool note"}]});
+            let rich = json!({"threadId":"thread","expectedConfigRevision":1,"text":"look","conversationQuotes":[{"text":"quoted"}],"contextParts":[{"type":"reviewComment","comment":{"id":"comment","path":"src/app.ts","root":"/workspace","scope":"branch","ref":"main","token":"token","head":"head","base":"base","side":"additions","start":3,"end":3,"snippet":"const value = 1;","body":"Please extract this value."}}],"attachments":[{"type":"image","url":"areal://blob/img_1"},{"type":"file","url":"areal://blob/doc-2","name":"spec.pdf","mimeType":"application/pdf","_meta":{"source":"snap"}}],"mcpContent":[{"type":"text","text":"tool note"}]});
             let legacy = f.session("a");
             assert!(legacy.describe(false).get("writeLimits").is_none());
             let (legacy, result) = Fixture::dispatch(legacy, f.request("session.send", rich.clone(), Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
@@ -1451,7 +2054,10 @@ async fn gui_write_negotiation_accepts_desktop_rich_input_only_for_declaring_cli
             f.workspace_admission().await;
             let turn = f.call("areal/turn/start").await;
             let input = turn.request["params"]["input"].as_array().unwrap().clone();
-            assert_eq!(input[0], json!({"type":"text","text":"look","text_elements":[]}));
+            assert_eq!(input[0]["type"], "text");
+            assert_eq!(input[0]["text"], "look");
+            assert_eq!(input[0]["text_elements"], json!([]));
+            assert_eq!(input[0]["contextParts"][0]["comment"]["body"], "Please extract this value.");
             assert_eq!(input[1]["text"], "# userselect:\n```userselect\n[{\"text\":\"quoted\"}]\n```");
             assert_eq!(input[2], json!({"type":"image","url":"areal://blob/img_1","detail":null}));
             assert_eq!(input[3], json!({"type":"file","url":"areal://blob/doc-2","name":"spec.pdf","mime_type":"application/pdf"}));
@@ -1479,6 +2085,9 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
             alias["context"]["projectId"] = json!(f.alias);
             let (session, rejected) = Fixture::dispatch(session, alias).await.unwrap();
             assert_eq!(rejected.unwrap_err().to_string(), "FORBIDDEN");
+            let (revision, snapshot) = f.host.journal.native_snapshot("project").unwrap();
+            let old_steer = json!({"rustOwner":true,"method":"areal/queue/steer","params":{"requestId":"old-steer","threadId":"thread","queueItemId":"old-item","expectedTurnId":"finished-turn","expectedRevision":1}});
+            f.host.journal.native_admit("project", revision, snapshot, old_steer.clone(), true).unwrap();
             let sending = Fixture::dispatch(session, send);
             f.call("areal/capabilities").await.reply(Fixture::capabilities());
             f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
@@ -1489,6 +2098,7 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
             let (session, sent) = sending.await.unwrap();
             assert_eq!(sent.unwrap()["admissionState"], "accepted");
             let (_, snapshot) = f.host.journal.native_snapshot("project").unwrap();
+            assert_eq!(snapshot["pending"], json!([old_steer]));
             let record = snapshot["outcomes"].as_object().unwrap().values().chain(snapshot["pending"].as_array().unwrap()).find(|entry| entry["remote"]["commandId"] == command).unwrap().clone();
             assert_eq!(record["remote"]["devicePeerId"], LOCAL_PEER);
             assert_eq!(record["remote"]["projectId"], "project");
@@ -1504,115 +2114,71 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "需要 GUI 的 Node 依赖；由 make host-protocol-check 运行"]
-async fn local_send_and_steer_freeze_authoritative_gen_ui_context_without_private_state() {
+async fn local_plugin_command_uses_the_original_send_receipt_for_turn_and_queue() {
     tokio::task::LocalSet::new().run_until(async {
         let mut f = Fixture::new().await;
-        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let runner = f.root.path().join("prepare.cjs");
-        let source = r#"
-const {createRequire} = require('node:module');
-const {join} = require('node:path');
-const fs = require('node:fs');
-const {once} = require('node:events');
-const appRequire = createRequire(join(REPO,'clients/gui/app/package.json'));
-const {CoreBackend} = appRequire('@areal/workbench-service/desktop/core/backend.cjs');
-const {DesktopService} = appRequire('@areal/workbench-service/desktop/core/service-protocol.cjs');
-const {prepareInput} = require(join(REPO,'services/workbench/src/pages.cjs'));
-const out = value => console.log(JSON.stringify({version:1,...value}));
-(async () => {
-  const home = process.env.AREAL_WORKBENCH_DATA;
-  const backend = new CoreBackend({home,binary:'/bin/true'});
-  const project = {id:PROJECT_ALIAS,root:PROJECT_ROOT,state:{threads:{thread:{id:'thread'}}}};
-  project.model = {state:project.state};
-  const socket = new (appRequire('ws'))(CORE_ENDPOINT,{headers:{Authorization:'Bearer original-owner-token'}});
-  await once(socket,'open');
-  let next = 0;
-  const calls = new Map();
-  socket.on('message', bytes => { const message = JSON.parse(bytes); const pending = calls.get(message.id);
-    if (!pending) return; calls.delete(message.id);
-    if (message.error) pending.reject(Object.assign(new Error(message.error.message),message.error));
-    else pending.resolve(message.result);
-  });
-  project.client = {closed:false, request:(method,params) => new Promise((resolve,reject) => {
-    const id = ++next; calls.set(id,{resolve,reject}); socket.send(JSON.stringify({id,method,params}));
-  })};
-  project.service = {serviceId:'original-service',generation:'core-generation'};
-  backend.projects.set(project.id,project);
-  backend.saved = [project];
-  const adapter = new DesktopService(backend,'fixture');
-  adapter.schedule = () => {};
-  const scope = {...backend.genUiScope(project,'thread'),path:'/artifacts/widget.html'};
-  const save = selection => backend.genUiState.set(scope,{modelContent:{selection},privateContent:{secret:'fixture-private'}});
-  await save(7);
-  let nextHost = 0;
-  const hostCalls = new Map();
-  const hostCall = (call, params) => new Promise((resolve,reject) => {
-    const id = `journal-${++nextHost}`; hostCalls.set(id,{resolve,reject}); out({id,call,params});
-  });
-  backend.hostCall = hostCall;
-  backend.host.journal = id => ({
-    read:async()=>hostCall('fixture.journal.read',{}),
-    change:async change=>{ const {revision,snapshot}=await hostCall('fixture.journal.read',{});
-      await hostCall('fixture.journal.replace',{revision,snapshot:change(snapshot)}); },
-  });
-  backend.start = async id => { if(id!==project.id)throw Error('wrong project');return project; };
-  backend.refreshHostProjects = async () => {};
-  backend.worktrees.reloadNative = async () => {};
-  backend.host.resolve = () => ({projectId:'project'});
-  backend.loadProjectJournal = async () => project;
-  backend.openThread = async () => {};
-  project.client.ready = true;
-  backend.resources.beforeCreate = async () => {};
-  backend.providers.manages = () => false;
-  backend.refreshAfterAdmission = async () => {};
-  project.client.capabilities = {features:{permissionPresets:true}};
-  out({event:'ready',methods:['input.prepare','execution.prepare','execution.dispatch','creation.read']});
-  require('node:readline').createInterface({input:process.stdin}).on('line', async line => {
-    const frame = JSON.parse(line);
-    try {
-      if (hostCalls.has(frame.id)) { const pending=hostCalls.get(frame.id);hostCalls.delete(frame.id);
-        if(frame.error)pending.reject(Error(frame.error.code));else pending.resolve(frame.result);return; }
-      if (frame.event === 'execution.cancel') { adapter.cancelHostExecution(frame.handle,frame.connection); return; }
-      if (frame.event === 'pages.disconnect') { adapter.disconnectHostExecution(frame.connection); await hostCall('fixture.disconnected',{connection:frame.connection}); return; }
-      if (frame.method === 'creation.read') { out({id:frame.id,result:backend.worktrees.readThreadCreation(frame.params.projectId,frame.params.request)}); return; }
-      if (frame.method === 'execution.prepare') {
-        out({id:frame.id,result:await adapter.prepareHostExecution(frame.params,frame.context.connection)}); return;
-      }
-      if (frame.method === 'execution.dispatch') {
-        out({id:frame.id,result:await adapter.dispatchHostExecution(frame.params.handle,frame.context.connection)}); return;
-      }
-      if (frame.method !== 'input.prepare') throw Error('unexpected method');
-      fs.appendFileSync(join(home,'preparations'),'once\n');
-      const result = await prepareInput({desktop:{backend,adapter},request:frame.params});
-      await save(8);
-      out({id:frame.id,result});
-    } catch(error) { out({id:frame.id,error:{code:'INVALID_PARAMS',message:error.message}}); }
-  });
-})().catch(error => { console.error(error); process.exit(1); });
-"#.replace("REPO", &serde_json::to_string(&repo).unwrap())
-          .replace("PROJECT_ALIAS", &serde_json::to_string(&f.alias).unwrap())
-          .replace("PROJECT_ROOT", &serde_json::to_string(&f.host.slots.borrow()["project"].registration.workspace).unwrap())
-          .replace("CORE_ENDPOINT", &serde_json::to_string(&f.host.slots.borrow()["project"].service.as_ref().unwrap().endpoint).unwrap());
-        std::fs::write(&runner, source).unwrap();
-        let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
-            .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required");
-        let journal_host = f.host.clone();
-        let (disconnected, mut disconnects) = mpsc::unbounded_channel();
-        let reverse: crate::workbench::Reverse = Rc::new(move |method, params| {
-            let host = journal_host.clone();
-            let disconnected = disconnected.clone();
-            Box::pin(async move {
-                match method.as_str() {
-                    "fixture.disconnected" => { disconnected.send(params["connection"].clone()).unwrap(); Ok(json!({})) }
-                    "fixture.journal.read" => { let (revision, snapshot) = host.journal.native_snapshot("project")?; Ok(json!({"revision":revision,"snapshot":snapshot})) }
-                    "fixture.journal.replace" => { host.journal.native_replace("project", params["revision"].as_u64().unwrap(), params["snapshot"].clone())?; Ok(json!({})) }
-                    _ => crate::server::workbench_route::reverse(&host)(method, params).await,
-                }
-            })
-        });
-        let backend = crate::workbench::Workbench::start(&runtime, &runner, f.root.path(), reverse).await.unwrap();
-        f.host.gateway.workbench.bind_test_backend(backend, &f.source);
+        f.host.gateway.workbench.test_source(&f.source);
+        let mut session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+        let reference = json!({"pluginId":"example@local","componentId":"commands/review.md","installedDigest":"installed","arguments":"file with spaces.ts --strict"});
+        let params = json!({"threadId":"thread","expectedConfigRevision":1,"text":"","command":reference});
+        let command = uuid::Uuid::new_v4().to_string();
+        let mut unscoped = f.request("session.send", params.clone(), Some(&command));
+        unscoped["params"]["text"] = json!("A remote message");
+        let (_, result) = Fixture::dispatch(f.session("a"), unscoped).await.unwrap();
+        assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+        let context = json!({"projectId":"project","gatewayGeneration":f.host.identity.generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+        let mut caps = Fixture::capabilities();
+        caps["features"]["ordinaryTurnSubmit"] = json!(true);
+        caps["methods"].as_array_mut().unwrap().push(json!("areal/turn/submit"));
+        for queued in [false, true] {
+            let command = uuid::Uuid::new_v4().to_string();
+            let mut send = f.request("session.send", params.clone(), Some(&command));
+            send["context"] = context.clone();
+            let mut sending = Fixture::dispatch(session, send.clone());
+            tokio::select! {
+                call = f.call("areal/capabilities") => call.reply(caps.clone()),
+                result = &mut sending => panic!("plugin send settled before Core: {:?}", result.unwrap().1),
+            }
+            let mut observed = Fixture::idle_thread(1);
+            if queued {
+                observed["thread"]["status"]["type"] = json!("active");
+                observed["thread"]["turns"][0]["status"] = json!("inProgress");
+            }
+            f.call("areal/thread/observe").await.reply(observed);
+            f.workspace_admission().await;
+            let submit = f.call("areal/turn/submit").await;
+            assert_eq!(submit.request["params"]["intent"], json!({"type":"message","input":[],"command":reference}));
+            assert_eq!(submit.request["params"]["expectedConfigRevision"], 1);
+            let operation = submit.request["params"]["requestId"].as_str().unwrap().to_owned();
+            submit.reply(if queued { json!({"queueItemId":"plugin-queue"}) } else { json!({"turn":{"id":"plugin-turn"}}) });
+            let (current, result) = sending.await.unwrap();
+            let accepted = result.unwrap();
+            assert_eq!(accepted["admissionState"], "accepted");
+            assert_eq!(accepted["nativeRequestId"], operation);
+            if queued {
+                assert_eq!(accepted["receipt"]["queueItemId"], "plugin-queue");
+                assert!(accepted.get("turnId").is_none());
+            } else {
+                assert_eq!(accepted["turnId"], "plugin-turn");
+            }
+            let (current, duplicate) = Fixture::dispatch(current, send.clone()).await.unwrap();
+            assert_eq!(duplicate.unwrap(), accepted);
+            let read = f.native_read_request("command.read", json!({"commandId":command}));
+            let (current, recovered) = Fixture::dispatch(current, read).await.unwrap();
+            assert_eq!(recovered.unwrap(), accepted);
+            send["params"]["command"]["arguments"] = json!("different arguments");
+            let (current, changed) = Fixture::dispatch(current, send).await.unwrap();
+            assert_eq!(changed.unwrap_err().to_string(), "COMMAND_CONFLICT");
+            session = current;
+        }
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn local_send_and_steer_dispatch_without_node_and_retain_original_receipts() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        f.host.gateway.workbench.test_source(&f.source);
         let session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
         let context = json!({"projectId":"project","gatewayGeneration":f.host.identity.generation,"grantRevision":0,"serviceGeneration":"core-generation"});
         let mut send = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":"Continue"}), Some(&uuid::Uuid::new_v4().to_string()));
@@ -1623,18 +2189,12 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         let input = turn.request["params"]["input"][0]["text"].as_str().unwrap().to_owned();
-        assert!(input.starts_with("Continue"));
-        assert!(input.contains("\"selection\":7"), "{input}");
-        assert!(!input.contains("private"));
-        let (_, journal) = f.host.journal.native_snapshot("project").unwrap();
-        assert!(journal.to_string().contains("selection"));
-        assert!(!journal.to_string().contains("fixture-private"));
+        assert_eq!(input, "Continue");
         turn.reply(json!({"turn":{"id":"desktop-turn"}}));
         let (session, accepted) = sending.await.unwrap();
         let accepted = accepted.unwrap();
         let (session, duplicate) = Fixture::dispatch(session, send).await.unwrap();
         assert_eq!(duplicate.unwrap(), accepted);
-        assert_eq!(std::fs::read_to_string(f.root.path().join("preparations")).unwrap(), "once\n");
         let mut steer = f.request("session.control", json!({"threadId":"thread","operation":"steer","expectedRevision":1,"values":{"text":"Adjust","expectedTurnId":"turn","conversationQuotes":[{"text":"quoted-message"}],"attachments":[{"type":"image","url":"areal://blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"mcpContent":[{"type":"text","text":"mcp-message"}]}}), Some(&uuid::Uuid::new_v4().to_string()));
         steer["context"] = context;
         let steering = Fixture::dispatch(session, steer.clone());
@@ -1648,20 +2208,18 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         assert_eq!(turn.request["params"]["input"].as_array().unwrap().len(), 4);
         assert!(turn.request["params"]["input"].to_string().contains("quoted-message"));
         assert!(turn.request["params"]["input"].to_string().contains("mcp-message"));
-        assert!(text.starts_with("Adjust"));
-        assert!(text.contains("\"selection\":8"), "{text}");
-        assert!(!text.contains("private"));
+        assert_eq!(text, "Adjust");
         turn.reply(json!({"turnId":"turn"}));
         let (session, result) = steering.await.unwrap();
         assert_eq!(result.unwrap()["admissionState"], "accepted");
         let (session, repeated) = Fixture::dispatch(session, steer.clone()).await.unwrap();
         assert_eq!(repeated.unwrap()["admissionState"], "accepted");
-        assert_eq!(std::fs::read_to_string(f.root.path().join("preparations")).unwrap(), "once\nonce\n");
         let creation_id = uuid::Uuid::new_v4().to_string();
         let mut create = f.request("session.create", json!({"requestId":creation_id,"parameters":{"reasoningEffort":"high","serviceTier":"fast"},"options":{"permissionPreset":"ask"},"model":{"providerId":"provider","modelId":"model"},"worktree":{"mode":"source"}}), Some(&creation_id));
         create["context"] = steer["context"].clone();
         let mut creating = Fixture::dispatch(session, create.clone());
         f.call("areal/server/status").await.reply(json!({"acceptingWork":true}));
+        f.call("areal/capabilities").await.reply(json!({"methods":["areal/thread/start","areal/request/read"],"features":{"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"epoch","coreInstanceId":"instance"}}}}));
         let native_create = tokio::select! { call = f.call("areal/thread/start") => call, result = &mut creating => panic!("local create returned before dispatch: {:?}", result.unwrap().1) };
         assert_eq!(native_create.request["params"]["requestId"], creation_id);
         assert_eq!(native_create.request["params"]["parameters"]["serviceTier"], "fast");
@@ -1678,7 +2236,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         assert_eq!(command_complete["outcomes"][&creation_id]["method"], "workbench/thread/create");
         let (session, duplicate) = Fixture::dispatch(session, create).await.unwrap();
         assert_eq!(duplicate.unwrap(), created);
-        // 旧远程客户端仍用原请求形状，执行与模型上下文来自同源后台。
+        // 旧远程客户端仍用原请求形状，执行来自同源后台。
         let mut remote = f.session("a");
         assert!(remote.uses_workbench_execution());
         remote.source_id = "another-source".into();
@@ -1694,8 +2252,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         let text = turn.request["params"]["input"][0]["text"].as_str().unwrap();
-        assert!(text.starts_with("Remote continue") && text.contains("\"selection\":8"));
-        assert!(!text.contains("fixture-private"));
+        assert_eq!(text, "Remote continue");
         turn.reply(json!({"turn":{"id":"remote-turn"}}));
         let (remote, accepted) = sending.await.unwrap();
         let accepted = accepted.unwrap();
@@ -1710,13 +2267,14 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         let (_, created) = creating.await.unwrap();
         assert_eq!(created.unwrap()["admissionState"], "accepted");
         drop(SessionSlot {host:f.host.clone(),peer:None,pending:false,connection:Some(remote_connection.clone())});
-        assert_eq!(tokio::time::timeout(Duration::from_secs(5), disconnects.recv()).await.unwrap().unwrap(), remote_connection);
-        f.host.gateway.workbench.stop_backend().await;
         steer["commandId"] = json!(uuid::Uuid::new_v4().to_string());
-        let failing = Fixture::dispatch(session, steer);
+        let independent = Fixture::dispatch(session, steer);
         f.call("areal/capabilities").await.reply(caps);
-        let (_, result) = failing.await.unwrap();
-        assert_eq!(result.unwrap_err().to_string(), "CAPABILITY_UNAVAILABLE");
+        f.call("areal/thread/observe").await.reply(json!({"thread":{"id":"thread","status":{"type":"active"},"turns":[{"id":"turn","status":"inProgress","items":[]}]},"ownership":{"kind":"ordinary"}}));
+        f.workspace_admission().await;
+        f.call("turn/steer").await.reply(json!({"turnId":"turn"}));
+        let (_, result) = independent.await.unwrap();
+        assert_eq!(result.unwrap()["admissionState"],"accepted");
         assert!(f.calls.try_recv().is_err());
     }).await;
 }
@@ -1776,6 +2334,56 @@ async fn gui_write_uploads_attachments_in_chunks_and_replays_the_final_receipt()
             assert_eq!(replay.unwrap(), done);
         })
         .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn attachment_read_chunks_are_bound_to_the_original_thread_and_connection() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    tokio::task::LocalSet::new().run_until(async {
+        let f = Fixture::new().await;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        f.host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().endpoint =
+            format!("ws://{}/", listener.local_addr().unwrap());
+        let limit = 256 * 1024;
+        let bytes = vec![b'a'; 4 * limit + 17];
+        let uri = format!("areal://blob/{:x}", <sha2::Sha256 as sha2::Digest>::digest(&bytes));
+        let request = |thread: &str, offset: usize| {
+            let mut request = f.request("attachment.read", json!({"threadId":thread,"uri":uri,"offset":offset}), None);
+            request["context"] = json!({"projectId":"project","gatewayGeneration":f.host.identity.generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+            request
+        };
+        let body = bytes.clone();
+        let expected_path = format!("get /areal/blobs/{}?threadid=thread ", uri.strip_prefix("areal://blob/").unwrap());
+        let core = tokio::task::spawn_local(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut head = Vec::new();
+            while !head.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                socket.read_exact(&mut byte).await.unwrap();
+                head.push(byte[0]);
+            }
+            let head = String::from_utf8(head).unwrap().to_lowercase();
+            assert!(head.starts_with(&expected_path));
+            assert!(head.contains("authorization: bearer original-owner-token\r\n"));
+            socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n", body.len()).as_bytes()).await.unwrap();
+            socket.write_all(&body).await.unwrap();
+        });
+        let mut session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+        let first = session.request(&request("thread", 0)).await.unwrap();
+        core.await.unwrap();
+        assert_eq!(first["nextOffset"], limit);
+        assert!(serde_json::to_vec(&first).unwrap().len() < 1024 * 1024);
+        let mut foreign = Session::local(f.host.clone(), "other-connection".into()).unwrap();
+        assert!(foreign.request(&request("thread", limit)).await.is_err());
+        assert!(session.request(&request("other-thread", limit)).await.is_err());
+        for offset in (limit..bytes.len()).step_by(limit) {
+            let result = session.request(&request("thread", offset)).await.unwrap();
+            let end = (offset + limit).min(bytes.len());
+            assert_eq!(result["offset"], offset);
+            assert_eq!(result["nextOffset"], json!((end < bytes.len()).then_some(end)));
+            assert_eq!(base64::engine::general_purpose::STANDARD.decode(result["base64"].as_str().unwrap()).unwrap(), bytes[offset..end]);
+        }
+    }).await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -2040,6 +2648,8 @@ async fn remote_authorization_uses_committed_grants_during_credential_io_and_rev
         let mut config = snapshot["config"].clone();
         config["deviceGrants"][0]["status"] = json!("revoked");
         config["deviceGrants"][0]["revision"] = json!(2);
+        // 附带一条凭据变更（如撤销/轮换 Relay capability），触发真正的加密 vault 写入屏障。
+        config["capability"] = json!("rotated-relay-capability-during-revoke");
         let projects = [f.alias.clone()];
         let mut writing = Box::pin(f.host.remote.dispatch_async("remote.gateway.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":f.host.identity.generation,"sourceId":f.source,"expectedRevision":snapshot["revision"],"config":config}), "fixture", &f.host.identity.generation, &f.host.migration, &projects));
         tokio::select! {
@@ -2054,4 +2664,333 @@ async fn remote_authorization_uses_committed_grants_during_credential_io_and_rev
         assert_eq!(completed["state"], "completed");
         assert!(after.is_err(), "revoked grant remained usable after durable commit");
     }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn loopback_attention_read_and_interaction_respond_share_connection_token_key() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let mut listener = crate::server::loopback::bind(f.host.clone(), true)
+                .await
+                .unwrap();
+            let ticket = f
+                .host
+                .loopback
+                .ticket(areal_protocol::host::LocalWebTicketParams {
+                    expected_generation: f.host.identity.generation.clone(),
+                    origin: "areal-ui://app".into(),
+                    profile: None,
+                })
+                .unwrap();
+            let _server = tokio::task::spawn_local(async move {
+                let _ = listener.run().await;
+            });
+            use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+            let mut request = ticket.websocket_url.clone().into_client_request().unwrap();
+            request
+                .headers_mut()
+                .insert("origin", "areal-ui://app".parse().unwrap());
+            let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+            socket
+                .send(Message::Text(
+                    json!({
+                        "version": 1,
+                        "id": "hello",
+                        "method": "hello",
+                        "params": {
+                            "protocolVersions": [1],
+                            "capabilities": ["gui-read-v1", "gui-write-v1"],
+                            "ticket": ticket.ticket,
+                            "expectedGeneration": ticket.generation
+                        }
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            let hello: Value = serde_json::from_str(
+                tokio::time::timeout(Duration::from_secs(5), socket.next())
+                    .await
+                    .expect("loopback response")
+                    .unwrap()
+                    .unwrap()
+                    .to_text()
+                    .unwrap(),
+            )
+            .unwrap();
+            let gateway_generation = hello["result"]["gatewayGeneration"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            let context = json!({
+                "projectId": "project",
+                "gatewayGeneration": gateway_generation,
+                "grantRevision": 0,
+                "serviceGeneration": "core-generation"
+            });
+            socket
+                .send(Message::Text(
+                    json!({
+                        "version": 1,
+                        "id": "read",
+                        "method": "attention.read",
+                        "context": context,
+                        "params": Fixture::target()
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("pending")]}));
+            let reviewed: Value = serde_json::from_str(
+                tokio::time::timeout(Duration::from_secs(5), socket.next())
+                    .await
+                    .expect("loopback response")
+                    .unwrap()
+                    .unwrap()
+                    .to_text()
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(reviewed["id"], "read");
+            let token = reviewed["result"]["reviewToken"].clone();
+            assert!(token.is_string(), "{reviewed}");
+
+            let mut params = Fixture::target();
+            params["argumentsDigest"] = json!(ORIGINAL_DIGEST);
+            params["decision"] = json!("allowOnce");
+            params["reviewToken"] = token;
+            socket
+                .send(Message::Text(
+                    json!({
+                        "version": 1,
+                        "id": "respond",
+                        "method": "interaction.respond",
+                        "commandId": uuid::Uuid::new_v4().to_string(),
+                        "context": context,
+                        "params": params
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("pending")]}));
+            f.call("areal/interaction/respond")
+                .await
+                .reply(json!({"answered":true,"requestId":"interaction"}));
+            f.call("areal/interaction/list")
+                .await
+                .reply(json!({"data":[Fixture::item("answered")]}));
+            let responded: Value = serde_json::from_str(
+                tokio::time::timeout(Duration::from_secs(5), socket.next())
+                    .await
+                    .expect("loopback response")
+                    .unwrap()
+                    .unwrap()
+                    .to_text()
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(responded["id"], "respond");
+            assert_eq!(
+                responded["result"]["admissionState"], "accepted",
+                "{responded}"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn cloud_navigation_inherits_only_the_original_source_and_project_grant() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            let record = uuid::Uuid::new_v4().to_string();
+            let id = format!("cloud-session:{}:{record}", f.source);
+            let home = crate::server::library_store::source_home(&f.host, &f.source).unwrap();
+            storage::write(
+                &home.join("cloud-sessions.json"),
+                &json!([
+                    {"id":record,"projectId":f.alias,"binding":{"threadId":"remote-thread"}}
+                ]),
+            )
+            .unwrap();
+            let mut remote = f.session("a");
+            assert!(remote.authorize(Some(&id), "observe").is_ok());
+            assert_eq!(remote.project_id(&id).unwrap(), id);
+            remote.source_id = "another-source".into();
+            assert!(remote.authorize(Some(&id), "observe").is_err());
+            remote.source_id = f.source.clone();
+            f.grant("a", |grant| grant["projectIds"] = json!([]));
+            assert!(remote.authorize(Some(&id), "observe").is_err());
+            let local = Session::local(f.host.clone(), "local-cloud".into()).unwrap();
+            assert!(local.authorize(Some(&id), "observe").is_ok());
+            let removed = f.host.slots.borrow_mut().remove("project").unwrap();
+            assert!(local.authorize(Some(&id), "observe").is_err());
+            f.host.slots.borrow_mut().insert("project".into(), removed);
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn remote_observer_recovers_from_broadcast_lag_without_invalidating_subscription() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let opening = Fixture::dispatch(
+                f.session("a"),
+                f.request("session.open", json!({"threadId": "thread"}), None),
+            );
+            let observe = f.call("areal/thread/observe").await;
+            let notifications = observe.responses.clone();
+            observe.reply(json!({
+                "thread": {
+                    "id": "thread",
+                    "preview": "测试一下",
+                    "status": {"type": "active"},
+                    "desktop": {"configuration": {"revision": 1}, "queue": {"items": []}},
+                    "turns": [{
+                        "id": "turn-1",
+                        "status": "inProgress",
+                        "items": [
+                            {"id": "u1", "type": "userMessage", "content": [{"type": "text", "text": "测试一下"}]},
+                            {"id": "a1", "type": "agentMessage", "text": ""}
+                        ]
+                    }]
+                },
+                "ownership": {"kind": "ordinary"}
+            }));
+            let (mut session, result) = opening.await.unwrap();
+            let opened = result.unwrap();
+            assert_eq!(opened["sequence"], 0);
+            assert_eq!(opened["snapshot"]["activeTurnId"], "turn-1");
+
+            // Flood more than the broadcast channel capacity (512) to force RecvError::Lagged.
+            for index in 0..600 {
+                notifications
+                    .send(CoreResponse::Message(json!({
+                        "method": "item/agentMessage/delta",
+                        "params": {"threadId": "thread", "turnId": "turn-1", "itemId": "a1", "delta": format!("t{index}")}
+                    })))
+                    .unwrap();
+            }
+            notifications
+                .send(CoreResponse::Message(json!({
+                    "method": "turn/completed",
+                    "params": {"threadId": "thread", "turn": {"id": "turn-1", "status": "completed"}}
+                })))
+                .unwrap();
+
+            let incoming = session.next_event().await.unwrap();
+            let updating = tokio::task::spawn_local(async move {
+                let res = session.event(incoming).await;
+                (session, res)
+            });
+            loop {
+                let call = f.calls.recv().await.expect("expected Core RPC");
+                match call.request["method"].as_str() {
+                    Some("areal/model/list") => call.reply(json!({"data": []})),
+                    Some("areal/capabilities") => call.reply(Fixture::capabilities()),
+                    Some("areal/thread/observe") => {
+                        call.reply(json!({
+                            "thread": {
+                                "id": "thread",
+                                "preview": "测试一下",
+                                "status": {"type": "idle"},
+                                "desktop": {"configuration": {"revision": 1}, "queue": {"items": []}},
+                                "turns": [{
+                                    "id": "turn-1",
+                                    "status": "completed",
+                                    "items": [
+                                        {"id": "u1", "type": "userMessage", "content": [{"type": "text", "text": "测试一下"}]},
+                                        {"id": "a1", "type": "agentMessage", "text": "最终回复"}
+                                    ]
+                                }]
+                            },
+                            "ownership": {"kind": "ordinary"}
+                        }));
+                        break;
+                    }
+                    other => panic!("unexpected Core RPC during lag recovery: {other:?}"),
+                }
+            }
+            let (session, updated) = updating.await.unwrap();
+            let updated = updated.unwrap().expect("lagged remote observer must emit fresh snapshot");
+            assert_eq!(updated["event"], "session.updated");
+            assert_eq!(updated["sequence"], 1);
+            assert!(updated["snapshot"]["activeTurnId"].is_null());
+            assert_eq!(updated["snapshot"]["turns"][0]["items"][1]["preview"], "最终回复");
+            assert!(session.viewer.is_some(), "subscription must stay alive after lag");
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn operator_without_manage_can_configure_full_access_and_wildcard_grant_lists_all_projects() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            // Default Operator capabilities (submit + answer, no manage) + wildcard "*" project scope.
+            f.grant("a", |grant| {
+                grant["capabilities"] = json!([
+                    "observe",
+                    "review",
+                    "submit",
+                    "interrupt",
+                    "answer",
+                    "pauseTask"
+                ]);
+                grant["projectIds"] = json!(["*"]);
+            });
+            // Wildcard "*" exposes registered projects.
+            let (_, listed) = Fixture::dispatch(
+                f.session("a"),
+                json!({"id": "projects", "method": "project.list", "params": {}}),
+            )
+            .await
+            .unwrap();
+            assert_eq!(listed.unwrap()["projects"][0]["projectId"], f.alias);
+
+            // Operator can configure fullAccess when Core supports permissionFullAccess.
+            let request = f.request(
+                "session.control",
+                json!({
+                    "threadId": "thread",
+                    "operation": "configure",
+                    "expectedRevision": 1,
+                    "values": {"options": {"permissionPreset": "fullAccess"}}
+                }),
+                Some(&uuid::Uuid::new_v4().to_string()),
+            );
+            let configuring = Fixture::dispatch(f.session("a"), request);
+            let mut caps = Fixture::capabilities();
+            caps["features"]["permissionPresets"] = json!(true);
+            caps["features"]["permissionFullAccess"] = json!(true);
+            f.call("areal/capabilities").await.reply(caps);
+            f.call("areal/thread/observe")
+                .await
+                .reply(Fixture::idle_thread(1));
+            f.call("areal/thread/inspect")
+                .await
+                .reply(json!({"configuration": {"revision": 1, "options": {}}}));
+            let configure = f.call("areal/thread/configure").await;
+            assert_eq!(
+                configure.request["params"]["options"]["permissionPreset"],
+                "fullAccess"
+            );
+            configure.reply(json!({"revision": 2}));
+            assert_eq!(
+                configuring.await.unwrap().1.unwrap()["admissionState"],
+                "accepted"
+            );
+        })
+        .await;
 }

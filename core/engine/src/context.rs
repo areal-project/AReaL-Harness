@@ -527,32 +527,6 @@ impl Engine {
         use crate::context_usage::InstructionText;
         use areal_protocol::context::ContextPartKind as Kind;
         let mut instructions = self.project_instruction_text(cell).await?;
-        let thread = cell.state.lock().await.thread.clone();
-        let configuration = thread
-            .turns
-            .last()
-            .and_then(|turn| turn.configuration.clone());
-        let gen_ui_available = if self.extensions.gen_ui {
-            if let Some(configuration) = configuration {
-                self.visible_tools(cell, &configuration, true, &thread)
-                    .await
-                    .iter()
-                    .any(|tool| tool["function"]["name"] == "gen_ui_publish")
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-        if gen_ui_available {
-            instructions
-                .get_or_insert_with(|| InstructionText::new(String::new()))
-                .push(
-                    Kind::Other,
-                    "Interactive answers",
-                    crate::desktop::gen_ui::GUIDANCE,
-                );
-        }
         if let Some(workspace) = self.workspace_context(cell) {
             // 工作区能力随本轮指令冻结，并纳入同一文本快照的用量归因。
             instructions

@@ -2,8 +2,8 @@
 id: composer-toolbar
 title: ComposerToolbar
 summary: 分配前置工具与后置配置/主动作，保持编辑器附近的操作顺序。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: input
 aliases: ["对话输入工具栏"]
@@ -19,15 +19,15 @@ ComposerSurface内的附件、权限、模型与发送/停止入口，已经用�
 
 ## 状态
 
-`R-COMPOSERTOOLBAR-002` 默认、窄容器换行、宿主提供的不可用/发送中/运行中控件。工具栏自身不生成执行状态。
+`R-COMPOSERTOOLBAR-002` 默认、窄容器换行、宿主提供的不可用/发送中/运行中控件。工具栏自身不生成执行状态。**检查：**`clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.test.tsx`
 
 ## 内容
 
-`R-COMPOSERTOOLBAR-004` 模型和权限显示当前真实选值；主动作有可读名称。超长模型名可省略，但完整名称与不可用原因由原菜单保留。
+`R-COMPOSERTOOLBAR-004` 模型和权限显示当前真实选值；主动作有可读名称。超长模型名可省略，但完整名称与不可用原因由原菜单保留。**检查：**`clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.test.tsx`
 
 ## 可访问性
 
-`R-COMPOSERTOOLBAR-005` 使用原按钮/菜单语义；图标入口由宿主命名。禁用必须作用于真实按钮，不以pointer-events代替禁用语义。
+`R-COMPOSERTOOLBAR-005` 使用原按钮/菜单语义；图标入口由宿主命名。禁用必须作用于真实按钮，不以pointer-events代替禁用语义。**检查：**`clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.test.tsx`
 
 ## 示例
 

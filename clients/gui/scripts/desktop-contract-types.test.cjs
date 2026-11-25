@@ -11,6 +11,26 @@ const {
 } = require("../packages/workbench/client/desktop-contract.cjs");
 
 const cases = [
+  [
+    "serviceStatus",
+    {},
+    {
+      canStop: false,
+      connected: true,
+      busy: false,
+      starting: 0,
+      providerUpdating: false,
+      projects: [],
+    },
+    {
+      canStop: false,
+      connected: true,
+      busy: "unknown",
+      starting: 0,
+      providerUpdating: false,
+      projects: [],
+    },
+  ],
   ["recovery", { operation: "inspect" }, { kind: "none" }, { kind: "none", projects: [] }],
   [
     "recovery",
@@ -132,6 +152,91 @@ const cases = [
     {},
     null,
   ],
+  [
+    "remoteControl",
+    { operation: "status" },
+    {
+      enabled: true,
+      connected: true,
+      relay: "http://192.168.1.39:47820",
+      relayError: "",
+      relayUrl: "http://192.168.1.39:47820/#host=peer&room=room&local=1",
+      directEnabled: false,
+      directUrl: "",
+      directHostId: "",
+      directError: "",
+      migrationError: "",
+      pushSupported: false,
+      deviceGrants: [],
+      devices: [],
+      pending: [],
+      pendingOperation: {
+        requestId: "req-1",
+        method: "remote.gateway.control",
+        operation: "relayServiceStartLocal",
+        expectedRevision: 3,
+      },
+      network: {
+        kind: null,
+        scope: null,
+        reconciliation: null,
+        publicOrigin: "",
+        diagnostic: "",
+        policy: "unknown",
+        phoneAccess: "unknown",
+        inspection: null,
+      },
+      relayService: {
+        local: {
+          phase: "running",
+          address: "http://192.168.1.39:47820",
+          version: "0.1.21",
+          error: "",
+          suggestedOrigin: "http://192.168.1.39:47820",
+        },
+        deployment: null,
+        job: null,
+        profiles: [{ origin: "http://192.168.1.39:47820", kind: "local", active: true }],
+      },
+    },
+    {
+      enabled: true,
+      connected: true,
+      relay: "http://192.168.1.39:47820",
+      relayError: "",
+      relayUrl: "",
+      directEnabled: false,
+      directUrl: "",
+      directHostId: "",
+      directError: "",
+      migrationError: "",
+      deviceGrants: [],
+      devices: [],
+      pending: [],
+      network: {
+        kind: null,
+        scope: null,
+        reconciliation: null,
+        publicOrigin: "",
+        diagnostic: "",
+        policy: "unknown",
+        phoneAccess: "unknown",
+        inspection: null,
+      },
+      relayService: {
+        local: {
+          phase: "running",
+          address: "http://192.168.1.39:47820",
+          version: "0.1.21",
+          error: "",
+          suggestedOrigin: 123,
+        },
+        deployment: null,
+        job: null,
+        profiles: [],
+      },
+    },
+  ],
 ];
 
 test("command response type examples agree with runtime rejection", () => {
@@ -252,7 +357,7 @@ test("the shared preload bridge leaves unvalidated invoke and event responses un
 declare const bridge: DesktopBridge;
 const opaque: unknown = await bridge.command('send', {});
 const unsafe: string = await bridge.command('send', {});
-bridge.onProjection(value => { const unchecked: {frame:unknown} = value; });
+bridge.onNativeState(value => { const unchecked: {serviceSummary:unknown} = value; });
 `,
     );
     writeFileSync(

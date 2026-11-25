@@ -1,4 +1,35 @@
 use super::*;
+#[tokio::test]
+async fn oversized_response_keeps_connection_and_original_command_recoverable() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut socket = WebSocketStream::from_raw_socket(stream, Role::Server, None).await;
+        let large = json!({"version":1,"id":"large","result":{
+            "commandId":"original","data":"x".repeat(wire::MAX_FRAME)}});
+        send(&mut socket, &large).await.unwrap();
+        send(
+            &mut socket,
+            &json!({"version":1,"id":"next","result":{"ok":true}}),
+        )
+        .await
+        .unwrap();
+    });
+    let stream = tokio::net::TcpStream::connect(address).await.unwrap();
+    let mut socket = WebSocketStream::from_raw_socket(stream, Role::Client, None).await;
+    let first = socket.next().await.unwrap().unwrap();
+    let first: Value = serde_json::from_str(first.to_text().unwrap()).unwrap();
+    assert_eq!(first["id"], "large");
+    assert_eq!(first["error"]["code"], "LIMIT_EXCEEDED");
+    assert_eq!(first["error"]["commandId"], "original");
+    assert_eq!(first["error"]["submissionUnknown"], true);
+    let next = socket.next().await.unwrap().unwrap();
+    let next: Value = serde_json::from_str(next.to_text().unwrap()).unwrap();
+    assert_eq!(next["result"]["ok"], true);
+    server.await.unwrap();
+}
+
 #[test]
 fn task_rejection_is_definitive_on_loopback_wire() {
     let error: anyhow::Error = super::super::task_catalog::TaskRejection(
@@ -62,12 +93,14 @@ impl Fixture {
                 auth_file: home.join("host/auth.json"),
                 pid: std::process::id(),
                 executable_version: "fixture".into(),
+                executable_digest: None,
             },
             bin: home.clone(),
             token: "isolated-auth-fixture".into(),
             slots: RefCell::new(BTreeMap::new()),
             stop: RefCell::new(None),
             host_stop_gate: Mutex::new(()),
+            clients: Default::default(),
             changes,
             exit: Notify::new(),
             migration: migration.into(),
@@ -76,6 +109,7 @@ impl Fixture {
             gateway: super::super::gateway_owner::Gateway::default(),
             subscriptions: super::super::subscriptions::Subscriptions::default(),
             schedules: super::super::schedules::Schedules::load(&home).unwrap(),
+            bots: super::super::bots::Bots::load(&home).unwrap(),
             power: super::super::power::Power::default(),
             read_models: Default::default(),
             loopback: Loopback::default(),
@@ -499,55 +533,26 @@ async fn persisted_history_reads_stopped_project_without_activation_or_unknown_r
         write(&mut socket,json!({"version":1,"id":"after-close","method":"session.history","context":context,"params":{"threadId":thread,"subscriptionId":subscription,"view":"own"}})).await;
         assert_eq!(read(&mut socket).await["error"]["code"],"RESYNC_REQUIRED");
         let mut readers = Vec::new();
-        for index in 0..3 {
+        for index in 0..7 {
             let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
             let mut peer = connect(&ticket, ELECTRON_ORIGIN).await;
             write(&mut peer,json!({"version":1,"id":"hello","method":"hello","params":{"protocolVersions":[1],"capabilities":["gui-read-v1","persistedHistoryV1"],"ticket":ticket.ticket,"expectedGeneration":ticket.generation}})).await;
             assert!(read(&mut peer).await.get("result").is_some());
             write(&mut peer,json!({"version":1,"id":"open","method":"session.openPersisted","context":context,"params":{"threadId":thread,"view":"conversation"}})).await;
             let response = read(&mut peer).await;
-            if index < 2 { assert_eq!(response["result"]["access"]["readOnly"],true); }
+            if index < 6 { assert_eq!(response["result"]["access"]["readOnly"],true); }
             else { assert_eq!(response["error"]["code"],"RESOURCE_BUSY"); }
             readers.push((peer,response["result"]["subscriptionId"].clone()));
         }
         let (first, first_subscription) = &mut readers[0];
         write(first,json!({"version":1,"id":"release","method":"subscription.close","context":context,"params":{"subscriptionId":first_subscription}})).await;
         assert_eq!(read(first).await["result"]["closed"],true);
-        let (third, _) = &mut readers[2];
-        write(third,json!({"version":1,"id":"retry","method":"session.openPersisted","context":context,"params":{"threadId":thread,"view":"conversation"}})).await;
-        assert_eq!(read(third).await["result"]["access"]["readOnly"],true);
+        let (seventh, _) = &mut readers[6];
+        write(seventh,json!({"version":1,"id":"retry","method":"session.openPersisted","context":context,"params":{"threadId":thread,"view":"conversation"}})).await;
+        assert_eq!(read(seventh).await["result"]["access"]["readOnly"],true);
         fixture.host.slots.borrow_mut().get_mut("persisted").unwrap().registration.workspace = fixture.host.home.join("rebound-workspace");
         fixture.host.changed();
-        assert_eq!(read(third).await["method"],"session.invalidated");
-    }).await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn page_events_are_delivered_only_to_the_authenticated_connection() {
-    tokio::task::LocalSet::new().run_until(async {
-        let fixture = Fixture::start().await;
-        let client = fixture.client().await;
-        let mut sockets = Vec::new();
-        for _ in 0..2 {
-            let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
-            let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
-            write(&mut socket, json!({"version":1,"id":"hello","method":"hello","params":{
-                "protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],
-                "ticket":ticket.ticket,"expectedGeneration":ticket.generation
-            }})).await;
-            let hello = read(&mut socket).await["result"].clone();
-            sockets.push((socket, hello["connectionId"].clone()));
-        }
-        let (mut second, _) = sockets.pop().unwrap();
-        let (mut first, owner) = sockets.pop().unwrap();
-        super::super::workbench_route::reverse(&fixture.host)("pages.event".into(), json!({
-            "connection":owner,"token":"page-token","notification":{"jsonrpc":"2.0","method":"ui/notifications/closed"}
-        })).await.unwrap();
-        let event = read(&mut first).await;
-        assert_eq!(event["method"], "pages.event");
-        assert_eq!(event["params"]["connectionId"], owner);
-        write(&mut second, json!({"version":1,"id":"barrier","method":"host.status","params":{}})).await;
-        assert_eq!(read(&mut second).await["id"], "barrier");
+        assert_eq!(read(seventh).await["method"],"session.invalidated");
     }).await;
 }
 
@@ -582,66 +587,472 @@ fn loopback_errors_distinguish_reads_and_unknown_writes() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn lagged_page_events_keep_the_loopback_connection_alive() {
+async fn shell_subscription_keeps_inflight_catalog_query_running() {
+    tokio::task::LocalSet::new().run_until(async {
+        let fixture = Fixture::start().await;
+        fixture.host.gateway.workbench.test_source("host");
+        storage::private_dir(&fixture.host.home.join("host/projects")).unwrap();
+        let workspace = fixture.host.home.join("workspace");
+        let data = fixture.host.home.join("data");
+        for path in [&workspace, &data] { storage::private_dir(path).unwrap(); }
+        fixture.client().await.register(&uuid::Uuid::new_v4().to_string(), crate::ProjectRegistration {
+            project_id: "project".into(), workspace, data_dir: data,
+            source: crate::ProjectSource::Cli, default_binding: false,
+        }).await.unwrap();
+        let ticket = fixture.client().await.web_ticket(ELECTRON_ORIGIN).await.unwrap();
+        let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+        write(&mut socket, json!({"version":1,"id":"hello","method":"hello","params":{
+            "protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],
+            "ticket":ticket.ticket,"expectedGeneration":ticket.generation
+        }})).await;
+        read(&mut socket).await;
+        let gate = fixture.host.gate("project").unwrap();
+        let changing = gate.write().await;
+        write(&mut socket, json!({"version":1,"id":"catalog","method":"tasks.read","params":{"sourceId":"host","operation":"list"}})).await;
+        // 目录查询已拿到共享读模型锁，正在等待项目状态；此时订阅也需要读模型。
+        let entered = tokio::time::timeout(Duration::from_secs(1), fixture.host.read_models.read_started.notified()).await;
+        assert!(entered.is_ok(), "catalog did not enter shared read model");
+        write(&mut socket, json!({"version":1,"id":"shell","method":"shell.subscribe","params":{}})).await;
+        tokio::time::timeout(Duration::from_secs(1), fixture.host.read_models.read_started.notified()).await.unwrap();
+        drop(changing);
+        let mut responses = BTreeMap::new();
+        for _ in 0..2 {
+            let response = read(&mut socket).await;
+            responses.insert(response["id"].as_str().unwrap().to_owned(), response);
+        }
+        assert!(responses["catalog"].get("error").is_none(), "{responses:?}");
+        assert_eq!(responses["shell"]["result"]["snapshot"]["projects"][0]["projectId"], "project");
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn pending_workbench_requests_do_not_block_queries() {
     tokio::task::LocalSet::new()
         .run_until(async {
-            let fixture = Fixture::start().await;
-            let ticket = fixture
-                .client()
-                .await
-                .web_ticket(ELECTRON_ORIGIN)
-                .await
-                .unwrap();
-            let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
-            write(
-                &mut socket,
-                json!({"version":1,"id":"hello","method":"hello","params":{
-                    "protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],
-                    "ticket":ticket.ticket,"expectedGeneration":ticket.generation
-                }}),
-            )
-            .await;
-            let owner = read(&mut socket).await["result"]["connectionId"].clone();
-            let reverse = super::super::workbench_route::reverse(&fixture.host);
-            let mut witness = fixture.host.gateway.workbench.page_events();
-            // 单线程内连续填满广播缓冲，不让 WebSocket 消费者运行，确定性触发 Lagged。
-            for index in 0..96 {
-                reverse(
-                    "pages.event".into(),
-                    json!({"connection":owner,"token":"burst","notification":{"index":index}}),
-                )
-                .await
-                .unwrap();
-            }
-            assert!(matches!(
-                witness.try_recv(),
-                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_))
-            ));
-            write(
-                &mut socket,
-                json!({"version":1,"id":"after-lag","method":"host.status","params":{}}),
-            )
-            .await;
-            let mut events = 0;
-            let mut replied = false;
-            while events < 32 || !replied {
-                let packet = read(&mut socket).await;
-                if packet["id"] == "after-lag" {
-                    assert!(packet["result"].is_object());
-                    replied = true;
-                } else {
-                    assert_eq!(packet["method"], "pages.event");
-                    assert_eq!(packet["params"]["connectionId"], owner);
-                    events += 1;
+            for blocked_method in ["manage.read", "desktop.command"] {
+                let fixture = Fixture::start().await;
+                let entered = Rc::new(Notify::new());
+                let released = Rc::new(Notify::new());
+                let mock_core_server: Option<tokio::task::JoinHandle<()>>;
+                let mock_control_server: Option<tokio::task::JoinHandle<()>>;
+                let mock_core_close: Option<Box<dyn Fn()>>;
+                let mock_service_lock: Option<std::fs::File>;
+                let creation_id = uuid::Uuid::new_v4().to_string();
+                let slow_params;
+                {
+                    let base = fixture.host.home.parent().unwrap().canonicalize().unwrap();
+                    let profile = base.join("profile");
+                    let core_home = base.join("data");
+                    let legacy = base.join("legacy");
+                    let workspace = base.join("project");
+                    let data_dir = base.join("project-data");
+                    for dir in [&profile, &core_home, &workspace, &data_dir] {
+                        storage::private_dir(dir).unwrap();
+                    }
+                    let src = crate::migration::Source {
+                        profile: profile.clone(),
+                        core_home: core_home.clone(),
+                        legacy_service_home: legacy,
+                    };
+                    fixture.host.migration.attach(src.clone(), "fixture", None).unwrap();
+                    let imported = fixture
+                        .host
+                        .migration
+                        .import(
+                            serde_json::from_value(json!({
+                                "requestId": uuid::Uuid::new_v4().to_string(),
+                                "expectedGeneration": fixture.host.identity.generation,
+                                "source": src,
+                            }))
+                            .unwrap(),
+                            "fixture",
+                            &[],
+                            &fixture.host.journal,
+                        )
+                        .unwrap();
+                    assert_eq!(imported["kind"], "ready");
+                    let source_id = fixture
+                        .host
+                        .migration
+                        .navigation_source_id(&profile)
+                        .unwrap()
+                        .unwrap();
+                    let alias = "fedcba9876543210fedcba98";
+                    let registration = crate::ProjectRegistration {
+                        project_id: "project".into(),
+                        workspace: workspace.clone(),
+                        data_dir,
+                        source: crate::ProjectSource::Gui {
+                            profile: profile.clone(),
+                            legacy_project_id: alias.into(),
+                        },
+                        default_binding: false,
+                    };
+                    storage::write(
+                        &core_home.join("projects.json"),
+                        &json!([{ "id": alias, "root": workspace }]),
+                    )
+                    .unwrap();
+                    storage::private_dir(&core_home.join("worktree-requests")).unwrap();
+                    storage::write(
+                        &core_home.join("worktree-requests").join(format!("{creation_id}.json")),
+                        &json!({"kind":"checkout","requestId":creation_id,"projectId":alias,
+                            "parameters":{},"state":"created","intent":"continue","events":[]}),
+                    ).unwrap();
+                    std::fs::write(fixture.host.bin.join("areal"), "").unwrap();
+                    super::super::workbench_route::frontend_options(&fixture.host, &source_id,
+                        json!({"binary":fixture.host.bin.join("areal"),"home":core_home,"guiProfile":profile,"hostHome":fixture.host.home,"userHome":base}), None).unwrap();
+                    fixture.host.journal.initialize("project", json!({"version":1,"pending":[],"outcomes":{"original":{"method":"areal/turn/start","accepted":true,"threadId":"thread","turnId":"original-turn"}}})).unwrap();
+
+                    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                    let service_id =
+                        storage::digest(registration.data_dir.as_os_str().as_encoded_bytes())[..24]
+                            .to_owned();
+                    let service = areal_protocol::service::Service {
+                        identity: areal_protocol::service::Identity {
+                            protocol_version: 1,
+                            service_id: service_id.clone(),
+                            generation: "gen-1".into(),
+                            workspace: registration.workspace.clone(),
+                            data_dir: registration.data_dir.clone(),
+                            config_fingerprint: "fixture".into(),
+                        },
+                        owner: Some(fixture.host.owner()),
+                        endpoint: format!("ws://{}/", listener.local_addr().unwrap()),
+                        web_url: String::new(),
+                        auth_file: fixture.host.home.join("core-auth.json"),
+                        log_file: fixture.host.home.join("core.log"),
+                        host_pid: 1,
+                        core_pid: 2,
+                        state: areal_protocol::service::State::Ready,
+                    };
+                    storage::write(
+                        &service.auth_file,
+                        &json!({"principals":[{"id":"desktop-owner","token":"fixture"}]}),
+                    )
+                    .unwrap();
+                    let service_dir = storage::registry(&fixture.host.home, &service_id).unwrap();
+                    storage::private_dir(&service_dir).unwrap();
+                    storage::write(&service_dir.join("service.json"), &service).unwrap();
+                    let service_lock =
+                        storage::open_private(&registration.data_dir.join("service.lock"), true)
+                            .unwrap();
+                    fs2::FileExt::try_lock_exclusive(&service_lock).unwrap();
+                    mock_service_lock = Some(service_lock);
+
+                    let control_path = storage::control_socket(&service_dir).unwrap();
+                    storage::private_dir(control_path.parent().unwrap()).unwrap();
+                    let control_listener = tokio::net::UnixListener::bind(&control_path).unwrap();
+                    let control_service = service.clone();
+                    mock_control_server = Some(tokio::task::spawn_local(async move {
+                        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+                        while let Ok((stream, _)) = control_listener.accept().await {
+                            let (read_half, mut write_half) = stream.into_split();
+                            let mut line = String::new();
+                            if BufReader::new(read_half).read_line(&mut line).await.unwrap_or(0) > 0 {
+                                let mut reply = serde_json::to_vec(
+                                    &areal_protocol::service::Response::Ok {
+                                        service: Box::new(control_service.clone()),
+                                    },
+                                )
+                                .unwrap();
+                                reply.push(b'\n');
+                                let _ = write_half.write_all(&reply).await;
+                                let _ = write_half.flush().await;
+                            }
+                        }
+                    }));
+
+                    let mut slot = super::super::Slot::imported(registration);
+                    slot.service = Some(service.clone());
+                    slot.state = "ready".into();
+                    let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+                    slot.writer = Some(writer);
+                    slot.lifetime = Some(Rc::new(lifetime));
+                    fixture.host.slots.borrow_mut().insert("project".into(), slot);
+
+                    let entered_cb = entered.clone();
+                    let released_cb = released.clone();
+                    let probe_identity = service.identity.clone();
+                    let blocked = Rc::new(std::cell::Cell::new(false));
+                    let server = tokio::task::spawn_local(async move {
+                        use futures_util::{SinkExt, StreamExt};
+                        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                        use tokio_tungstenite::tungstenite::Message;
+                        while let Ok((mut stream, _)) = listener.accept().await {
+                            let mut peek = [0u8; 16];
+                            let n = stream.peek(&mut peek).await.unwrap_or(0);
+                            if peek[..n].starts_with(b"GET /areal/") {
+                                let mut buf = [0u8; 4096];
+                                let mut total = 0usize;
+                                while total < buf.len() {
+                                    let read = stream.read(&mut buf[total..]).await.unwrap_or(0);
+                                    if read == 0 {
+                                        break;
+                                    }
+                                    total += read;
+                                    if buf[..total].windows(4).any(|w| w == b"\r\n\r\n") {
+                                        break;
+                                    }
+                                }
+                                let body = serde_json::to_vec(&probe_identity).unwrap();
+                                let header = format!(
+                                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                                    body.len()
+                                );
+                                let _ = stream.write_all(header.as_bytes()).await;
+                                let _ = stream.write_all(&body).await;
+                                let _ = stream.flush().await;
+                                continue;
+                            }
+                            let entered_cb = entered_cb.clone();
+                            let released_cb = released_cb.clone();
+                            let blocked = blocked.clone();
+                            tokio::task::spawn_local(async move {
+                                let socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+                                let (writer, mut reader) = socket.split();
+                                let writer = Rc::new(tokio::sync::Mutex::new(writer));
+                                while let Some(Ok(Message::Text(text))) = reader.next().await {
+                                    let call: Value = serde_json::from_str(&text).unwrap();
+                                    if call.get("id").is_none() {
+                                        continue;
+                                    }
+                                    let hold = call["method"] == "areal/server/status" && !blocked.replace(true);
+                                    if hold { entered_cb.notify_one(); }
+                                    let result = match call["method"].as_str().unwrap() {
+                                        "initialize" => json!({}),
+                                        "areal/task/list" | "areal/plugin/mcp/list" => json!({ "data": [], "nextCursor": null }),
+                                        "areal/capabilities" => json!({"methods":["areal/thread/prediction","areal/thread/inspect","areal/context/read","areal/plugin/mcp/list"]}),
+                                        "areal/thread/prediction" => json!({"threadId":"thread","sourceTurnId":"turn","text":"suggestion"}),
+                                        "areal/thread/inspect" => json!({"threadId":"thread","configuration":{"revision":1}}),
+                                        "areal/context/read" => json!({"threadId":"thread","items":[]}),
+                                        "areal/server/status" => {
+                                            json!({
+                                                "acceptingWork": true,
+                                                "activeGoals": [],
+                                                "activeTasks": 0,
+                                                "activeTurns": [],
+                                                "apiVersion": "areal.core.v1",
+                                                "capacity": {
+                                                    "activeTurns": 0,
+                                                    "blobBytes": 0,
+                                                    "historyBytesPerThread": 0,
+                                                    "maxActiveTurns": 4,
+                                                    "maxThreads": 8,
+                                                    "threads": 0
+                                                },
+                                                "closed": false,
+                                                "compactions": [],
+                                                "configuration": Value::Null,
+                                                "draining": false,
+                                                "idleForMs": 0,
+                                                "lifecycle": {
+                                                    "admission": "open",
+                                                    "executionOutcomes": { "uninspectedUnknown": 0 },
+                                                    "ifIdle": { "allowed": true, "reasons": [] },
+                                                    "settled": { "allowed": true, "reasons": [] },
+                                                    "version": 1
+                                                },
+                                                "pendingQueueItems": 0,
+                                                "queues": [],
+                                                "productVersion": "fixture",
+                                                "resources": [],
+                                                "restartSafe": true,
+                                                "runtime": Value::Null,
+                                                "stateVersion": 1,
+                                                "unresolvedTools": [],
+                                                "workgroups": []
+                                            })
+                                        }
+                                        other => panic!("unexpected mock core method: {other}"),
+                                    };
+                                    let writer = writer.clone();
+                                    let released = released_cb.clone();
+                                    tokio::task::spawn_local(async move {
+                                    if hold { released.notified().await; }
+                                    writer.lock().await
+                                        .send(Message::Text(
+                                            json!({ "jsonrpc": "2.0", "id": call["id"], "result": result })
+                                                .to_string()
+                                                .into(),
+                                        ))
+                                        .await
+                                        .unwrap();
+                                    });
+                                }
+                            });
+                        }
+                    });
+                    mock_core_server = Some(server);
+                    mock_core_close = Some(
+                        fixture
+                            .host
+                            .schedules
+                            .connections
+                            .connect_test_core(fixture.host.clone(), "project", service)
+                            .await
+                            .unwrap(),
+                    );
+                    slow_params = if blocked_method == "manage.read" {
+                        json!({"sourceId": source_id, "projectId": alias, "operation": "server"})
+                    } else {
+                        json!({"sourceId": source_id, "command":"manage", "request":{"projectId":alias,"operation":"server"}})
+                    };
                 }
+                let ticket = fixture
+                    .client()
+                    .await
+                    .web_ticket(ELECTRON_ORIGIN)
+                    .await
+                    .unwrap();
+                let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+                write(
+                    &mut socket,
+                    json!({"version":1,"id":"hello","method":"hello","params":{
+                        "protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],
+                        "ticket":ticket.ticket,"expectedGeneration":ticket.generation
+                    }}),
+                )
+                .await;
+                let _hello = read(&mut socket).await;
+                write(
+                    &mut socket,
+                    json!({"version":1,"id":"slow","method":blocked_method,
+            "params":slow_params}),
+                )
+                .await;
+                tokio::time::timeout(Duration::from_secs(2), entered.notified())
+                    .await
+                    .unwrap();
+                if blocked_method == "desktop.command" {
+                    write(
+                        &mut socket,
+                        json!({"version":1,"id":"second","method":"desktop.command",
+                "params":slow_params}),
+                    )
+                    .await;
+                }
+                // 确认目标请求已进入后台且尚未释放，再检查同连接的安全读取不被阻塞。
+                write(
+                    &mut socket,
+                    json!({"version":1,"id":"fast","method":"host.status","params":{}}),
+                )
+                .await;
+                write(
+                    &mut socket,
+                    json!({"version":1,"id":"catalog","method":"analytics.read","params":{}}),
+                )
+                .await;
+                if blocked_method == "desktop.command" {
+                    write(&mut socket, json!({"version":1,"id":"cancel","method":"worktree.command",
+                        "commandId":uuid::Uuid::new_v4().to_string(),
+                        "params":{"sourceId":slow_params["sourceId"],"projectId":slow_params["request"]["projectId"],
+                            "operation":"worktreeCancel","requestId":uuid::Uuid::new_v4().to_string(),"worktreeRequestId":creation_id}
+                    })).await;
+                }
+                let progress = tokio::time::timeout(Duration::from_secs(1), async {
+                    let mut status = false;
+                    let mut catalog = false;
+                    let mut cancelled = blocked_method != "desktop.command";
+                    while !status || !catalog || !cancelled {
+                        let packet = read(&mut socket).await;
+                        assert_ne!(packet["id"], "slow");
+                        assert_ne!(
+                            packet["id"], "second",
+                            "mutations must preserve connection order"
+                        );
+                        status |=
+                            packet["id"] == "fast" && packet["result"]["hostId"] == ticket.host_id;
+                        catalog |=
+                            packet["id"] == "catalog" && packet["result"]["tokens"] == 0;
+                        if packet["id"] == "cancel" {
+                            assert_eq!(packet["result"]["receipt"]["requestId"], creation_id, "{packet}");
+                            assert_eq!(packet["result"]["receipt"]["state"], "cancelled", "{packet}");
+                            cancelled = true;
+                        }
+                    }
+                })
+                .await;
+                if progress.is_ok() && blocked_method == "desktop.command" {
+                    for index in 0..15 {
+                        write(&mut socket, json!({"version":1,"id":format!("capacity-{index}"),
+                            "method":"desktop.command","params":slow_params})).await;
+                    }
+                    let rejected = read(&mut socket).await;
+                    assert_eq!(rejected["id"], "capacity-14");
+                    assert_eq!(rejected["error"]["code"], "CAPACITY_EXCEEDED");
+                    // 详情要能定位哪一队满了；上屏文案不读这些字段。
+                    assert_eq!(rejected["error"]["method"], "desktop.command");
+                    assert_eq!(rejected["error"]["reason"], "commandQueueFull");
+                    write(&mut socket, json!({"version":1,"id":"recovery-read","method":"analytics.read","params":{}})).await;
+                    let safe = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                    assert_eq!(safe["id"], "recovery-read");
+                    assert_eq!(safe["result"]["tokens"], 0, "full mutation admission must preserve independent reads");
+                    write(&mut socket, json!({"version":1,"id":"original-status",
+                        "method":"desktop.command","params":{"command":"reconcile",
+                        "request":{"projectId":slow_params["request"]["projectId"],"requestId":"original"}}})).await;
+                    let receipt = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                    assert_eq!(receipt["id"], "original-status");
+                    assert!(receipt.get("error").is_none(), "full mutation admission must preserve original receipt recovery: {receipt}");
+                    assert_eq!(receipt["result"]["outcomes"]["original"]["turnId"], "original-turn");
+                    write(&mut socket, json!({"version":1,"id":"prediction-read",
+                        "method":"desktop.command","params":{"command":"prediction",
+                        "request":{"projectId":slow_params["request"]["projectId"],"threadId":"thread","sourceTurnId":"turn","operation":"request"}}})).await;
+                    let prediction = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                    assert_eq!(prediction["id"], "prediction-read");
+                    assert!(prediction.get("error").is_none(), "prediction must use bounded query admission: {prediction}");
+                    write(&mut socket, json!({"version":1,"id":"inspect-read",
+                        "method":"desktop.command","params":{"command":"manage",
+                        "request":{"projectId":slow_params["request"]["projectId"],"threadId":"thread","operation":"inspect"}}})).await;
+                    let inspect = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                    assert_eq!(inspect["id"], "inspect-read");
+                    assert!(inspect.get("error").is_none(), "manage inspect must use bounded query admission: {inspect}");
+                    for (command, operation) in [("manage", "context"), ("workspace", "info"), ("resources", "skills")] {
+                        let mut request = json!({"projectId":slow_params["request"]["projectId"],"operation":operation});
+                        if command == "manage" { request["threadId"] = json!("thread"); }
+                        if command == "resources" { request["scope"] = json!("project"); }
+                        write(&mut socket, json!({"version":1,"id":operation,"method":"desktop.command",
+                            "params":{"command":command,"request":request}})).await;
+                        let reply = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                        assert_eq!(reply["id"], operation);
+                        assert!(reply.get("error").is_none(), "reopening a chat must not consume mutation slots for {command}/{operation}: {reply}");
+                    }
+                    write(&mut socket, json!({"version":1,"id":"mcp-read","method":"manage.read",
+                        "params":{"sourceId":slow_params["sourceId"],"projectId":slow_params["request"]["projectId"],"operation":"pluginMcp"}})).await;
+                    let mcp = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                    assert_eq!(mcp["id"], "mcp-read");
+                    assert_eq!(mcp["result"]["data"], json!([]), "MCP reads retain independent query admission: {mcp}");
+                    write(&mut socket, json!({"version":1,"id":"activity-ping",
+                        "method":"analytics.activity","params":{"focused":true,"idleSeconds":0}})).await;
+                    let activity = tokio::time::timeout(Duration::from_secs(1), read(&mut socket)).await.unwrap();
+                    assert_eq!(activity["id"], "activity-ping");
+                    assert!(activity.get("error").is_none(), "analytics.activity must use bounded query admission: {activity}");
+                }
+                released.notify_one();
+                if progress.is_ok() {
+                    let slow = read(&mut socket).await;
+                    assert_eq!(slow["id"], "slow");
+                    if blocked_method == "manage.read" {
+                        assert!(slow.get("error").is_none(), "{slow}");
+                    } else if blocked_method == "desktop.command" {
+                        assert_eq!(read(&mut socket).await["id"], "second");
+                    }
+                }
+                if let Some(close) = mock_core_close {
+                    close();
+                }
+                if let Some(control) = mock_control_server {
+                    control.abort();
+                }
+                if let Some(server) = mock_core_server {
+                    server.abort();
+                }
+                drop(mock_service_lock);
+                assert!(
+                    progress.is_ok(),
+                    "a pending workbench request blocked the read/event loop"
+                );
             }
-            reverse(
-                "pages.event".into(),
-                json!({"connection":owner,"token":"after-lag","notification":{}}),
-            )
-            .await
-            .unwrap();
-            assert_eq!(read(&mut socket).await["params"]["token"], "after-lag");
         })
         .await;
 }
@@ -694,7 +1105,7 @@ async fn browser_write_scopes_are_explicit_enforced_and_revocable() {
             assert_eq!(hello["scopes"], json!(["observe", scope]));
             let methods = hello["writeMethods"].as_array().unwrap();
             assert_eq!(methods.contains(&json!("library.command")), scope == "manage");
-            for method in ["worktree.read", "tasks.read", "trajectory.read", "trajectory.command", "feedback.read", "feedback.command", "manage.read", "manage.command", "providers.read", "providers.command"] {
+            for method in ["worktree.read", "tasks.read", "trajectory.read", "trajectory.command", "feedback.read", "feedback.command", "manage.read", "manage.command", "providers.read", "providers.command", "bots.read", "bots.command"] {
                 assert_eq!(methods.contains(&json!(method)), scope == "manage");
             }
             assert_eq!(methods.contains(&json!("session.send")), scope == "submit");
@@ -703,59 +1114,11 @@ async fn browser_write_scopes_are_explicit_enforced_and_revocable() {
             let error = read(&mut socket).await["error"].clone();
             assert_eq!(error["code"], if scope == "manage" { "CAPABILITY_UNAVAILABLE" } else { "FORBIDDEN" });
             assert_eq!(error["submissionUnknown"], false);
-            for operation in ["open", "request"] {
-                write(&mut socket, json!({"version":1,"id":"page","method":"pages.command","params":{"operation":operation}})).await;
-                assert_eq!(read(&mut socket).await["error"]["code"], "FORBIDDEN");
-            }
             fixture.client().await.revoke_browser(&grant.device_id).await.unwrap();
             write(&mut socket, json!({"version":1,"id":"revoked","method":"host.status","params":{}})).await;
             closed(&mut socket).await;
         }
     }).await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn public_page_proxy_is_static_and_sandboxed_without_exposing_resources() {
-    tokio::task::LocalSet::new()
-        .run_until(async {
-            let fixture = Fixture::start().await;
-            let endpoint = fixture.host.loopback.endpoint().unwrap();
-            let authority = endpoint.origin.strip_prefix("http://").unwrap();
-            for path in [
-                "/host/pages/proxy",
-                "/host/pages/private-page/view",
-                "/host/pages/proxy?token=private",
-            ] {
-                let mut stream = TcpStream::connect(authority).await.unwrap();
-                stream
-                    .write_all(
-                        format!(
-                            "GET {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n\r\n"
-                        )
-                        .as_bytes(),
-                    )
-                    .await
-                    .unwrap();
-                let mut bytes = Vec::new();
-                tokio::time::timeout(Duration::from_secs(2), stream.read_to_end(&mut bytes))
-                    .await
-                    .unwrap()
-                    .unwrap();
-                let text = std::str::from_utf8(&bytes).unwrap();
-                let (headers, body) = text.split_once("\r\n\r\n").unwrap();
-                if path == "/host/pages/proxy" {
-                    assert!(headers.starts_with("HTTP/1.1 200"));
-                    assert!(headers.contains("sandbox allow-scripts"));
-                    assert!(!headers.contains("allow-same-origin"));
-                    assert_eq!(body, include_str!("page_proxy.html"));
-                    assert!(!body.contains("areal-ui://"));
-                } else {
-                    assert!(!headers.starts_with("HTTP/1.1 200"));
-                    assert!(!body.contains("private"));
-                }
-            }
-        })
-        .await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -937,4 +1300,392 @@ async fn authenticated_unix_ticket_connects_to_real_loopback_status() {
         let typed: areal_protocol::host::LocalHostStatusResult = serde_json::from_value(response["result"].clone()).unwrap();
         assert_eq!(serde_json::to_value(typed).unwrap(), response["result"]);
     }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn ready_and_session_open_fail_immediately_when_project_is_stopping() {
+    tokio::task::LocalSet::new().run_until(async {
+        let fixture = Fixture::start().await;
+        storage::private_dir(&fixture.host.home.join("host/projects")).unwrap();
+        let client = fixture.client().await;
+        let workspace = fixture.host.home.join("stopping-workspace");
+        let data = fixture.host.home.join("stopping-data");
+        for path in [&workspace, &data] {
+            storage::private_dir(path).unwrap();
+        }
+        let registration = crate::ProjectRegistration {
+            project_id: "stopping".into(),
+            workspace: workspace.clone(),
+            data_dir: data.clone(),
+            source: crate::ProjectSource::Cli,
+            default_binding: false,
+        };
+        client
+            .register(&uuid::Uuid::new_v4().to_string(), registration.clone())
+            .await
+            .unwrap();
+        let generation = uuid::Uuid::new_v4().to_string();
+        let service: areal_protocol::service::Service = serde_json::from_value(json!({
+            "protocolVersion": 1,
+            "serviceId": Host::service_id(&registration),
+            "generation": generation,
+            "workspace": workspace,
+            "dataDir": data,
+            "configFingerprint": "fp",
+            "owner": {
+                "kind": "host",
+                "hostId": fixture.host.identity.host_id,
+                "generation": fixture.host.identity.generation
+            },
+            "endpoint": "http://127.0.0.1:1",
+            "webUrl": "http://127.0.0.1:1",
+            "authFile": data.join("auth.json"),
+            "logFile": data.join("host.log"),
+            "hostPid": 500000000,
+            "corePid": 500000001,
+            "state": "ready"
+        }))
+        .unwrap();
+        {
+            let mut slots = fixture.host.slots.borrow_mut();
+            let slot = slots.get_mut("stopping").unwrap();
+            slot.state = "stopping".into();
+            slot.service = Some(service.clone());
+        }
+        // Case A: ready() called when slot is already "stopping" with old service still attached.
+        let immediate = tokio::time::timeout(
+            Duration::from_secs(1),
+            fixture
+                .host
+                .schedules
+                .connections
+                .ready(&fixture.host, "stopping", &generation),
+        )
+        .await
+        .expect("ready() must fail immediately on stopping slot instead of hanging 15s");
+        assert!(immediate.is_err());
+
+        // Case B: ready() is waiting on a "starting" slot that transitions to "stopping" via host.changed().
+        {
+            let mut slots = fixture.host.slots.borrow_mut();
+            let slot = slots.get_mut("stopping").unwrap();
+            slot.state = "starting".into();
+            slot.service = Some(service);
+        }
+        let host = fixture.host.clone();
+        let gen_clone = generation.clone();
+        let waiter = tokio::task::spawn_local(async move {
+            host.schedules
+                .connections
+                .ready(&host, "stopping", &gen_clone)
+                .await
+        });
+        tokio::task::yield_now().await;
+        {
+            let mut slots = fixture.host.slots.borrow_mut();
+            let slot = slots.get_mut("stopping").unwrap();
+            slot.state = "stopping".into();
+        }
+        fixture.host.changed();
+        let woken = tokio::time::timeout(Duration::from_secs(1), waiter)
+            .await
+            .expect("ready() must wake immediately when host.changed() transitions slot to stopping")
+            .unwrap();
+        assert!(woken.is_err());
+
+        // Case C: loopback session.open on a stopping slot must return error immediately, not block 15s.
+        let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
+        let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+        write(
+            &mut socket,
+            json!({
+                "version": 1,
+                "id": "hello",
+                "method": "hello",
+                "params": {
+                    "protocolVersions": [1],
+                    "capabilities": ["gui-read-v1", "persistedHistoryV1"],
+                    "ticket": ticket.ticket,
+                    "expectedGeneration": ticket.generation
+                }
+            }),
+        )
+        .await;
+        assert!(read(&mut socket).await.get("result").is_some());
+        write(
+            &mut socket,
+            json!({
+                "version": 1,
+                "id": "open-stopping",
+                "method": "session.open",
+                "context": { "projectId": "stopping", "serviceGeneration": generation },
+                "params": { "threadId": "thread-1", "view": "conversation" }
+            }),
+        )
+        .await;
+        let reply = tokio::time::timeout(Duration::from_secs(1), read(&mut socket))
+            .await
+            .expect("session.open must fail immediately when project is stopping");
+        assert!(reply.get("error").is_some(), "expected error reply, got {reply}");
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn shell_update_is_sent_before_session_invalidated_on_host_change() {
+    tokio::task::LocalSet::new().run_until(async {
+        let fixture = Fixture::start().await;
+        storage::private_dir(&fixture.host.home.join("host/projects")).unwrap();
+        let client = fixture.client().await;
+        let workspace = fixture.host.home.join("order-workspace");
+        let data = fixture.host.home.join("order-data");
+        for path in [&workspace, &data, &data.join("blobs")] {
+            storage::private_dir(path).unwrap();
+        }
+        let registration = crate::ProjectRegistration {
+            project_id: "ordered".into(),
+            workspace: workspace.clone(),
+            data_dir: data.clone(),
+            source: crate::ProjectSource::Cli,
+            default_binding: false,
+        };
+        client
+            .register(&uuid::Uuid::new_v4().to_string(), registration.clone())
+            .await
+            .unwrap();
+        let directory =
+            storage::registry(&fixture.host.home, &Host::service_id(&registration)).unwrap();
+        storage::private_dir(&directory).unwrap();
+        for path in [
+            directory.join("start.lock"),
+            data.join("service.lock"),
+            data.join("owner.lock"),
+        ] {
+            storage::open_private(&path, true).unwrap();
+        }
+        storage::write(&data.join("service-workspace"), &workspace).unwrap();
+        let generation = uuid::Uuid::new_v4().to_string();
+        let descriptor = json!({
+            "protocolVersion": 1,
+            "serviceId": Host::service_id(&registration),
+            "generation": generation,
+            "workspace": workspace,
+            "dataDir": data,
+            "configFingerprint": "old",
+            "owner": {
+                "kind": "host",
+                "hostId": fixture.host.identity.host_id,
+                "generation": uuid::Uuid::new_v4().to_string()
+            },
+            "endpoint": "http://127.0.0.1:1",
+            "webUrl": "http://127.0.0.1:1",
+            "authFile": directory.join("auth.json"),
+            "logFile": directory.join("host.log"),
+            "hostPid": 500000000,
+            "corePid": 500000001,
+            "state": "ready"
+        });
+        storage::write(&directory.join("service.json"), &descriptor).unwrap();
+        let thread = uuid::Uuid::new_v4().to_string();
+        let record = json!({
+            "version": 17,
+            "thread": {
+                "id": thread,
+                "sessionId": thread,
+                "parentThreadId": null,
+                "preview": "fixture",
+                "modelProvider": "fixture",
+                "createdAt": 1,
+                "updatedAt": 2,
+                "status": { "type": "idle" },
+                "cwd": workspace,
+                "cliVersion": "fixture",
+                "source": "cli",
+                "ephemeral": false,
+                "turns": []
+            }
+        });
+        storage::write(&data.join(format!("{thread}.json")), &record).unwrap();
+
+        let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
+        let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+        write(
+            &mut socket,
+            json!({
+                "version": 1,
+                "id": "hello",
+                "method": "hello",
+                "params": {
+                    "protocolVersions": [1],
+                    "capabilities": ["gui-read-v1", "persistedHistoryV1"],
+                    "ticket": ticket.ticket,
+                    "expectedGeneration": ticket.generation
+                }
+            }),
+        )
+        .await;
+        assert!(read(&mut socket).await.get("result").is_some());
+
+        write(
+            &mut socket,
+            json!({
+                "version": 1,
+                "id": "shell",
+                "method": "shell.subscribe",
+                "params": {}
+            }),
+        )
+        .await;
+        assert!(read(&mut socket).await.get("result").is_some());
+
+        write(
+            &mut socket,
+            json!({
+                "version": 1,
+                "id": "open",
+                "method": "session.openPersisted",
+                "context": { "projectId": "ordered", "serviceGeneration": generation },
+                "params": { "threadId": thread, "view": "conversation" }
+            }),
+        )
+        .await;
+        assert!(read(&mut socket).await.get("result").is_some());
+
+        // Trigger a Host change that both updates shell project state and invalidates the reader.
+        {
+            let mut slots = fixture.host.slots.borrow_mut();
+            let slot = slots.get_mut("ordered").unwrap();
+            slot.state = "stopping".into();
+            slot.registration.workspace = fixture.host.home.join("rebound-order-workspace");
+        }
+        fixture.host.changed();
+
+        let first = read(&mut socket).await;
+        let second = read(&mut socket).await;
+        assert!(
+            matches!(
+                first["method"].as_str(),
+                Some("shell.updated" | "shell.snapshot")
+            ),
+            "expected shell update before session.invalidated, got first={first} second={second}"
+        );
+        assert_eq!(second["method"], "session.invalidated");
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn loopback_bots_command_read_and_event_push() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let fixture = Fixture::start().await;
+            let ticket = fixture
+                .client()
+                .await
+                .web_ticket(ELECTRON_ORIGIN)
+                .await
+                .unwrap();
+            let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "hello",
+                    "method": "hello",
+                    "params": {
+                        "protocolVersions": [1],
+                        "capabilities": ["gui-read-v1", "gui-write-v1"],
+                        "ticket": ticket.ticket,
+                        "expectedGeneration": ticket.generation
+                    }
+                }),
+            )
+            .await;
+            let hello = read(&mut socket).await["result"].clone();
+            let methods = hello["writeMethods"].as_array().unwrap();
+            assert!(methods.contains(&json!("bots.read")));
+            assert!(methods.contains(&json!("bots.command")));
+
+            // 1. bots.command create -> 产生注册表更新并推送 bots.event (registryChanged)
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "bot-create",
+                    "method": "bots.command",
+                    "commandId": uuid::Uuid::new_v4().to_string(),
+                    "params": {
+                        "operation": "create",
+                        "name": "Loopback Bot",
+                        "workspace": "loopback-bot-1"
+                    }
+                }),
+            )
+            .await;
+
+            let mut saw_create_reply = false;
+            let mut saw_event = false;
+            for _ in 0..4 {
+                let msg = read(&mut socket).await;
+                if msg.get("id") == Some(&json!("bot-create")) {
+                    assert_eq!(msg["result"]["admissionState"], "accepted");
+                    assert_eq!(
+                        msg["result"]["receipt"]["bot"]["workspace"],
+                        "loopback-bot-1"
+                    );
+                    saw_create_reply = true;
+                } else if msg.get("method") == Some(&json!("bots.event")) {
+                    assert_eq!(msg["params"]["event"], "bots.event");
+                    assert_eq!(msg["params"]["notification"]["kind"], "registryChanged");
+                    saw_event = true;
+                }
+                if saw_create_reply && saw_event {
+                    break;
+                }
+            }
+            assert!(saw_create_reply && saw_event);
+
+            // 2. bots.read list -> 读回刚创建的 Bot
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "bot-list",
+                    "method": "bots.read",
+                    "params": { "operation": "list" }
+                }),
+            )
+            .await;
+            let list_reply = read(&mut socket).await;
+            assert_eq!(list_reply["id"], "bot-list");
+            assert_eq!(list_reply["result"]["bots"][0]["name"], "Loopback Bot");
+
+            // 3. 查询不存在的 Bot -> 返回 NOT_FOUND 且 submissionUnknown == false
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "bot-missing",
+                    "method": "bots.read",
+                    "params": { "operation": "get", "id": "non-existent" }
+                }),
+            )
+            .await;
+            let missing = read(&mut socket).await;
+            assert_eq!(missing["error"]["code"], "NOT_FOUND");
+            assert_eq!(missing["error"]["submissionUnknown"], false);
+        })
+        .await;
+}
+
+#[test]
+fn worktree_cancel_uses_control_lane_without_reclassifying_creation() {
+    assert_eq!(
+        request_lane("worktree.command", &json!({"operation":"worktreeCancel"})),
+        Some(RemoteMethodLane::Control)
+    );
+    assert_eq!(
+        request_lane("worktree.command", &json!({"operation":"worktreeCreate"})),
+        Some(RemoteMethodLane::Mutation)
+    );
 }

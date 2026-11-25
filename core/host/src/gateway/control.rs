@@ -1,12 +1,17 @@
 use super::*;
 
-fn source(host: &Host, source_id: &str) -> Result<Value> {
-    let snapshot = host.remote.snapshot(&host.migration)?;
+fn matching_source(snapshot: Value, source_id: &str) -> Result<Value> {
     ensure!(
         snapshot["sourceId"] == source_id,
         error("sourceNotFound", "Remote source does not match")
     );
     Ok(snapshot)
+}
+async fn source_async(host: &Host, source_id: &str) -> Result<Value> {
+    matching_source(
+        host.remote.snapshot_async(&host.migration).await?,
+        source_id,
+    )
 }
 fn now() -> u64 {
     std::time::SystemTime::now()
@@ -22,11 +27,59 @@ fn grant_projects(request: &Value) -> Result<Vec<String>> {
     let mut projects = Vec::new();
     for value in values {
         let project = value.as_str().context("invalid Remote project")?.to_owned();
+        if project == "*" {
+            return Ok(vec!["*".to_owned()]);
+        }
         if !projects.contains(&project) {
             projects.push(project);
         }
     }
     Ok(projects)
+}
+fn pair_link_parts(
+    config: &Value,
+    host_peer: &str,
+    invite_secret: &str,
+    transport: &str,
+    direct_origin: Option<&str>,
+    fingerprint: Option<&str>,
+) -> Result<(String, String)> {
+    let mut fragment = url::form_urlencoded::Serializer::new(String::new());
+    fragment
+        .append_pair("host", host_peer)
+        .append_pair("invite", invite_secret);
+    let origin = if transport == "relay" {
+        fragment.append_pair(
+            "room",
+            config["room"].as_str().context("Relay room is missing")?,
+        );
+        let origin = config["relay"]
+            .as_str()
+            .context("Relay origin is missing")?
+            .to_owned();
+        append_local_transport(config, &origin, fingerprint, &mut fragment)?;
+        origin
+    } else {
+        direct_origin.context("Direct is unavailable")?.to_owned()
+    };
+    Ok((origin, fragment.finish()))
+}
+fn append_local_transport(
+    config: &Value,
+    origin: &str,
+    fingerprint: Option<&str>,
+    fragment: &mut url::form_urlencoded::Serializer<'_, String>,
+) -> Result<()> {
+    if config["relayLocal"]["enabled"] == true && config["relayLocal"]["origin"] == origin {
+        fragment.append_pair("local", "1");
+        if origin.starts_with("https://") {
+            fragment.append_pair(
+                "cert",
+                fingerprint.context("local Relay TLS identity missing")?,
+            );
+        }
+    }
+    Ok(())
 }
 fn pair_payload(host: &Host, config: &Value, invite: &Invite) -> Result<Value> {
     let identity = wire::Identity::from_base64(
@@ -34,32 +87,41 @@ fn pair_payload(host: &Host, config: &Value, invite: &Invite) -> Result<Value> {
             .as_str()
             .context("Remote identity is missing")?,
     )?;
-    let mut fragment = url::form_urlencoded::Serializer::new(String::new());
-    fragment
-        .append_pair("host", &identity.peer().to_string())
-        .append_pair("invite", &invite.secret);
-    let origin = if invite.transport == "relay" {
-        fragment.append_pair(
-            "room",
-            config["room"].as_str().context("Relay room is missing")?,
-        );
-        config["relay"]
-            .as_str()
-            .context("Relay origin is missing")?
-            .to_owned()
-    } else {
-        host.gateway
-            .direct
-            .borrow()
-            .as_ref()
-            .map(|handle| handle.origin().to_owned())
-            .context("Direct is unavailable")?
-    };
-    Ok(json!({"payload":format!("{origin}/#{}", fragment.finish()),"expiresAt":invite.expires_at}))
+    let direct = host
+        .gateway
+        .direct
+        .borrow()
+        .as_ref()
+        .map(|handle| handle.origin().to_owned());
+    let (origin, fragment) = pair_link_parts(
+        config,
+        &identity.peer().to_string(),
+        &invite.secret,
+        &invite.transport,
+        direct.as_deref(),
+        host.gateway.local_relay.fingerprint().as_deref(),
+    )?;
+    Ok(json!({"payload":format!("{origin}/#{fragment}"),"expiresAt":invite.expires_at}))
 }
 impl Host {
+    pub(in crate::server) async fn gateway_state_async(&self, source_id: &str) -> Result<Value> {
+        let snapshot = source_async(self, source_id).await?;
+        self.gateway_state_snapshot(source_id, snapshot)
+    }
     pub(in crate::server) fn gateway_state(&self, source_id: &str) -> Result<Value> {
-        let snapshot = source(self, source_id)?;
+        let snapshot = self.remote.snapshot(&self.migration)?;
+        self.gateway_state_snapshot(source_id, snapshot)
+    }
+    pub(in crate::server) fn gateway_state_snapshot(
+        &self,
+        source_id: &str,
+        snapshot: Value,
+    ) -> Result<Value> {
+        if snapshot["sourceId"].is_null() {
+            self.migration.source_profile(source_id)?;
+        } else {
+            ensure!(snapshot["sourceId"] == source_id, "sourceNotFound");
+        }
         let config = &snapshot["config"];
         let identity = config["identity"]
             .as_str()
@@ -106,12 +168,23 @@ impl Host {
                 fragment
                     .append_pair("host", &host_peer)
                     .append_pair("room", config["room"].as_str().unwrap());
-                format!("{relay}/#{}", fragment.finish())
+                let fingerprint = self.gateway.local_relay.fingerprint();
+                if append_local_transport(config, relay, fingerprint.as_deref(), &mut fragment)
+                    .is_ok()
+                {
+                    format!("{relay}/#{}", fragment.finish())
+                } else {
+                    String::new()
+                }
             } else {
                 String::new()
             };
         let mut state = json!({"enabled":config["enabled"]==true,"connected":config["enabled"]==true && status["connected"]==true,"relay":relay,"relayError":if config["enabled"]==true && status["state"]=="unavailable"{match status["relayDiagnostic"].as_str(){Some("replaced")=>"Relay Host 已被替换；请确认后重新启用",Some("unsupported")=>"Relay 协议或传输限额不可用，请升级服务或调整配置后重新启用",_=>"远程入口暂不可用"}}else{""},"relayUrl":relay_url,"directEnabled":config["directEnabled"]==true,"directUrl":self.gateway.direct.borrow().as_ref().map(|handle|handle.origin().to_owned()).unwrap_or_default(),"directHostId":if config["directEnabled"]==true{host_peer.as_str()}else{""},"directError":self.gateway.direct_error.borrow().as_str(),"migrationError":"","pushSupported":status["pushSupported"]==true,"deviceGrants":grants,"devices":[],"pending":self.gateway.pairs.borrow().iter().filter(|(_,pair)|pair.expires_at>now() && pair.rejected.get().is_none()).map(|(peer,pair)|{let mut value=json!({"id":peer,"name":pair.name,"fingerprint":peer,"expiresAt":pair.expires_at});if let Some(kind)=&pair.client_kind{value["clientKind"]=json!(kind);}value}).collect::<Vec<_>>(),"network":{"kind":config["network"].get("kind").cloned().unwrap_or(Value::Null),"scope":config["network"].get("visibility").cloned().unwrap_or(Value::Null),"reconciliation":null,"publicOrigin":"","diagnostic":"","policy":"unknown","phoneAccess":"unknown","inspection":null}});
-        state["relayService"] = json!({"local":self.gateway.local_relay.state(),"deployment":null,"job":null,"profiles":config["relayProfiles"].as_array().into_iter().flatten().map(|profile|json!({"origin":profile["origin"],"kind":profile["kind"],"active":config["enabled"]==true && config["relay"]==profile["origin"]})).collect::<Vec<_>>()});
+        let mut local_state = self.gateway.local_relay.state();
+        if let Some(suggested) = crate::local_relay::suggested_origin(config) {
+            local_state["suggestedOrigin"] = json!(suggested);
+        }
+        state["relayService"] = json!({"local":local_state,"deployment":null,"job":null,"profiles":config["relayProfiles"].as_array().into_iter().flatten().map(|profile|json!({"origin":profile["origin"],"kind":profile["kind"],"active":config["enabled"]==true && config["relay"]==profile["origin"]})).collect::<Vec<_>>()});
         Ok(state)
     }
     pub(in crate::server) async fn gateway_control(
@@ -157,7 +230,7 @@ impl Host {
                 "requestId belongs to another domain operation",
             ));
         }
-        let snapshot = source(self, &input.source_id)?;
+        let snapshot = source_async(self, &input.source_id).await?;
         let digest = self.intent_digest(
             "remote.gateway.control",
             &input.source_id,
@@ -235,6 +308,17 @@ impl Host {
             "relayServiceStartLocal" => {
                 self.local_relay_source(&input.source_id)?;
                 crate::local_relay::configure(&mut config)?;
+                // 写入凭据与配置前先校验本机 Relay 组件完整性和签名，避免失败后留下 enabled: true 半状态。
+                self.gateway.local_relay.ensure_bundle(&self.bin).await?;
+                // 目标配置未变化且本机 Relay 已在同地址运行：幂等直接返回，避免重复触发 credential-io 与写密文文件。
+                if config == snapshot["config"]
+                    && let Some(origin) = config["relayLocal"]["origin"].as_str()
+                    && self.gateway.local_relay.is_running_at(origin)
+                {
+                    self.gateway.relay_reconnect.set(true);
+                    self.gateway.refresh_config(&config);
+                    return self.gateway_state(&input.source_id);
+                }
             }
             "relayServiceStopLocal" => {
                 config["relayLocal"]["enabled"] = json!(false);
@@ -291,6 +375,14 @@ impl Host {
                     matches!(transport, "relay" | "direct"),
                     error("invalidRequest", "invalid pairing transport")
                 );
+                if transport == "relay"
+                    && config["relayLocal"]["enabled"] == true
+                    && config["relay"] == config["relayLocal"]["origin"]
+                {
+                    crate::local_relay::ensure_local_address(&crate::local_relay::local_origin(
+                        &config,
+                    )?)?;
+                }
                 ensure!(
                     if transport == "relay" {
                         config["enabled"] == true && self.gateway.status()["connected"] == true
@@ -678,5 +770,49 @@ impl Host {
         }
         self.gateway.refresh_config(&config);
         self.gateway_state(&input.source_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pair_link_marks_local_relay_with_local_1_and_leaves_https_clean() {
+        let local = json!({
+            "relay": "http://192.168.1.10:47820",
+            "room": "a".repeat(64),
+            "relayLocal": { "enabled": true, "origin": "http://192.168.1.10:47820", "port": 47820 }
+        });
+        let (origin, frag) =
+            pair_link_parts(&local, "host-id", &"b".repeat(64), "relay", None, None).unwrap();
+        assert_eq!(origin, "http://192.168.1.10:47820");
+        assert!(frag.contains("local=1"));
+
+        let mut pinned = local.clone();
+        pinned["relay"] = json!("https://192.0.2.12:47820");
+        pinned["relayLocal"]["origin"] = pinned["relay"].clone();
+        assert!(pair_link_parts(&pinned, "host-id", &"b".repeat(64), "relay", None, None).is_err());
+        let pin = "c".repeat(64);
+        let (_, frag) = pair_link_parts(
+            &pinned,
+            "host-id",
+            &"b".repeat(64),
+            "relay",
+            None,
+            Some(&pin),
+        )
+        .unwrap();
+        assert!(frag.contains(&format!("local=1&cert={pin}")));
+
+        let external = json!({
+            "relay": "https://relay.example",
+            "room": "a".repeat(64),
+            "relayLocal": { "enabled": false, "origin": "http://192.168.1.10:47820", "port": 47820 }
+        });
+        let (origin, frag) =
+            pair_link_parts(&external, "host-id", &"b".repeat(64), "relay", None, None).unwrap();
+        assert_eq!(origin, "https://relay.example");
+        assert!(!frag.contains("local=1"));
     }
 }

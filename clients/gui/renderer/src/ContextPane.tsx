@@ -25,7 +25,7 @@ export function ContextPane({
   thread: Data;
   action: Action;
 }) {
-  const { t } = useI18n();
+  const { t, intl } = useI18n();
   const [context, setContext] = useState<Context | null>(null);
   const [busy, setBusy] = useState(false),
     [compacting, setCompacting] = useState(false),
@@ -170,8 +170,8 @@ export function ContextPane({
             </CollapsibleText>
             <p className="text-foreground-subtle">
               累计 {(context.checkpoint.totalDurationMs / 1000).toFixed(1)} 秒 · 输入{" "}
-              {context.checkpoint.usage.inputTokens.toLocaleString()} / 输出{" "}
-              {context.checkpoint.usage.outputTokens.toLocaleString()} Token
+              {intl.formatNumber(context.checkpoint.usage.inputTokens)} / 输出{" "}
+              {intl.formatNumber(context.checkpoint.usage.outputTokens)} Token
             </p>
           </section>
         )}

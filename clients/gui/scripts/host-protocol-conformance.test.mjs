@@ -182,6 +182,25 @@ async function remoteConnection(t, fixture, relay, projectId, capabilities) {
   };
 }
 
+test("local native notice has a bounded logical target and body", () => {
+  const ref = schema["x-current"].local.events["desktop.core.event"].schema;
+  const notice = {
+    id: "original",
+    projectId: "logical-project",
+    kind: "completion",
+    body: "Completed",
+    threadId: "thread",
+  };
+  const envelope = (value) => ({
+    version: 1,
+    method: "desktop.core.event",
+    params: { attachmentId: randomUUID(), event: { event: "host.notice", notice: value } },
+  });
+  conforms(ref, envelope(notice));
+  conforms(ref, envelope({ ...notice, body: "x".repeat(201) }), false);
+  conforms(ref, envelope({ ...notice, requestBody: "private" }), false);
+});
+
 if (!process.env.RC12_TLS_HOME) {
   test("Host protocol conformance uses isolated Relay TLS roots", async () => {
     await runWithIsolatedCA(import.meta.filename);
@@ -195,7 +214,7 @@ if (!process.env.RC12_TLS_HOME) {
     assert.equal(subscription.sequence, 0);
     const workspace = join(fixture.evidence.root, "Protocol Project");
     await mkdir(workspace);
-    await fixture.source.register(randomUUID(), {
+    await fixture.register(randomUUID(), {
       id: randomUUID().replaceAll("-", "").slice(0, 24),
       root: workspace,
     });
@@ -240,7 +259,7 @@ if (!process.env.RC12_TLS_HOME) {
     assert.ok(subscribed.snapshot.projects.every((project) => project.summaries.state !== "fresh"));
     const nextWorkspace = join(fixture.evidence.root, "Second Protocol Project");
     await mkdir(nextWorkspace);
-    await fixture.source.register(randomUUID(), {
+    await fixture.register(randomUUID(), {
       id: randomUUID().replaceAll("-", "").slice(0, 24),
       root: nextWorkspace,
     });

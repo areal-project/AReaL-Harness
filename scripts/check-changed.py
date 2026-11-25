@@ -108,9 +108,10 @@ def select_checks(plan, phase, failures):
         "gui-health",
         "workbench-core-boundary",
         "manifest",
+        "architecture-boundary",
+        "journey-registry",
         "gui-check",
         "gui-types",
-        "mobile-types",
         "rust-lint",
     }
     names = {

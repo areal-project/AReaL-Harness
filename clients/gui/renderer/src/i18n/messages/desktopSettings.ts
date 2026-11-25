@@ -31,9 +31,12 @@ export const desktopSettingsMessages = {
   },
   "settings.desktop.network": { "zh-CN": "网络", en: "Network" },
   "settings.desktop.proxy": { "zh-CN": "HTTP 代理", en: "HTTP proxy" },
+  "settings.desktop.proxyMode.system": { "zh-CN": "系统代理", en: "System proxy" },
+  "settings.desktop.proxyMode.direct": { "zh-CN": "无代理", en: "No proxy" },
+  "settings.desktop.proxyMode.custom": { "zh-CN": "自定义代理", en: "Custom proxy" },
   "settings.desktop.proxyDescription": {
-    "zh-CN": "模型、MCP、联网命令和应用浏览器使用此代理。留空使用系统代理，重启后生效。",
-    en: "Models, MCP, networked commands, and the app browser use this proxy. Leave blank for the system proxy. Restart to apply.",
+    "zh-CN": "用于模型和桌面网络请求。停止后台服务并重新连接后生效。",
+    en: "Applies to model and desktop network requests. Stop the background service and reconnect to apply.",
   },
   "settings.desktop.noProxy": { "zh-CN": "不使用代理的地址", en: "Proxy bypass addresses" },
   "settings.desktop.noProxyDescription": {

@@ -79,9 +79,7 @@ export function MobileAddDevice({
   const { t } = useI18n();
   const remaining = useRemaining(invite?.expiresAt);
   const [copied, setCopied] = useState(false);
-  const localApp =
-    invite?.payload.startsWith("http://") &&
-    new URLSearchParams(invite.payload.split("#")[1]).get("local") === "1";
+  const localApp = invite && new URLSearchParams(invite.payload.split("#")[1]).get("local") === "1";
   const scannable = invite?.payload.startsWith("https://") || localApp;
   const title =
     step === "review" && pending

@@ -185,7 +185,10 @@ impl Engine {
                     "message":"mutation completed; response exceeds receipt budget; inspect authoritative state",
                     "data":{"reason":"RESPONSE_TOO_LARGE"}}});
             }
-            if let Some(error) = result.get_mut("error").and_then(Value::as_object_mut) {
+            // 队列引导的拒绝也要记账，防止同一请求再次运行 UserPromptSubmit hook。
+            let rejected_steer = operation.method == "areal/queue/steer"
+                && result.pointer("/error/data/outcome/kind").and_then(Value::as_str) == Some("rejected");
+            if !rejected_steer && let Some(error) = result.get_mut("error").and_then(Value::as_object_mut) {
                 let reason = error.get("data").and_then(|data| data.get("reason"))
                     .and_then(Value::as_str).filter(|value| valid_id(value))
                     .unwrap_or("OPERATION_FAILED").to_owned();
@@ -317,8 +320,9 @@ impl Engine {
         &self,
         identity: &str,
         request_id: &str,
-        thread_id: &str,
+        thread: &areal_protocol::Thread,
     ) -> Result<()> {
+        let thread_id = &thread.id;
         let key = digest(&(identity, "areal/thread/start", request_id))?;
         let operation = submission_operation(
             request_id,
@@ -329,7 +333,19 @@ impl Engine {
         let record = journal.entries.get_mut(&key).unwrap();
         record.state = "completed".into();
         record.target = Some(operation.target.clone());
-        record.response = Some(json!({"result":{"threadId":thread_id}}));
+        let result = thread
+            .desktop
+            .as_ref()
+            .and_then(|data| {
+                data.receipts.iter().find(|receipt| {
+                    receipt.identity == identity
+                        && receipt.request_id == request_id
+                        && receipt.method == "areal/thread/start"
+                })
+            })
+            .map(|receipt| receipt.result.clone())
+            .unwrap_or_else(|| json!({"threadId":thread_id}));
+        record.response = Some(json!({"result":result}));
         if self
             .store
             .save_metadata("submissions", &*journal)

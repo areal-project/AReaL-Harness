@@ -59,7 +59,8 @@ test("只能在桌面窗口执行的后台操作与 desktopKeepsCommand 一致",
       .map((match) => match[1])
       .filter(
         (name) =>
-          !["manage", "library", "settings"].includes(name) && !(name in capabilities.mainCommands),
+          !["manage", "library", "settings", "providers"].includes(name) &&
+          !(name in capabilities.mainCommands),
       ),
   );
   const registered = new Set(

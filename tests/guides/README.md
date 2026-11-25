@@ -4,7 +4,7 @@
 
 | 改动落在 | 读 |
 | --- | --- |
-| Host、Core、Runtime、协议、桌面后台（services/workbench） | [core.md](core.md) |
+| Host、Core、Runtime、协议 | [core.md](core.md) |
 | CLI 子命令、`exec`/`-p`、`areal host` 管理命令 | [cli.md](cli.md) |
 | TUI 界面、按键、恢复 | [tui.md](tui.md) |
 | renderer 界面、本机浏览器、远程网页 | [web.md](web.md) |

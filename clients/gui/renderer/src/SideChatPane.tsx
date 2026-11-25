@@ -1,6 +1,15 @@
 import { sideSelection, sideAnchor, type SideSelection, type SideAnchor } from "./services.js";
 import { errorText } from "./errors/errorCopy.js";
-import { Textarea } from "@areal/ui";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea,
+  TitleTooltip,
+} from "@areal/ui";
+import { ComposerActionButton } from "@areal/ui/compositions";
 import { useComposerPrediction } from "./useComposerPrediction.js";
 import { ContextMeter } from "./ContextMeter.js";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -26,7 +35,15 @@ import { insertSideAnswer, makeBringBackPreview, sideSourceAdvanced } from "./si
 import { composerDraftStorage } from "./composerDraftStorage.js";
 import { sideStartConfiguration } from "./side-model-intent.js";
 import { createSideRestore, type SideRestoreState } from "./side-restore.js";
+import { usePlatformReads } from "./PlatformReadContext.js";
 import type { Action, Data } from "./services.js";
+import {
+  attachedReviewComments,
+  consumeReviewComments,
+  reviewContextParts,
+  reviewCommentKey,
+  useReviewComments,
+} from "./reviewComments.js";
 
 // 编辑器按服务、来源和具体草稿或 Side 隔离；切换目标会卸载旧编辑器。
 export function SideChatPane({
@@ -44,6 +61,7 @@ export function SideChatPane({
   dark: boolean;
   onPanel: (name: string) => void;
 }) {
+  const { t } = useI18n();
   const workspace = useMemo(
     () =>
       new SideDraftWorkspace(localStorage, {
@@ -78,69 +96,73 @@ export function SideChatPane({
     };
   }, [workspace]);
   return (
-    <section className="side-chat-pane" aria-label="侧边聊天">
+    <section className="side-chat-pane" aria-label={t("chat.side.title")}>
       <div className="side-chat-toolbar">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="新讨论"
-          title="新讨论"
-          onClick={() => choose(workspace.newDraft())}
-        >
-          <AddPanelIcon />
-        </Button>
+        <TitleTooltip title={t("chat.side.new")}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={t("chat.side.new")}
+            onClick={() => choose(workspace.newDraft())}
+          >
+            <AddPanelIcon />
+          </Button>
+        </TitleTooltip>
         <Popover open={relatedOpen} onOpenChange={setRelatedOpen}>
-          <PopoverTrigger
-            render={
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="相关侧边讨论"
-                title="相关讨论"
-              >
-                <MoreOptionsIcon />
-              </Button>
-            }
-          />
-          <PopoverContent align="end" className="side-chat-related">
-            <Button
-              unstyled
-              data-slot={undefined}
-              type="button"
-              aria-pressed={contextOpen}
-              onClick={() => {
-                setContextOpen((open) => !open);
-                setRelatedOpen(false);
-              }}
-            >
-              上下文与文件访问
-            </Button>
-            <RelatedSideChats
-              project={project}
-              sourceId={source.id}
-              selectedId={selected.kind === "side" ? selected.id : ""}
-              action={action}
-              showNew={false}
-              onSelect={(id) => choose(id ? workspace.selectSide(id) : workspace.newDraft())}
-            />
-            {workspace
-              .availableDrafts()
-              .filter((draft) => draft.id !== selected.id)
-              .map((draft) => (
+          <TitleTooltip title={t("chat.side.related")}>
+            <PopoverTrigger
+              render={
                 <Button
-                  unstyled
-                  data-slot={undefined}
                   type="button"
-                  key={draft.id}
-                  onClick={() => choose(workspace.selectDraft(draft.id))}
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t("chat.side.related")}
                 >
-                  {localStorage.getItem(workspace.pendingKey(draft))
-                    ? "待核对的讨论"
-                    : "未发送的草稿"}
+                  <MoreOptionsIcon />
                 </Button>
-              ))}
+              }
+            />
+          </TitleTooltip>
+          <PopoverContent align="end" variant="flush">
+            <div className="side-chat-related flex flex-col gap-field p-2.5">
+              <Button
+                unstyled
+                data-slot={undefined}
+                type="button"
+                aria-pressed={contextOpen}
+                onClick={() => {
+                  setContextOpen((open) => !open);
+                  setRelatedOpen(false);
+                }}
+              >
+                上下文与文件访问
+              </Button>
+              <RelatedSideChats
+                project={project}
+                sourceId={source.id}
+                selectedId={selected.kind === "side" ? selected.id : ""}
+                action={action}
+                showNew={false}
+                onSelect={(id) => choose(id ? workspace.selectSide(id) : workspace.newDraft())}
+              />
+              {workspace
+                .availableDrafts()
+                .filter((draft) => draft.id !== selected.id)
+                .map((draft) => (
+                  <Button
+                    unstyled
+                    data-slot={undefined}
+                    type="button"
+                    key={draft.id}
+                    onClick={() => choose(workspace.selectDraft(draft.id))}
+                  >
+                    {localStorage.getItem(workspace.pendingKey(draft))
+                      ? "待核对的讨论"
+                      : "未发送的草稿"}
+                  </Button>
+                ))}
+            </div>
           </PopoverContent>
         </Popover>
       </div>
@@ -195,6 +217,13 @@ function SideChatEditor({
   const previewKey = `${owner}:selection-preview`;
   const workspaceAccessKey = `${owner}:workspace-access`;
   const sideId = selected.kind === "side" ? selected.id : "";
+  const platformReads = usePlatformReads();
+  useEffect(() => {
+    if (sideId) return platformReads?.watch?.({ projectId: project.id, threadId: sideId });
+  }, [platformReads, project.id, sideId]);
+  const reviewKey = reviewCommentKey(project.id, sideId || "new");
+  const reviewDraft = useReviewComments(reviewKey);
+  const reviewComments = attachedReviewComments(reviewDraft.draft);
   const generation = project.core?.connectionGeneration ?? 0;
   const configKey = `${owner}:configuration`;
   const [draftConfig, setDraftConfig] = useState<Data | null>(() => {
@@ -533,6 +562,7 @@ function SideChatEditor({
           operation: "send",
           threadId: sideId,
           text: question,
+          ...(reviewComments.length ? { contextParts: reviewContextParts(reviewComments) } : {}),
         });
       } else {
         const requestId = crypto.randomUUID();
@@ -547,6 +577,7 @@ function SideChatEditor({
           requestId,
           ...(selection ? { selection } : {}),
           ...(anchor ? { anchor } : {}),
+          ...(reviewComments.length ? { contextParts: reviewContextParts(reviewComments) } : {}),
           ...sideStartConfiguration(draftConfig),
         });
         if (!mounted.current || !workspace.isCurrent(token, generation)) return;
@@ -557,6 +588,7 @@ function SideChatEditor({
       }
       if (!mounted.current || !workspace.isCurrent(token, generation)) return;
       plugins.clear();
+      consumeReviewComments(reviewKey, reviewComments);
       workspace.clearAfterSend(token, generation);
       localStorage.removeItem(selectionKey);
       localStorage.removeItem(anchorKey);
@@ -574,35 +606,6 @@ function SideChatEditor({
         setPendingId("");
       }
       setError(errorText(t, failure));
-    } finally {
-      if (mounted.current && workspace.isCurrent(token, generation)) setBusy(false);
-    }
-  };
-  const submitGenUi = async (question: string) => {
-    if (
-      executionBlocked ||
-      busy ||
-      pendingId ||
-      unsettled ||
-      active ||
-      !project.state?.connected ||
-      !sideId ||
-      !validSide ||
-      side.desktop?.archived
-    )
-      throw Error("Side conversation is not available");
-    const token = workspace.capture(generation);
-    setBusy(true);
-    setError("");
-    try {
-      if (!mounted.current || !workspace.isCurrent(token, generation))
-        throw Error("Side conversation changed");
-      await action("side", {
-        projectId: project.id,
-        operation: "send",
-        threadId: sideId,
-        text: question,
-      });
     } finally {
       if (mounted.current && workspace.isCurrent(token, generation)) setBusy(false);
     }
@@ -705,23 +708,35 @@ function SideChatEditor({
           {!sideId && (
             <label>
               文件访问范围{" "}
-              <select
+              <Select
                 value={workspaceAccess}
-                onChange={(event) => {
-                  const value = event.target.value;
+                onValueChange={(value) => {
                   if (value !== "none" && value !== "readOnly") return;
                   localStorage.setItem(workspaceAccessKey, value);
                   setWorkspaceAccess(value);
                 }}
                 disabled={busy || !!pendingId}
               >
-                {(workspaceReadAvailable || workspaceAccess === "readOnly") && (
-                  <option value="readOnly" disabled={!workspaceReadAvailable}>
-                    {workspaceReadAvailable ? "只读当前工作区" : "只读当前工作区（当前不可用）"}
-                  </option>
-                )}
-                <option value="none">仅会话证据</option>
-              </select>
+                <SelectTrigger aria-label={t("common.sideChat.workspaceAccess")}>
+                  <SelectValue>
+                    {workspaceAccess === "readOnly"
+                      ? workspaceReadAvailable
+                        ? t("common.sideChat.workspaceReadOnly")
+                        : t("common.sideChat.workspaceReadOnlyUnavailable")
+                      : t("common.sideChat.evidenceOnly")}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {(workspaceReadAvailable || workspaceAccess === "readOnly") && (
+                    <SelectItem value="readOnly" disabled={!workspaceReadAvailable}>
+                      {workspaceReadAvailable
+                        ? t("common.sideChat.workspaceReadOnly")
+                        : t("common.sideChat.workspaceReadOnlyUnavailable")}
+                    </SelectItem>
+                  )}
+                  <SelectItem value="none">{t("common.sideChat.evidenceOnly")}</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
           )}
           {!sideId && !workspaceReadAvailable && (
@@ -821,7 +836,6 @@ function SideChatEditor({
         )}
         {validSide && (
           <Messages
-            onGenUiFollowUp={submitGenUi}
             key={`${owner}:${sideId}`}
             project={project}
             thread={side}
@@ -839,26 +853,24 @@ function SideChatEditor({
             onReview={() => {}}
             readTurnReview={async () => ({})}
             responseActions={(answer) => (
-              <>
+              <span className="inline-flex items-center gap-1">
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="ghost-subtle"
                   size="sm"
-                  className="side-bring-action"
                   onClick={() => prepareBringBack(answer.text, true)}
                 >
                   带回整条回复
                 </Button>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="ghost-subtle"
                   size="sm"
-                  className="side-bring-action"
                   onClick={() => prepareBringBack(answer.text, false)}
                 >
                   带回选中文字
                 </Button>
-              </>
+              </span>
             )}
           />
         )}
@@ -1060,17 +1072,17 @@ function SideChatEditor({
             )}
             submitControl={
               active && !text.trim() ? (
-                <Button
+                <ComposerActionButton
                   type="button"
                   variant="secondary"
                   size="icon"
-                  className="composer-primary-action composer-stop-action"
+                  mode="stop"
                   aria-label={t("chat.side.stop")}
                   disabled={executionBlocked}
                   onClick={stop}
                 >
                   <StopIcon className="size-4" />
-                </Button>
+                </ComposerActionButton>
               ) : undefined
             }
           />

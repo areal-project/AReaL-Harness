@@ -265,38 +265,42 @@ export function UsageDashboard({ action }: { action: Action }) {
                       value3: day.skillCalls,
                     });
                     return (
-                      <Button
-                        unstyled
-                        data-slot={undefined}
-                        type="submit"
+                      <span
                         key={date}
-                        data-date={date}
-                        className={`usage-cell usage-level-${level(day.activeMs)}`}
-                        aria-label={label}
-                        title={label}
-                        aria-pressed={selected === date}
-                        tabIndex={date === selected ? 0 : -1}
-                        onClick={() => setSelected(date)}
-                        onKeyDown={(e) => {
-                          const delta = (
-                            {
-                              ArrowUp: -1,
-                              ArrowDown: 1,
-                              ArrowLeft: -7,
-                              ArrowRight: 7,
-                            } as Record<string, number>
-                          )[e.key];
-                          if (!delta) return;
-                          e.preventDefault();
-                          const next = new Date(`${date}T12:00:00`);
-                          next.setDate(next.getDate() + delta);
-                          const target = e.currentTarget
-                            .closest(".usage-calendar")
-                            ?.querySelector<HTMLButtonElement>(`[data-date="${dateKey(next)}"]`);
-                          target?.focus();
-                          if (target) setSelected(dateKey(next));
-                        }}
-                      />
+                        className={`usage-cell usage-level-${level(day.activeMs)} inline-flex`}
+                      >
+                        <Button
+                          unstyled
+                          data-slot={undefined}
+                          type="button"
+                          data-date={date}
+                          className="size-full"
+                          aria-label={label}
+                          title={label}
+                          aria-pressed={selected === date}
+                          tabIndex={date === selected ? 0 : -1}
+                          onClick={() => setSelected(date)}
+                          onKeyDown={(e) => {
+                            const delta = (
+                              {
+                                ArrowUp: -1,
+                                ArrowDown: 1,
+                                ArrowLeft: -7,
+                                ArrowRight: 7,
+                              } as Record<string, number>
+                            )[e.key];
+                            if (!delta) return;
+                            e.preventDefault();
+                            const next = new Date(`${date}T12:00:00`);
+                            next.setDate(next.getDate() + delta);
+                            const target = e.currentTarget
+                              .closest(".usage-calendar")
+                              ?.querySelector<HTMLButtonElement>(`[data-date="${dateKey(next)}"]`);
+                            target?.focus();
+                            if (target) setSelected(dateKey(next));
+                          }}
+                        />
+                      </span>
                     );
                   })}
                 </div>

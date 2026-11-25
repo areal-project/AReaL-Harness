@@ -3,6 +3,7 @@ use super::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 pub(crate) struct Lifecycle {
     pub draining: AtomicBool,
+    pub execution_enabled: AtomicBool,
     pub gate: Mutex<()>,
     idle_clock: std::sync::Mutex<IdleClock>,
 }
@@ -14,6 +15,7 @@ impl Default for Lifecycle {
     fn default() -> Self {
         Self {
             draining: AtomicBool::new(false),
+            execution_enabled: AtomicBool::new(true),
             gate: Mutex::new(()),
             idle_clock: std::sync::Mutex::new(IdleClock {
                 since: std::time::Instant::now(),
@@ -62,8 +64,33 @@ fn lifecycle_assessment(
         "executionOutcomes":{"uninspectedUnknown":uninspected_outcomes}})
 }
 impl Engine {
+    pub(crate) fn require_execution_configuration(&self) -> Result<()> {
+        if !self
+            .desktop
+            .lifecycle
+            .execution_enabled
+            .load(Ordering::Acquire)
+        {
+            return Err(invalid(
+                "EXECUTION_CONFIGURATION_UNAVAILABLE: history is readable; repair execution configuration before sending",
+            ));
+        }
+        Ok(())
+    }
+    /// 执行装配失败只关闭工作准入，保留认证后的历史和取消入口。
+    pub fn disable_execution(&self) {
+        self.desktop
+            .lifecycle
+            .execution_enabled
+            .store(false, Ordering::Release);
+    }
     pub(crate) fn accepting_work(&self) -> bool {
-        !self.is_closed() && !self.desktop.lifecycle.draining.load(Ordering::Acquire)
+        self.desktop
+            .lifecycle
+            .execution_enabled
+            .load(Ordering::Acquire)
+            && !self.is_closed()
+            && !self.desktop.lifecycle.draining.load(Ordering::Acquire)
     }
     pub async fn server_status(&self) -> Value {
         let active_tasks = self.task_active_count().await;
@@ -75,6 +102,7 @@ impl Engine {
         let mut compacting = Vec::new();
         let mut active_goals = Vec::new();
         let mut pending_queue_items = 0usize;
+        let mut queues = Vec::new();
         let mut latest_activity = 0i64;
         for cell in &cells {
             if let Some(scope) = self.hook_task_unknown(cell).await {
@@ -107,6 +135,22 @@ impl Engine {
                 active.push(json!({"threadId":s.thread.id,"turnId":a.id}));
             }
             if let Some(d) = &s.thread.desktop {
+                let pending = d
+                    .queue
+                    .items
+                    .iter()
+                    .filter(|item| item.status == "pending")
+                    .count();
+                let running = d
+                    .queue
+                    .items
+                    .iter()
+                    .filter(|item| item.status == "running")
+                    .count();
+                if pending + running > 0 {
+                    queues.push(json!({"threadId":s.thread.id,"paused":d.queue.paused,"pending":pending,"running":running}));
+                }
+                pending_queue_items += pending + running;
                 for hook in &d.hook_runs {
                     if hook.outcome == "running" {
                         resources.push(json!({"threadId":s.thread.id,"id":hook.id,"kind":"hook","state":"running"}));
@@ -118,12 +162,6 @@ impl Engine {
                         );
                     }
                 }
-                pending_queue_items += d
-                    .queue
-                    .items
-                    .iter()
-                    .filter(|item| matches!(item.status.as_str(), "pending" | "running"))
-                    .count();
                 for p in &d.processes {
                     if !p.cleanup_confirmed {
                         resources.push(json!({"threadId":s.thread.id,"id":p.id,"state":p.state,"epoch":p.runtime_epoch}));
@@ -217,8 +255,9 @@ impl Engine {
             resources
                 .push(json!({"kind":"pluginPreparation","state":"running","count":preparations}));
         }
-        let mut status = json!({"configuration":self.configuration_status.read().unwrap().clone(),"activeTasks":active_tasks,"activeGoals":active_goals,"pendingQueueItems":pending_queue_items,"compactions":compacting,"workgroups":groups,"apiVersion":API_VERSION,"stateVersion":crate::store::STATE_VERSION,"productVersion":env!("CARGO_PKG_VERSION"),"draining":self.desktop.lifecycle.draining.load(Ordering::Acquire),"closed":self.is_closed(),"acceptingWork":self.accepting_work(),"activeTurns":active,"resources":resources,"unresolvedTools":unknown,"runtime":runtime,"capacity":{"threads":cells.len(),"maxThreads":self.limits.max_threads,"activeTurns":self.limits.max_active_turns-self.active_turns.available_permits(),"maxActiveTurns":self.limits.max_active_turns,"historyBytesPerThread":self.limits.max_history_bytes,"blobBytes":512*1024*1024u64}});
+        let mut status = json!({"readReady":!self.is_closed(),"executionReady":self.desktop.lifecycle.execution_enabled.load(Ordering::Acquire),"configuration":self.configuration_status.read().unwrap().clone(),"activeTasks":active_tasks,"activeGoals":active_goals,"pendingQueueItems":pending_queue_items,"compactions":compacting,"workgroups":groups,"apiVersion":API_VERSION,"stateVersion":crate::store::STATE_VERSION,"productVersion":env!("CARGO_PKG_VERSION"),"draining":self.desktop.lifecycle.draining.load(Ordering::Acquire),"closed":self.is_closed(),"acceptingWork":self.accepting_work(),"activeTurns":active,"resources":resources,"unresolvedTools":unknown,"runtime":runtime,"capacity":{"threads":cells.len(),"maxThreads":self.limits.max_threads,"activeTurns":self.limits.max_active_turns-self.active_turns.available_permits(),"maxActiveTurns":self.limits.max_active_turns,"historyBytesPerThread":self.limits.max_history_bytes,"blobBytes":512*1024*1024u64}});
         status["lifecycle"] = lifecycle_assessment(&status, unsettled, uninspected_outcomes);
+        status["queues"] = json!(queues);
         status["restartSafe"] = status["lifecycle"]["settled"]["allowed"].clone();
         // 观察、轮询和 WebSocket 心跳不延长空闲时间；活动工作与持久 Turn 时间才计入。
         let mut idle_clock = self.desktop.lifecycle.idle_clock.lock().unwrap();
@@ -482,13 +521,12 @@ impl Engine {
                     }
                 }
                 let mut entry = json!({"providerId":p.id,"providerRevision":p.revision,"modelId":name,"parameters":parameters,"isDefault":default_model.as_ref() == Some(&reference),"transport":p.protocol,"input":capabilities.input,"output":capabilities.output,"available":result.is_ok(),"credentialState":self.provider_view(p)["credentialState"],"contextWindowTokens":window.window_tokens,"effectiveContextWindowTokens":window.window_tokens,"reportedWindowTokens":window.reported_window_tokens,"reportedWindowSource":window.reported_window_source,"userBudgetTokens":window.user_budget_tokens,"windowSource":window.source,"capabilities":declared,"parameterCapabilities":parameter_capabilities,"reasoningEffortOptions":reasoning_efforts,"connectionState":"unchecked"});
-                if let Some(display_name) = self
-                    .desktop
-                    .configured_models
-                    .read()
-                    .unwrap()
-                    .display_names
-                    .get(&(p.id.clone(), name.clone()))
+                let configured = self.desktop.configured_models.read().unwrap();
+                if let Some(provider_name) = configured.provider_names.get(&p.id) {
+                    entry["providerName"] = json!(provider_name);
+                }
+                if let Some(display_name) =
+                    configured.display_names.get(&(p.id.clone(), name.clone()))
                 {
                     entry["displayName"] = json!(display_name);
                 }

@@ -10,9 +10,6 @@ import {
   conversationSelectionScope,
   selectionLimitMessage,
 } from "./conversationSelectionReference.js";
-import { useMcpAppsWorkspace, McpMentionsPicker } from "./McpAppsWorkspace.js";
-import { mcpAppEntrypoints, toolTitle } from "./settings/McpAppsSettings.js";
-import { McpAppIcon } from "./McpAppIcon.js";
 import {
   useBrowserWorkspace,
   browserPageId,
@@ -31,7 +28,6 @@ import { SavedPermissionsPane } from "./SavedPermissionsPane.js";
 import { ImageAnnotationPane } from "./ImageAnnotationViews.js";
 import { setImageAnnotationEditing, type ImageAnnotationTarget } from "./imageAnnotations.js";
 import { Button } from "./components/ui/button.js";
-import type { ComposerCatalogEntry } from "./prompt-editor/ComposerCatalog.js";
 import { call, type Action, type Data, type PlatformServices } from "./services.js";
 import type { SideChatTab, SideResourceBinding } from "./useSideChatTabs.js";
 import "./SideChat.css";
@@ -39,7 +35,6 @@ import "./SideChat.css";
 export function ExecutableSideChatPane({
   tab,
   project,
-  projects,
   services,
   dark,
   active,
@@ -47,7 +42,6 @@ export function ExecutableSideChatPane({
   executionBlocked,
   onNew,
   onOpenResource,
-  onRemoveResource,
   onBackToChat,
   onBinding,
   onInspectClose,
@@ -102,7 +96,6 @@ export function ExecutableSideChatPane({
     onOpenResource(
       `file:${path.startsWith(project.root + "/") ? path.slice(project.root.length + 1) : path}`,
     );
-  const [mentions, setMentions] = useState(false);
   const [review, setReview] = useState<{ threadId: string; turnId: string }>();
   const [annotation, setAnnotation] = useState<ImageAnnotationTarget | null>(null);
   const thread = project.state?.threads?.[tab.childId];
@@ -171,31 +164,12 @@ export function ExecutableSideChatPane({
       }),
     [services, project.id, tab.childId, active],
   );
-  const apps = useMcpAppsWorkspace({
-    services,
-    project,
-    projects,
-    threadId: tab.childId,
-    action,
-    deepLinksEnabled: false,
-    activeTab: active ? resource : "",
-    onOpenThread: async (projectId, threadId) => {
-      if (projectId === project.id && threadId !== tab.childId) setResource(`agent:${threadId}`);
-    },
-    onReveal: (name, owner) => {
-      if (owner.projectId === project.id && owner.threadId === tab.childId && active)
-        setResource(name);
-    },
-    onRemoveTab: onRemoveResource,
-    onError: setError,
-  });
   const bindingCallback = useRef(onBinding);
   bindingCallback.current = onBinding;
   const binding = useRef<SideResourceBinding>({ close: async () => {} });
   binding.current = {
     close: async (name) => {
-      if (name.startsWith("mcp-app:")) await apps.close(name);
-      else if (name.startsWith("browser:"))
+      if (name.startsWith("browser:"))
         await browser.request({
           operation: "release",
           pageId: browserPageId(name),
@@ -212,27 +186,6 @@ export function ExecutableSideChatPane({
     bindingCallback.current({ close: (name) => binding.current.close(name) });
     return () => bindingCallback.current(null);
   }, []);
-  const appEntries: ComposerCatalogEntry[] = mcpAppEntrypoints(apps.servers, "thread").map(
-    ({ server, tool }) => ({
-      value: `app:${server.serverId}:${tool.name}`,
-      label: toolTitle(tool),
-      description: t("chat.side.openApp"),
-      group: "应用",
-      icon: (
-        <McpAppIcon
-          icon={tool.icons?.[0] ?? server.icons?.[0]}
-          size={16}
-          loadMetadataImage={apps.loadMetadataImage}
-        />
-      ),
-      disabled: executionBlocked || !!tab.closeRequestId,
-      run: () => {
-        void apps
-          .openApp(server, tool, { kind: "thread" })
-          .catch((cause) => setError(errorText(t, cause)));
-      },
-    }),
-  );
   const readTurnReview = useCallback(
     (turnId: string, itemId?: string) =>
       action("workspace", {
@@ -246,7 +199,7 @@ export function ExecutableSideChatPane({
   );
   const openReview = (threadId: string, turnId: string) => {
     setReview({ threadId, turnId });
-    setResource("改动");
+    setResource("changes");
   };
   const onReview = (turnId: string) => openReview(tab.childId, turnId);
   useEffect(() => {
@@ -266,7 +219,6 @@ export function ExecutableSideChatPane({
           }}
         />
       );
-    if (resource.startsWith("mcp-app:")) return apps.render(resource);
     if (resource.startsWith("browser:"))
       return (
         <Preview
@@ -290,7 +242,7 @@ export function ExecutableSideChatPane({
           }}
         />
       );
-    if (resource === "改动")
+    if (resource === "changes")
       return (
         <GitPane
           projectId={project.id}
@@ -320,10 +272,10 @@ export function ExecutableSideChatPane({
           onLink={onLink}
           fileOpen={fileOpen}
           filesOpen={false}
-          onToggleFiles={() => setResource("文件")}
+          onToggleFiles={() => setResource("files")}
         />
       );
-    if (resource === "文件")
+    if (resource === "files")
       return (
         <WorkspaceFileTree
           projectId={project.id}
@@ -353,8 +305,8 @@ export function ExecutableSideChatPane({
     const props = { project, thread, action };
     if (resource === "MCP") return <McpSettings {...props} />;
     if (resource === "Skills") return <TaskSkillsSettings {...props} />;
-    if (resource === "上下文") return <ContextPane {...props} />;
-    if (resource === "进程")
+    if (resource === "context") return <ContextPane {...props} />;
+    if (resource === "processes")
       return (
         <ProcessesPane
           {...props}
@@ -363,8 +315,8 @@ export function ExecutableSideChatPane({
           }}
         />
       );
-    if (resource === "执行计划") return <PlanPane {...props} />;
-    if (resource === "已保存授权") return <SavedPermissionsPane {...props} />;
+    if (resource === "plan") return <PlanPane {...props} />;
+    if (resource === "permissions") return <SavedPermissionsPane {...props} />;
     return null;
   };
   return (
@@ -419,8 +371,6 @@ export function ExecutableSideChatPane({
               onReview={onReview}
               readTurnReview={readTurnReview}
               onAgent={(id) => setResource(`agent:${id}`)}
-              onOpenResult={apps.openResult}
-              resultStates={apps.resultStates}
               onAddSelection={(reference) => {
                 const key = `areal-gui:draft:${project.id}:${tab.childId}`;
                 if (
@@ -437,17 +387,6 @@ export function ExecutableSideChatPane({
               }}
             />
           </div>
-          {apps.contexts}
-          {apps.formsView}
-          {mentions && (
-            <McpMentionsPicker
-              servers={apps.servers}
-              projectId={project.id}
-              threadId={tab.childId}
-              action={action}
-              onClose={() => setMentions(false)}
-            />
-          )}
           <Composer
             inputTestId="side-chat-input"
             submitTestId="side-chat-send"
@@ -457,14 +396,12 @@ export function ExecutableSideChatPane({
             action={action}
             readAction={action}
             onPanel={(name) =>
-              name === "预览"
+              name === "preview"
                 ? void openBrowser().catch((cause) => setError(errorText(t, cause)))
                 : setResource(name)
             }
             onNew={onNew}
             onAnnotate={setAnnotation}
-            onMcpMention={() => setMentions(true)}
-            appEntries={appEntries}
           />
         </>
       ) : (
@@ -472,7 +409,6 @@ export function ExecutableSideChatPane({
           {t("chat.side.reading")}
         </p>
       )}
-      {apps.pages}
     </section>
   );
 }

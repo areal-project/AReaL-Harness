@@ -41,16 +41,6 @@ const PAGES = [
     ],
   },
   {
-    name: "电脑控制",
-    state: "window.settings-computer",
-    expect: (region) => [
-      region.getByRole("tablist", { name: "控制方式" }),
-      region.getByRole("switch", { name: "启用电脑控制" }),
-      region.getByRole("heading", { level: 2, name: "系统授权" }),
-      region.getByRole("button", { name: "停止电脑操作" }),
-    ],
-  },
-  {
     name: "工作树",
     state: "window.settings-worktrees",
     expect: (region) => [

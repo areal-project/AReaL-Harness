@@ -1,4 +1,14 @@
-import { DelayedVisible } from "@areal/ui";
+import {
+  ConfirmDialog,
+  DelayedVisible,
+  EmptyState,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@areal/ui";
+import { Terminal } from "lucide-react";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import { errorText } from "./errors/errorCopy.js";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -513,24 +523,46 @@ export function ProcessesPane({
             <p role="status">读取进程中…</p>
           </DelayedVisible>
         ) : (
-          !items.length && !error && <p>此任务暂无受管进程</p>
+          !items.length &&
+          !error && (
+            <EmptyState
+              size="compact"
+              icon={<Terminal size={18} />}
+              title="此任务暂无受管进程"
+              description={t("common.processes.emptyDescription")}
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={() => setCreateOpen(true)}
+                >
+                  {t("common.processes.newCommand")}
+                </Button>
+              }
+            />
+          )
         )}
         <div className="flex flex-col gap-1" aria-label="受管进程列表">
           {items.map((p) => (
             <Button
-              unstyled
-              data-slot={undefined}
               key={p.id}
               data-testid={`process-${p.id}`}
               type="button"
+              variant="surface"
+              size="auto"
+              align="start"
+              active={selected === p.id}
               aria-pressed={selected === p.id}
-              className={`rounded-control border border-border p-2 text-left ${selected === p.id ? "bg-selected" : "hover:bg-hover"}`}
+              className="w-full"
               onClick={() => setSelected(p.id)}
             >
-              <span className="block break-all font-mono">{p.argv.join(" ")}</span>
-              <span className="text-foreground-subtle">
-                {p.cleanupConfirmed ? "已清理" : (records[p.state] ?? p.state)} ·{" "}
-                {p.lifetime === "turn" ? "随本轮执行" : "随会话保留"}
+              <span className="flex min-w-0 flex-col">
+                <span className="block break-all font-mono">{p.argv.join(" ")}</span>
+                <span className="text-foreground-subtle">
+                  {p.cleanupConfirmed ? "已清理" : (records[p.state] ?? p.state)} ·{" "}
+                  {p.lifetime === "turn" ? "随本轮执行" : "随会话保留"}
+                </span>
               </span>
             </Button>
           ))}
@@ -644,7 +676,7 @@ export function ProcessesPane({
               role="log"
               aria-label="进程输出"
               aria-live="off"
-              className="max-h-96 min-h-24 overflow-auto whitespace-pre-wrap break-words rounded-control bg-background-secondary p-2 font-mono text-compact-caption"
+              className="max-h-96 min-h-24 overflow-auto whitespace-pre-wrap break-words rounded-control bg-background-secondary p-2 font-mono text-ui-sm"
             >
               {output || "暂无输出"}
             </pre>
@@ -708,22 +740,30 @@ export function ProcessesPane({
             }}
             placeholder="输入命令脚本"
           />
-          <label>
-            保留范围
-            <select
-              aria-label="保留范围"
+          <div className="flex items-center gap-inline">
+            <span>保留范围</span>
+            <Select
               value={lifetime}
               disabled={creating || unknown}
-              onChange={(event) => {
-                setLifetime(event.target.value);
-                localStorage.setItem(`${draftKey}:lifetime`, event.target.value);
+              onValueChange={(value) => {
+                if (!value) return;
+                setLifetime(value);
+                localStorage.setItem(`${draftKey}:lifetime`, value);
               }}
-              className="ml-2 rounded-control border border-border bg-background p-2"
             >
-              <option value="turn">随本轮执行</option>
-              <option value="thread">随会话保留</option>
-            </select>
-          </label>
+              <SelectTrigger size="sm" aria-label="保留范围">
+                <SelectValue>
+                  {lifetime === "thread"
+                    ? t("common.processes.lifetimeThread")
+                    : t("common.processes.lifetimeTurn")}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="turn">{t("common.processes.lifetimeTurn")}</SelectItem>
+                <SelectItem value="thread">{t("common.processes.lifetimeThread")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <p className="text-foreground-subtle">{t("common.processes.lifetimeHelp")}</p>
           {unknown && <p role="status">创建结果待核对；不能再次创建。</p>}
           {createError && <p role="alert">{createError}</p>}
@@ -746,33 +786,30 @@ export function ProcessesPane({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog
+      <ConfirmDialog
         open={!!confirm}
         onOpenChange={(open) => {
           if (!open && !busy) setConfirm(null);
         }}
-      >
-        <DialogContent className="max-w-md" showCloseButton={!busy}>
-          <DialogHeader>
-            <DialogTitle>停止此进程？</DialogTitle>
-            <DialogDescription>{t("common.processes.stopConfirm")}</DialogDescription>
-          </DialogHeader>
-          <p className="break-all font-mono text-compact-body">{confirm?.argv.join(" ")}</p>
-          {stopError && (
-            <p role="alert" className="text-destructive">
-              {stopError}
-            </p>
-          )}
-          <DialogFooter>
-            <Button variant="outline" disabled={busy} onClick={() => setConfirm(null)}>
-              取消
-            </Button>
-            <Button variant="destructive" disabled={disabled} onClick={() => void stop()}>
-              {busy ? "停止中…" : "确认停止"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        tone="destructive"
+        title="停止此进程？"
+        description={t("common.processes.stopConfirm")}
+        impact={
+          confirm ? (
+            <div className="flex flex-col gap-1">
+              <span className="break-all font-mono text-ui-base">{confirm.argv.join(" ")}</span>
+              {stopError && <span role="alert">{stopError}</span>}
+            </div>
+          ) : undefined
+        }
+        confirmLabel="停止并清理"
+        cancelLabel="保留运行"
+        pending={busy}
+        pendingLabel="停止中…"
+        onConfirm={() => {
+          if (!disabled) void stop();
+        }}
+      />
     </section>
   );
 }

@@ -15,12 +15,16 @@ import {
 import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createIdentity } from "../packages/remote/src/channel.mjs";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const { HostClient } = require("@areal/client/node");
-const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
-const { HostRemote } = require("@areal/workbench-service/desktop/core/host-remote.cjs");
-const { NativeRemote } = require("@areal/workbench-service/desktop/core/native-remote.cjs");
+const { GuiSourceSession, requestIdFor } = require("@areal/client/gui-source");
+const {
+  isRemoteRequest,
+  isRemoteStatus,
+} = require("@areal/workbench/desktop-contract/desktop-control");
 const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 async function until(read, label) {
@@ -30,6 +34,106 @@ async function until(read, label) {
     await new Promise((done) => setTimeout(done, 25));
   }
   throw new Error(`Timeout: ${label}`);
+}
+
+// 供隔离进程夹具使用，直接通过原生 Host 登记、交接和订阅。
+export async function connectNativeRemote({ home, sourceId, owner, config }) {
+  const client = new HostClient();
+  let saved, view, pending;
+  const read = async () => {
+    saved = await client.request("remote.read", {});
+    assert.ok(saved.sourceId === null || saved.sourceId === sourceId);
+  };
+  const accept = (state) => {
+    assert.ok(isRemoteStatus(state));
+    view = state;
+    return view;
+  };
+  const refresh = async () => accept(await client.request("remote.gateway.state", { sourceId }));
+  const remote = {
+    get config() {
+      return saved.config;
+    },
+    state: () => view,
+    refresh,
+    control(request) {
+      if (!isRemoteRequest(request)) throw Error("无效手机设置参数");
+      if (request.operation === "status") return refresh();
+      const task = (pending ?? Promise.resolve()).then(async () => {
+        const requestId = randomUUID();
+        const result = await client.request("remote.gateway.control", {
+          requestId,
+          expectedGeneration: client.generation,
+          sourceId,
+          request,
+        });
+        await read();
+        await refresh();
+        return result;
+      });
+      pending = task;
+      void task
+        .finally(() => {
+          if (pending === task) pending = undefined;
+        })
+        .catch(() => {});
+      return task;
+    },
+    async close() {
+      await Promise.allSettled([pending]);
+      client.close();
+    },
+  };
+  try {
+    await client.connect(home);
+    assert.equal(client.hostId, owner.hostId);
+    assert.equal(client.generation, owner.generation);
+    await read();
+    if (saved.owner !== "native") {
+      if (!saved.config) {
+        const requestId = randomUUID();
+        const receipt = await client.request("remote.replace", {
+          requestId,
+          expectedGeneration: client.generation,
+          sourceId,
+          expectedRevision: saved.revision,
+          config: config ?? {
+            enabled: false,
+            directEnabled: false,
+            schemaVersion: 2,
+            identity: await createIdentity(),
+          },
+        });
+        assert.equal(receipt.requestId, requestId);
+        assert.equal(receipt.sourceId, sourceId);
+        assert.equal(receipt.previousRevision, saved.revision);
+        assert.equal(receipt.state, "completed");
+        await read();
+        assert.equal(saved.revision, receipt.revision);
+      }
+      const requestId = randomUUID();
+      const receipt = await client.request("remote.gateway.handoff", {
+        requestId,
+        expectedGeneration: client.generation,
+        sourceId,
+        expectedRevision: saved.revision,
+        assetRoot: await realpath(fileURLToPath(new URL("../renderer/dist", import.meta.url))),
+      });
+      assert.equal(receipt.requestId, requestId);
+      assert.equal(receipt.hostId, client.hostId);
+      assert.equal(receipt.generation, client.generation);
+      assert.equal(receipt.sourceId, sourceId);
+      assert.equal(receipt.revision, saved.revision);
+      assert.equal(receipt.state, "completed");
+      await read();
+      assert.equal(saved.owner, "native");
+    }
+    await client.subscribeGateway(sourceId, accept);
+    return remote;
+  } catch (error) {
+    await remote.close();
+    throw error;
+  }
 }
 
 // 只提供真实 Host 的本地配置生产者；Remote 请求仍由原客户端进入 Rust owner。
@@ -44,7 +148,9 @@ export async function nativeHostFixture(
   } = {},
 ) {
   assert.ok(
-    process.platform !== "darwin" || process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
+    (deferNative && !config) ||
+      process.platform !== "darwin" ||
+      process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
     "Requires isolated synthetic Host vault authorization",
   );
   assert.ok(
@@ -58,7 +164,7 @@ export async function nativeHostFixture(
   const home = join(root, "registry");
   await mkdir(home, { mode: 0o700 });
   const host = new HostClient();
-  const source = new GuiHostProjects({
+  const source = new GuiSourceSession({
     binary,
     home,
     singletonHeld: true,
@@ -74,11 +180,17 @@ export async function nativeHostFixture(
       decryptString: (value) => value.toString("utf8"),
     },
   });
-  const backend = {
-    host: source,
-    home: source.source.coreHome,
-    save: (name, value) =>
-      writeFile(join(source.source.coreHome, name), JSON.stringify(value), { mode: 0o600 }),
+  const register = async (requestId, project) => {
+    const { projects } = await host.listProjects();
+    return host.registerProject(requestId, {
+      projectId: requestIdFor(`${source.sourceId}:${project.id}`),
+      workspace: project.root,
+      dataDir: join(source.source.coreHome, project.id, "state"),
+      source: { kind: "gui", profile: source.source.profile, legacyProjectId: project.id },
+      defaultBinding: !projects.some(
+        (item) => item.workspace === project.root && item.defaultBinding,
+      ),
+    });
   };
   const instances = [];
   const evidence = { root, binary, binarySha256: digest(await readFile(binary)), cleanup: [] };
@@ -266,6 +378,8 @@ export async function nativeHostFixture(
       else assert.equal(child.exitCode, 0);
       phase = "synthetic-keychain-cleanup";
       const service = `org.areal.host.v1.${digest(home)}`;
+      // 非敏感 remote.replace 会沿用同一 entryId；按 entryId 去重避免重复校验/删除同一文件。
+      const cleanedEntries = new Set();
       for (const directory of ["vault-operations", "remote-operations"]) {
         for (const name of await readdir(join(home, "host", directory)).catch((error) => {
           if (error.code === "ENOENT") return [];
@@ -273,8 +387,13 @@ export async function nativeHostFixture(
         })) {
           const receipt = JSON.parse(await readFile(join(home, "host", directory, name), "utf8"));
           assert.equal(name, `${receipt.requestId}.json`);
-          if (!["vault.replace", "remote.replace"].includes(receipt.method) || !receipt.entryId)
+          if (
+            !["vault.replace", "remote.replace"].includes(receipt.method) ||
+            !receipt.entryId ||
+            cleanedEntries.has(receipt.entryId)
+          )
             continue;
+          cleanedEntries.add(receipt.entryId);
           if (process.platform === "darwin") {
             const removal = spawnSync(
               "/usr/bin/security",
@@ -317,7 +436,7 @@ export async function nativeHostFixture(
       evidence.cleanupError = { phase, message: String(error) };
       throw error;
     } finally {
-      for (const remote of instances) remote.storage.close();
+      for (const remote of instances) await remote.close();
       source.close();
       host.close();
       if (child.exitCode === null && child.signalCode === null) {
@@ -344,20 +463,14 @@ export async function nativeHostFixture(
   identity = JSON.parse(await readFile(join(home, "host/host.json"), "utf8"));
   evidence.host = identity;
   await source.init();
-  if (config) {
-    const storage = new HostRemote(backend, () => {});
-    try {
-      await storage.init();
-      await storage.replace(config);
-      await storage.drained();
-    } finally {
-      storage.close();
-    }
-  }
   const make = async () => {
-    const remote = new NativeRemote({ backend, schedule() {} });
+    const remote = await connectNativeRemote({
+      home,
+      sourceId: source.sourceId,
+      owner: host,
+      config,
+    });
     instances.push(remote);
-    await remote.init();
     return remote;
   };
   const restart = async () => {
@@ -419,7 +532,6 @@ export async function nativeHostFixture(
     assert.notEqual(identity.pid, previous.pid);
     evidence.host = identity;
     observation.after = identity;
-    await source.reconnect();
     restartReference = null;
     const remote = await make();
     await writeFile(join(root, "evidence.json"), JSON.stringify(evidence, null, 2));
@@ -466,7 +578,6 @@ export async function nativeHostFixture(
     assert.equal(identity.pid, child.pid);
     evidence.host = identity;
     observation.after = identity;
-    await source.reconnect();
     return make();
   };
   const resumeOwnedHost = async (pid) => {
@@ -484,6 +595,7 @@ export async function nativeHostFixture(
     resumeOwnedHost,
     home,
     source,
+    register,
     client: host,
     evidence,
     persisted: async () => (await host.request("remote.read", {})).config,

@@ -2,8 +2,8 @@
 id: settings-dialog
 title: SettingsDialog
 summary: 设置弹窗、工具栏与空态。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: settings
 category: composition
 aliases: ["设置弹窗、工具栏与空态"]

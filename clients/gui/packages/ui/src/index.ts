@@ -64,7 +64,6 @@ export {
 } from "./components/context-menu/context-menu.js";
 export { ActionButton } from "./components/action-button/action-button.js";
 export { ControlHintTooltip } from "./components/control-hint-tooltip/control-hint-tooltip.js";
-
 export {
   Dialog,
   DialogClose,
@@ -79,3 +78,72 @@ export {
 } from "./components/dialog/dialog.js";
 export { DelayedVisible, Skeleton } from "./components/skeleton/skeleton.js";
 export { useDelayedVisible } from "./lib/delayed-visibility.js";
+export { Disclosure } from "./components/disclosure/disclosure.js";
+export { NotificationToast } from "./components/notification-toast/notification-toast.js";
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardAction,
+  CardDescription,
+  CardContent,
+} from "./components/card/card.js";
+export {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupText,
+  InputGroupInput,
+  InputGroupTextarea,
+} from "./components/input-group/input-group.js";
+export {
+  Command,
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandShortcut,
+  CommandSeparator,
+} from "./components/command/command.js";
+export { Spinner } from "./components/spinner/spinner.js";
+export { HoverActions } from "./components/hover-actions/hover-actions.js";
+export { FeedbackNotice } from "./components/feedback-notice/feedback-notice.js";
+export {
+  CodeViewer,
+  CodeCommentAnnotation,
+  resolveCodeViewerColorScheme,
+  isCodeCommentSubmitShortcut,
+  isCodeCommentCancelShortcut,
+  formatCodeCommentSubmitShortcutLabel,
+  formatCodeCommentCancelShortcutLabel,
+  type CodeViewerProps,
+  type CodeCommentLabels,
+} from "./components/code-viewer/code-viewer.js";
+export {
+  DiffViewer,
+  type DiffViewerProps,
+  type DiffViewerSelectedLineRange,
+} from "./components/diff-viewer/diff-viewer.js";
+export { Kbd, type KbdProps } from "./components/kbd/kbd.js";
+export { Badge, type BadgeProps } from "./components/badge/badge.js";
+export { Callout, type CalloutProps } from "./components/callout/callout.js";
+export { EmptyState, type EmptyStateProps } from "./components/empty-state/empty-state.js";
+export {
+  ConfirmDialog,
+  type ConfirmDialogProps,
+} from "./components/confirm-dialog/confirm-dialog.js";
+export {
+  Sheet,
+  SheetBody,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  type SheetContentProps,
+} from "./components/sheet/sheet.js";

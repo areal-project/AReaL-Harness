@@ -132,7 +132,7 @@ describe("composer reasoning capabilities", () => {
       reasoning: true,
       options: [],
       known: false,
-      expected: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+      expected: ["none", "medium", "low", "high", "xhigh"],
     },
     {
       name: "non-reasoning model",
@@ -264,7 +264,7 @@ describe("unavailable model guidance", () => {
       expect(markup.match(/缺少 API Key/g)).toHaveLength(1);
       expect(markup).not.toContain('type="radio"');
       menu.actions.get("chat.composer.configureModels")?.();
-      expect(openSettings).toHaveBeenCalledWith("模型服务");
+      expect(openSettings).toHaveBeenCalledWith("providers");
     } finally {
       menu.expanded = false;
       menu.actions.clear();
@@ -289,7 +289,7 @@ describe("unavailable model guidance", () => {
     expect(markup).toContain("chat.composer.noModels");
     expect(markup).toContain('aria-label="chat.composer.noModelsGuidance"');
     menu.actions.get("chat.composer.noModelsGuidance")?.();
-    expect(openSettings).toHaveBeenCalledWith("模型服务");
+    expect(openSettings).toHaveBeenCalledWith("providers");
     menu.actions.clear();
   });
 

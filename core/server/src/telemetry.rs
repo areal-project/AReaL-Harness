@@ -120,7 +120,7 @@ pub struct TelemetryGuard {
     provider: Option<opentelemetry_sdk::trace::SdkTracerProvider>,
     logger_provider: Option<opentelemetry_sdk::logs::SdkLoggerProvider>,
     durable_provider: Option<opentelemetry_sdk::logs::SdkLoggerProvider>,
-    capture_health: Option<crate::trajectory::CaptureHealth>,
+    capture_health: Option<areal_trajectory::CaptureHealth>,
 }
 
 impl TelemetryGuard {
@@ -136,27 +136,35 @@ impl TelemetryGuard {
             .with_attribute(KeyValue::new("service.version", env!("CARGO_PKG_VERSION")))
             .build();
         let capture_health = trajectory.enabled.then(|| {
-            let health = crate::trajectory::CaptureHealth::new(trajectory);
+            let health = areal_trajectory::CaptureHealth::new(trajectory);
             health.activate();
             health
         });
         let durable = if let Some(health) = &capture_health {
             // 用户提示统一由客户端状态入口负责，Core 不重复向继承终端输出。
-            crate::trajectory::Processor::with_health(trajectory, health.clone()).ok()
+            areal_trajectory::Processor::with_health(
+                trajectory,
+                health.clone(),
+                areal_trajectory::BuildIdentity {
+                    revision: env!("AREAL_BUILD_REVISION"),
+                    dirty: env!("AREAL_BUILD_DIRTY"),
+                },
+            )
+            .ok()
         } else {
             let control = trajectory.clone();
             let _ = std::thread::Builder::new()
                 .name("areal-trajectory-disable".into())
                 .spawn(move || {
                     // 停用失败仅影响可选采集，由状态命令报告，不改变主服务启动结果。
-                    let _ = crate::trajectory::configure_on_startup(&control);
+                    let _ = areal_trajectory::configure_on_startup(&control);
                 });
             None
         };
         let durable_enabled = durable.is_some();
         let durable_drops = durable
             .as_ref()
-            .map(crate::trajectory::Processor::drop_counter);
+            .map(areal_trajectory::Processor::drop_counter);
         if durable_enabled {
             areal_engine::configure_trajectory_capture_budget(trajectory.max_memory_bytes / 4);
         }
@@ -245,7 +253,7 @@ impl TelemetryGuard {
         })
     }
 
-    pub(crate) fn capture_health(&self) -> Option<crate::trajectory::CaptureHealth> {
+    pub(crate) fn capture_health(&self) -> Option<areal_trajectory::CaptureHealth> {
         self.capture_health.clone()
     }
 

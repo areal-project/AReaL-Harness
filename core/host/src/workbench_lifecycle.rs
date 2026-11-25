@@ -1,12 +1,12 @@
 //! 桌面生命周期聚合只在 Host 写回执；单项目停止继续复用原 Host 受理与清理证明。
 use super::*;
-use serde::Deserialize;
 use std::{cell::RefCell, path::Path};
 
 thread_local! {
     static GATES: RefCell<BTreeMap<PathBuf, Rc<Mutex<()>>>> = RefCell::default();
     static OWNERS: RefCell<BTreeMap<String, (String,String)>> = RefCell::default();
 }
+#[cfg(test)]
 const KINDS: &[&str] = &[
     "stopDesktop",
     "updateDesktop",
@@ -20,6 +20,7 @@ const UNRESOLVED: &[&str] = &[
     "settlementIncomplete",
 ];
 
+#[cfg(test)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Request {
@@ -31,6 +32,7 @@ struct Request {
     thread_id: Option<String>,
     turn_id: Option<String>,
 }
+#[cfg(test)]
 #[derive(Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Target {
@@ -170,9 +172,6 @@ fn checked_target(
         "CONFIRMATION_STALE"
     );
     Ok(canonical.clone())
-}
-pub(super) fn current_generation(source: &str) -> Option<String> {
-    OWNERS.with(|owners| owners.borrow().get(source).map(|owner| owner.1.clone()))
 }
 pub(super) fn host_receipt(target: &mut Value, operation: &Value, cancel: bool) -> Result<()> {
     ensure!(
@@ -316,12 +315,26 @@ pub(super) async fn read_request(
             "records":records.into_iter().map(public_record).collect::<Vec<_>>()}),
         );
     }
+    if let Some(generation) = params.get("desktopGeneration") {
+        uuid::Uuid::parse_str(generation.as_str().context("LIFECYCLE_INVALID_REQUEST")?)
+            .context("LIFECYCLE_INVALID_REQUEST")?;
+    }
     let id = params["requestId"]
         .as_str()
         .context("LIFECYCLE_INVALID_REQUEST")?;
     let Some(mut record) = read(&directory, id)? else {
         return Ok(Value::Null);
     };
+    let verify_generation = |record: &Value| -> Result<()> {
+        ensure!(
+            params
+                .get("desktopGeneration")
+                .is_none_or(|generation| generation == &record["desktopGeneration"]),
+            "LIFECYCLE_RECEIPT_INVALID"
+        );
+        Ok(())
+    };
+    verify_generation(&record)?;
     if operation == "reconcile" {
         let gate = GATES.with(|gates| {
             gates
@@ -332,6 +345,7 @@ pub(super) async fn read_request(
         });
         let _guard = gate.lock().await;
         record = read(&directory, id)?.context("LIFECYCLE_RECEIPT_INVALID")?;
+        verify_generation(&record)?;
         // 旧 JS 回执保留为历史事实，不把原 UNKNOWN 迁成可重放请求。
         if record["rustOwner"] == true {
             settle(host, &bindings(host, source)?, &mut record).await?;
@@ -343,6 +357,7 @@ pub(super) async fn read_request(
     Ok(public_record(record))
 }
 
+#[cfg(test)]
 pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Result<Value> {
     let request: Request = serde_json::from_value(input).context("LIFECYCLE_INVALID_REQUEST")?;
     uuid::Uuid::parse_str(&request.request_id).context("LIFECYCLE_INVALID_REQUEST")?;
@@ -447,23 +462,6 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Resu
                             .any(|requested| target["projectId"] == requested.project_id)
                 ),
             "LIFECYCLE_INCOMPLETE"
-        );
-    }
-    if desktop(&request.kind) {
-        let dependencies = host
-            .gateway
-            .workbench
-            .backend_private("lifecycle.dependencies", json!({}))
-            .await?;
-        ensure!(
-            dependencies["inflight"] == 0
-                && dependencies["starting"] == 0
-                && dependencies["providerUpdating"] == false
-                && (request.kind != "updateDesktop"
-                    || dependencies["clients"]
-                        .as_u64()
-                        .is_some_and(|count| count <= 1)),
-            "LIFECYCLE_BLOCKED"
         );
     }
     // 停止的观察属于原命令，不能依赖界面的线程阅读订阅；先订阅再派发，避免漏掉快速终态。
@@ -618,26 +616,6 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Resu
         let changed = tokio::time::timeout_at(deadline, changed).await;
         if !matches!(changed, Ok(true)) {
             break;
-        }
-    }
-    if desktop(&request.kind)
-        && record["targets"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|target| target["phase"] == "completed")
-    {
-        if host
-            .gateway
-            .workbench
-            .backend_private("lifecycle.flush", json!({}))
-            .await
-            .is_ok()
-        {
-            record["desktopExit"] = json!("requested");
-        } else {
-            record["desktopError"] =
-                json!({"code":"LIFECYCLE_RECEIPT_WRITE_FAILED","message":"后台写入尚未结算"});
         }
     }
     derive(&mut record);

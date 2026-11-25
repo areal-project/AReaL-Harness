@@ -1,7 +1,10 @@
 import type { HostClient } from "@areal/client";
 import { configurationIdentity, type ReadProject } from "./host-snapshot.js";
 
-type Cache = Map<string, { identity: string; scope?: string; value?: Record<string, unknown> }>;
+type Cache = Map<
+  string,
+  { identity: string; scope?: string; connectionId?: string; value?: Record<string, unknown> }
+>;
 type ShellProject = {
   projectId: string;
   state: string;
@@ -11,7 +14,10 @@ type ShellProject = {
 
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
-const RETRY_MS = 5000;
+// 目录读取是后台补全，不把暂时未就绪的项目变成可见的五秒空白。
+const RETRY_MS = 1000;
+const inspectionFlights = new WeakMap<HostClient, { connectionId: string; count: number }>();
+const catalogFlights = new WeakMap<HostClient, { connectionId: string; count: number }>();
 
 // 每个连接一份：模型服务设置变化后加一，同一代 Core 的目录重读，重读期间继续显示旧目录。
 const stalenessByClient = new WeakMap<
@@ -45,21 +51,45 @@ export function refreshModelCatalogs(
   projects: readonly ShellProject[],
   catalogs: Cache,
   publish: () => void,
+  providerRevision?: string,
 ) {
   const stale = staleness(client);
   stale.wake = publish;
   const connection = client.snapshot();
   if (connection.connection !== "ready") return;
+  let owner = catalogFlights.get(client);
+  if (!owner || owner.connectionId !== connection.identity.connectionId) {
+    owner = { connectionId: connection.identity.connectionId, count: 0 };
+    catalogFlights.set(client, owner);
+  }
+  const flights = owner;
   for (const project of projects) {
-    if (project.state !== "ready") continue;
+    // 过渡：到 0.2.0 删；0.1.23 首次公开发布完成一次停机导入后移除隔离状态。
+    if (project.state === "legacyPending") continue;
     const scope = JSON.stringify([connection.identity.connectionId, project.serviceGeneration]);
-    const identity = `${scope}#${stale.epoch}#${String(project.modelCatalogRevision ?? "")}`;
+    const identity = `${scope}#${stale.epoch}#${String(project.modelCatalogRevision ?? "")}#${providerRevision ?? ""}`;
     const previous = catalogs.get(project.projectId);
     if (previous?.identity === identity) continue;
+    // 后台目录逐批读取，让用户请求有连接容量。
+    if (flights.count >= 2) break;
+    flights.count++;
+    const carriedValue =
+      previous?.connectionId === connection.identity.connectionId && previous.value
+        ? previous.scope === scope
+          ? previous.value
+          : {
+              // 同一连接上 Core 换代时，不把旧代的实时能力（如 fullAccess）或旧 Profile 列表带入新代。
+              models: previous.value.models,
+              ...(previous.value.defaultProfile !== undefined
+                ? { defaultProfile: previous.value.defaultProfile }
+                : {}),
+            }
+        : undefined;
     const entry: NonNullable<ReturnType<Cache["get"]>> = {
       identity,
       scope,
-      ...(previous?.scope === scope && previous.value ? { value: previous.value } : {}),
+      connectionId: connection.identity.connectionId,
+      ...(carriedValue ? { value: carriedValue } : {}),
     };
     catalogs.set(project.projectId, entry);
     void client
@@ -67,8 +97,14 @@ export function refreshModelCatalogs(
       .then((value) => {
         if (catalogs.get(project.projectId) !== entry) return;
         if (!object(value) || !Array.isArray(value.models)) throw new Error("INVALID_RESPONSE");
-        entry.value = value;
-        publish();
+        // 同一 Core 代际下目录刷新若回退到持久化模型列表，不擦除本代已确认的实时能力。
+        entry.value =
+          carriedValue &&
+          previous?.scope === scope &&
+          value.features === undefined &&
+          carriedValue.features !== undefined
+            ? { ...value, features: carriedValue.features }
+            : value;
       })
       .catch(() => {
         // 后台可能还在连接；这一代的条目先占着挡住重绘重读，过了退避再放开重试。
@@ -77,6 +113,10 @@ export function refreshModelCatalogs(
           catalogs.delete(project.projectId);
           publish();
         }, RETRY_MS);
+      })
+      .finally(() => {
+        flights.count--;
+        if (catalogFlights.get(client) === flights) publish();
       });
   }
 }
@@ -90,8 +130,16 @@ export function refreshInspections(
 ) {
   const connection = client.snapshot();
   if (connection.connection !== "ready") return;
+  let flights = inspectionFlights.get(client);
+  if (!flights || flights.connectionId !== connection.identity.connectionId) {
+    flights = { connectionId: connection.identity.connectionId, count: 0 };
+    inspectionFlights.set(client, flights);
+  }
+  const owner = flights;
   for (const project of projects) {
+    if (!project.state.connected) continue;
     for (const threadId of Object.keys(project.state.threads)) {
+      if (project.state.threads[threadId]?.cloud) continue;
       const configuration = project.state.threads[threadId]?.desktop?.configuration;
       if (!object(configuration)) continue;
       const key = `${project.id}:${threadId}`;
@@ -102,6 +150,8 @@ export function refreshInspections(
       ]);
       if (inspections.get(key)?.identity === identity && inspections.get(key)?.scope === scope)
         continue;
+      if (owner.count >= 2) continue;
+      owner.count++;
       const entry: { identity: string; scope: string; value?: Record<string, unknown> } = {
         identity,
         scope,
@@ -135,23 +185,24 @@ export function refreshInspections(
             inspections.delete(key);
             publish();
           }, RETRY_MS);
+        })
+        .finally(() => {
+          owner.count--;
+          publish();
         });
     }
   }
 }
 
-/** 浏览器拿不到本机文件夹选择框；本机网页让用户填路径，登记仍由桌面后台完成。 */
+/** 本机网页接受文件夹路径，由 Host 登记后刷新项目列表。 */
 export async function chooseHostProject(client: HostClient) {
-  if (!client.writable("desktop.command")) throw new Error("此功能需要桌面应用");
+  if (!client.writable("worktree.project.add")) throw new Error("当前连接无法登记项目");
   const path = globalThis.prompt("输入项目文件夹的完整路径")?.trim();
   if (!path) return null;
-  const id = await client.workbench("desktop.command", {
-    command: "addProject",
-    request: { path },
-  });
-  if (typeof id !== "string") throw new Error("项目登记结果无效");
-  client.refreshShell();
-  return id;
+  const value = await client.workbench("worktree.project.add", { root: path });
+  if (!object(value) || typeof value.projectId !== "string") throw new Error("项目登记结果无效");
+  await client.refreshShell();
+  return value.projectId;
 }
 
 export async function reviewToken(

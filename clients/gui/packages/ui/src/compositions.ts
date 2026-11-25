@@ -5,6 +5,133 @@ export { SettingsRow } from "./settings/settings-row/settings-row.js";
 export { SettingsSearchInput } from "./settings/settings-search-input/settings-search-input.js";
 export { SettingsSegmentedTabs } from "./settings/settings-segmented-tabs/settings-segmented-tabs.js";
 export { SettingsDisclosure } from "./components/settings-disclosure/settings-disclosure.js";
-export { SettingsSelect } from "./settings/settings-select/settings-select.js";
+export {
+  SettingsSelect,
+  SettingsLockedValue,
+  SettingsBadge,
+  SettingsSwitch,
+  SettingsValueAction,
+} from "./settings/settings-select/settings-select.js";
+export {
+  SettingsDialog,
+  SettingsToolbar,
+  EmptySettings,
+} from "./settings/settings-dialog/settings-dialog.js";
 export { DecisionCard } from "./conversation/decision-card/decision-card.js";
 export { CollapsibleText } from "./conversation/collapsible-text/collapsible-text.js";
+export { ActivityGroup } from "./conversation/activity-group/activity-group.js";
+export {
+  ActivityRow,
+  ActivityRowButton,
+  ActivityRowText,
+  ActivityRowStatus,
+  ActivityRowChevron,
+  ActivityRowHint,
+} from "./conversation/activity-row/activity-row.js";
+export { ImageDisclosure } from "./conversation/image-disclosure/image-disclosure.js";
+export { TaskContext } from "./conversation/task-context/task-context.js";
+export { SubagentPanel } from "./conversation/subagent-panel/subagent-panel.js";
+export { ThinkingStatus } from "./conversation/thinking-status/thinking-status.js";
+export { ComposerSurface } from "./conversation/composer-surface/composer-surface.js";
+export {
+  ComposerToolbar,
+  ComposerActionButton,
+} from "./conversation/composer-toolbar/composer-toolbar.js";
+export { CommandDetails } from "./conversation/command-details/command-details.js";
+export { AttachmentCard } from "./conversation/attachment-card/attachment-card.js";
+export {
+  type MarkdownBlockquoteProps,
+  MarkdownBlockquote,
+} from "./conversation/markdown-blockquote/markdown-blockquote.js";
+export {
+  type MarkdownUnorderedListProps,
+  MarkdownUnorderedList,
+  type MarkdownOrderedListProps,
+  MarkdownOrderedList,
+  type MarkdownListItemProps,
+  MarkdownListItem,
+} from "./conversation/markdown-list/markdown-list.js";
+export { MessageCodeBlock } from "./conversation/message-code-block/message-code-block.js";
+export { MarkdownSurface } from "./conversation/markdown-surface/markdown-surface.js";
+export { NativeContent } from "./conversation/native-content/native-content.js";
+export { QuestionCard, QuestionSummary } from "./conversation/question-card/question-card.js";
+export {
+  ThreadSummaryPanel,
+  ThreadSummaryItem,
+  type ThreadSummaryPanelProps,
+  type ThreadSummaryItemProps,
+} from "./conversation/thread-summary-panel/thread-summary-panel.js";
+export {
+  ComposerRequestStack,
+  type ComposerRequestStackProps,
+} from "./conversation/composer-request-stack/composer-request-stack.js";
+export {
+  WorkedForDivider,
+  type WorkedForDividerProps,
+} from "./conversation/worked-for-divider/worked-for-divider.js";
+export {
+  ThreadFindBar,
+  type ThreadFindBarProps,
+} from "./conversation/thread-find-bar/thread-find-bar.js";
+export {
+  PopoverSidebar,
+  type PopoverSidebarProps,
+} from "./workbench/popover-sidebar/popover-sidebar.js";
+export {
+  AutomationTemplateDialog,
+  type AutomationTemplateDialogProps,
+} from "./workbench/automation-template-dialog/automation-template-dialog.js";
+export {
+  ShortcutCapture,
+  type ShortcutCaptureProps,
+} from "./settings/shortcut-capture/shortcut-capture.js";
+export {
+  WorkbenchShell,
+  WorkspaceHeader,
+  WorkSurface,
+  NavigationSidebar,
+} from "./workbench/workbench-shell/workbench-shell.js";
+export { SidePaneFrame } from "./workbench/side-pane-frame/side-pane-frame.js";
+export { SidePaneLauncher } from "./workbench/side-pane-launcher/side-pane-launcher.js";
+export { SettingsNavigation } from "./workbench/settings-navigation/settings-navigation.js";
+export type { SettingsNavigationGroup } from "./workbench/settings-navigation/settings-navigation.js";
+export { TaskTitleOverflowText } from "./workbench/task-title-overflow/task-title-overflow.js";
+export { MemoTaskItem } from "./workbench/task-list-item/task-list-item.js";
+export { ResourceScope, CatalogEmpty } from "./workbench/resource-controls/resource-controls.js";
+export { ScheduledWorkspace } from "./workbench/scheduled-workspace/scheduled-workspace.js";
+export { WorktreePicker } from "./worktree/worktree-picker/worktree-picker.js";
+export { WorktreeStatus } from "./worktree/worktree-status/worktree-status.js";
+export { WorktreeDirectory } from "./worktree/worktree-directory/worktree-directory.js";
+export { WorktreeSettings } from "./worktree/worktree-settings/worktree-settings.js";
+export { WorktreeWorkspace } from "./worktree/worktree-workspace/worktree-workspace.js";
+export {
+  type AttachmentData,
+  type AttachmentMediaCategory,
+  type AttachmentVariant,
+  type AttachmentsProps,
+  Attachments,
+  type AttachmentProps,
+  Attachment,
+  type AttachmentPreviewProps,
+  AttachmentPreview,
+  type AttachmentInfoProps,
+  AttachmentInfo,
+  type AttachmentRemoveProps,
+  AttachmentRemove,
+} from "./conversation/message-attachments/message-attachments.js";
+export {
+  MarkdownTable,
+  MarkdownTableHeader,
+  MarkdownTableBody,
+  MarkdownTableRow,
+  MarkdownTableHead,
+  MarkdownTableCell,
+  type MarkdownTableRows,
+  type MarkdownTableLabels,
+  type MarkdownTableProps,
+  type MarkdownTableHeaderProps,
+  type MarkdownTableBodyProps,
+  type MarkdownTableRowProps,
+  type MarkdownTableHeadProps,
+  type MarkdownTableCellProps,
+} from "./conversation/markdown-table/markdown-table.js";

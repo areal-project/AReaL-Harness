@@ -2,13 +2,23 @@
 
 # 架构与目录
 
-共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。每用户 Rust Host 持有认证控制、项目监督、凭据、提交 journal、定时激活与执行准备，以及已实现的 Remote Gateway 和 provider subscription 传输；Core 保留执行和历史权威。GUI 默认连接 Host 监督的工作台后台；Main 提供原生 Browser/Computer 适配与在线通知，不再由界面偏好决定业务后台所有权。普通 GUI 退出保留 Host 与 Core，撤销该 Main 的连接资源。Host 按来源保存的休眠偏好保护真实运行中的工作。Host-owned 与 `legacyPending` 分别报告；旧后台仅经显式恢复路径检查和退役。Remote 方法按实际能力协商，不因入口可连接而推断所有客户端方法已受支持。
+共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。每用户 Rust Host 持有认证控制、项目监督、凭据、提交 journal、定时激活与执行准备，以及已实现的 Remote Gateway 和 provider subscription 传输；Core 保留执行和历史权威。GUI 默认连接 Rust Host。Main 提供嵌入式浏览器适配和系统通知。普通 GUI 退出撤销该 Main 的连接资源，并登记按需求回收；其他客户端、在途任务、启用定时任务、远程入口或系统服务安装仍可保留 Host。空闲项目按十五分钟连续空闲窗口休眠，不改变用户调度意图。Host 按来源保存的休眠偏好保护真实运行中的工作。Host-owned 与 `legacyPending` 分别报告；旧后台仅经显式恢复路径检查和退役。Remote 方法按实际能力协商，不因入口可连接而推断所有客户端方法已受支持。
 
 AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、Turn、模型循环与 Agent 状态的唯一所有者；Runtime 只处理执行权限、操作事实和资源生命周期。客户端不维护另一套权威历史。
 
 [ADR 0017](../adr/0017-one-protocol-one-ui.md) 定义尚未完成的统一协议目标。客户端所需业务经 Host 协议提供，Host 负责认证、授权、路由、跨项目业务、提交 journal 和凭据保管。项目服务只监督进程，不向客户端提供接口或承载业务；单项目业务以及执行和历史权威归 Core。
 
-过渡期的 Node 工作台服务由 Host 监督，承载尚未迁入 Host 或 Core 的跨项目业务。按[工作台服务设计](workbench-service.md)先整体接管现有后台，Main 经私有认证通道 attach。它不依赖 Electron，公共客户端只连 Host；解密值仅在运行内存使用，不持久化明文凭据。目标中的 Electron 外壳只提供浏览器没有的原生能力，并向 Host 登记桌面工具提供者；界面按可用能力显示可选平台入口。这些是迁移目标，不代表当前实现已满足该边界。 后台实现与依赖位于 `services/workbench`，Main 和 Host 接管入口共用服务包；Main 保留外壳与连接客户端，不保留后台实现副本。
+持锁 Host 独占提交 Journal；回执按原命令 ID 查询，缓存不改变持久完成边界，也不允许重放 UNKNOWN。
+
+Electron Main 经认证附件向 Host 登记嵌入式浏览器。Host 将工具调用送到原附件和项目的专用 Core 连接。已受理的历史生命周期请求仍按原来源、请求 ID 和代际查询。
+
+Renderer 通过 Host 订阅业务状态。Electron IPC 单独发布菜单栏、启动恢复等外壳状态，订阅绑定当前窗口的主文档。
+
+Node Workbench 业务服务已退役；跨项目业务归 Rust Host，执行与历史归 Core。Electron 外壳、浏览器适配和 Node Relay 仍保留。Relay 只承担独立传输职责，不拥有会话、执行或命令回执。Gen UI、MCP Apps 页面与旧电脑控制能力已退役；普通 MCP 工具及 `browser_v1` 保留。
+
+Host 的提交 Journal 由当前持锁 Host 独占，已核验记录保存在内存中，单条回执按原命令 ID 查询。文件被替换或权限变化时失效并重新核验；写入失败先失效，后续从持久证据恢复。缓存不改变落盘完成信号，也不把 UNKNOWN 变成可重放提交。
+
+供应商设置的首屏读取只投影 Host 解析的配置和凭据引用；安全存储检查与项目配置对账在后台继续，不阻塞目录展示。目录投影不替换执行快照，也不表示凭据已通过检查。 手机连接身份初始化也不阻塞工作台就绪；手机命令仍等待原初始化结果，失败保留原回执，通过现有重连路径核查恢复。
 
 ![架构](diagrams/architecture.svg)
 
@@ -16,9 +26,9 @@ AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、
 
 Renderer 界面语言由已有 application preferences 保存，仅允许 zh-CN 与 en。React Intl 从随包词条派生显示文案、数字与日期，不改变 Core 状态、配置或会话身份。持续显示的本地提示保存消息描述与原始参数，在渲染时翻译；原始诊断与第三方正文保持原文。开发合同见[GUI 语言说明](../../clients/gui/README.md#界面语言与文案开发)。
 
-GUI Renderer 只在 `desktop-services.ts` 读取 preload 对象，由 `initializeDesktopServices` 完成本机初始化并返回 `PlatformServices`；`main.tsx` 只接收该平台接口。MCP Apps、原生资源选择和图标加载通过该接口传递能力；缺少能力时不建立桌面订阅或原生资源入口。React 组件不另行读取全局 bridge。Main 继续校验 IPC 来源并持有窗口、App token 和原生授权，Core/Runtime 保持执行与历史权威。
+GUI Renderer 只在 `desktop-services.ts` 读取 preload 对象，由 `initializeDesktopServices` 完成本机初始化并返回 `PlatformServices`；`main.tsx` 只接收该平台接口。原生资源选择和图标加载通过该接口传递能力；缺少能力时不建立桌面订阅或原生资源入口。React 组件不另行读取全局 bridge。Main 继续校验 IPC 来源并持有窗口、App token 和原生授权，Core/Runtime 保持执行与历史权威。
 
-`no-renderer-desktop-bridge` 静态规则覆盖 Renderer 以及 `app`、`client`、`remote`、`remote-client`、`ui` 共享包，禁止界面直接使用 preload 全局对象或导入 `desktop-contract`、`state-projection` 桌面传输模块。只有明确的 `renderer/src/desktop-services.ts` 和 `desktop-response.ts` 可导入传输模块，preload 只由前者读取。`.test.*` 与 `.spec.*` 文件可设置 bridge mock，不需要逐行关闭规则；生产辅助文件不享有该例外。
+`no-renderer-desktop-bridge` 静态规则覆盖 Renderer 以及 `app`、`client`、`remote`、`remote-client`、`ui` 共享包，禁止界面直接使用 preload 全局对象或导入 `desktop-contract` 桌面传输模块。只有明确的 `renderer/src/desktop-services.ts` 和 `desktop-response.ts` 可导入传输模块，preload 只由前者读取。`.test.*` 与 `.spec.*` 文件可设置 bridge mock，不需要逐行关闭规则；生产辅助文件不享有该例外。
 
 ## 模块职责
 
@@ -34,6 +44,7 @@ GUI Renderer 只在 `desktop-services.ts` 读取 preload 对象，由 `initializ
 | `core/local-service` | 共享服务发现、配置兼容性和控制客户端，只依赖 config/protocol |
 | `core/service-host` | Rust 可信 launcher 和独立本地服务宿主，管理 Core/Runtime 生命周期、私有管道与空闲容量轮换 |
 | `core/server` | 装配配置、模型、MCP、Host、Runtime 和关闭流程 |
+| `core/trajectory` | 共享的持久 OTLP 队列、采集健康、上传进程与有界导出状态 |
 | `core/plugins` | Codex 兼容插件包解析、本地 marketplace、摘要缓存与安装/启用事务；不执行包代码 |
 | `core/mcp` | 官方 rmcp 客户端与结果适配，不拥有 Turn |
 | `core/sdk-typescript` | 选定 DSH 工具/文件服务适配和独立 Node Host |
@@ -62,7 +73,7 @@ Engine 的 `trajectory` 模块记录模型和工具的执行内容，通过 `tra
 
 server 在安装遥测时为 Engine 注入共享采集预算；Engine 用借用序列化与有界流式缓冲保存逻辑消息和最终模型请求，容量不足只丢弃遥测副本。持久事件桥接层负责 Turn 序号和终态清单，接收端据此区分执行完成与完整送达；协议见[Core 轨迹契约](../api/core.md#持久轨迹协议)。
 
-可选持久轨迹导出由 `core/config` 解析 `[trajectory]`，`core/server/trajectory` 管理有界内存缓冲、磁盘队列与独立上传进程。队列默认位于用户 home，按配置文件身份隔离，同一配置的共享服务和独占 CLI run 共用；网络上传不进入 Turn 结算或 Runtime 生命周期。CLI/TUI 通过可取消后台检查报告一次异常，GUI 按可见性轮询状态；客户端只读取导出状态，并通过 Core 的公开控制入口切换启停或请求重试，远端按标准 OTLP Logs 接收，平台分析登记属于接收端集成。配置、容量与失败边界见[持久轨迹导出](../guides/configuration.md#持久轨迹导出)。
+可选持久轨迹导出由 `core/config` 解析 `[trajectory]`，`core/trajectory` 管理有界内存缓冲、磁盘队列与独立上传进程。队列默认位于用户 home，按配置文件身份隔离，同一配置的共享服务和独占 CLI run 共用；网络上传不进入 Turn 结算或 Runtime 生命周期。CLI/TUI 通过可取消后台检查报告一次异常，GUI 按可见性轮询状态；客户端只读取导出状态，并通过 Core 的公开控制入口切换启停或请求重试，远端按标准 OTLP Logs 接收，平台分析登记属于接收端集成。配置、容量与失败边界见[持久轨迹导出](../guides/configuration.md#持久轨迹导出)。
 
 Skill 发现由 `core/config` 根据可信启动参数执行，只返回元信息和独立告警；其无状态文件头解析器由 Engine 的显式部署登记复用。Engine 不自行查找用户配置。`core/engine/src/desktop/skills.rs` 保存登记目录描述符，异步、有界地读取当前资源；`desktop/skill_loading.rs` 复用目录授权实现主体完整加载与模型附件分页。Core 工具投影和请求预检保持首次主体交付完整，成功响应后沿用既有历史压缩。配置与读取契约见 [Skill 指南](../guides/skills.md)。
 
@@ -86,17 +97,7 @@ Codex 兼容包由 `core/plugins` 持有本地安装与范围选择；Engine 登
 
 选择这一结构是为了集中来源差异并复用现有权威。每个生态独立运行时会重复授权、取消和恢复逻辑；把所有字段压成通用 JSON 会丢失覆盖与执行语义，因此均不采用。原始安装包、来源与准入摘要、Store 事务、Turn 版本、撤权及 UNKNOWN 不重放保持原契约。以后导入规则若改变有效执行含义，必须定义重新审阅与旧引用策略，不能静默继承旧信任。分阶段范围与完成条件见[插件实施计划](../development/codex-plugins-plan.md#多格式导入演进)。
 
-插件来源解析仍归 `core/plugins`，Git/npm 不执行安装脚本。`core/mcp` 持有认证、资源与连接版本，Engine 固定 Turn 的 schema/调用对象并拥有撤权、受理和清理。Apps 绑定 Core 进程 epoch、Thread 与包摘要；Electron 的独立沙箱只持窄能力。Main 为每个 App 实例记录原窗口 owner，普通导航保留活 iframe；销毁和撤权按实例归属回收，不依赖原生窗口仍然存活。异步打开返回时复核 owner 与 epoch，旧 token 不随活动窗口转移。文件实际读写复用 Runtime 的目录描述符助手，模型投影剔除 `_meta`。原始 Connector ID 通过明确映射接到 GitHub；客户端凭据仅由可信启动环境注入。
-
-成功 MCP 结果的交互入口只提交原 Thread、Turn、Core item 和打开请求身份。Core 校验原始快照的完整性及调用时保存的来源，再用原连接准备资源；挂载不重新执行业务工具。结果打开操作与 App 实例由同一 Manager 原子保存，关闭事实独立于活页面保留，旧进程 epoch 请求不能重开。Main 按原窗口和 Core instance 复用 token，Workspace 保留 iframe。缺来源、摘要改变、撤权或页面失败时保留普通可读结果。
-
-有限页面工具沿用普通 Core 工具目录、审批和 ToolCall 历史。注册只声明固定的选区读取与 revision 条件修改。Core 固定原始 ToolHost、App epoch、包摘要和登记版本；Desktop 服务固定打开实例的 Main socket，Main 固定窗口、token 与已初始化的 bridge。通知仅唤醒原执行端，持久 claim 才授予一次执行。单次调用拥有 claim 与结算写入，已确认终态不能被后续 hook 或通用 finalizer 覆盖。断线撤销工具执行，保留未保存页面；UNKNOWN 不自动重放。协议和预算见[桌面 API](../api/desktop.md#有限页面工具)。
-
-生成式交互回答复用同一个 MCP Apps 页面宿主，不创建插件或第二套沙箱。Core 的 `gen_ui_publish` 原生工具发布不可变 HTML 制品，`areal/genUi/source` 按已完成的助手消息读取来源与制品。Main 使用移植的 ZCode 指令解析器核对 `::visualize` 引用与 Core 返回的制品，不能凭 Renderer 提供的文件路径打开任意 HTML。页面与 MCP Apps 共用窗口 token、资源代理和 8 页额度。
-
-启用 `pages` 领域时，上述页面宿主迁入 Host 监督的工作台服务，窗口 owner 改为已鉴权的连接 owner；Main 不再持有该路径的页面 token。资源走认证协议，公开 HTTP 只有固定的 opaque-origin 代理。共享 Renderer 沿同一 AppBridge 转发，断开撤销页面与工具租约；当前本机 manage 与 submit 授权边界见[工作台服务设计](workbench-service.md)，不代表远程页面已开放。
-
-Core 持有执行、历史与 HTML 来源，Desktop 持有当前用户配置目录下的视图状态。移植的 `packages/gen-ui` 状态存储按项目、Thread 和制品路径隔离，原子保存 `{modelContent,privateContent}`。每项最多 16 KiB，每个会话最多保留 100 项。普通主会话和 Side 提交只将有界 `modelContent` 作为不可信上下文附加到下一次输入，`privateContent` 不进入模型请求。该状态可在同一 Desktop 配置下恢复，不提供跨设备同步。生成页没有 Node、文件、工具或网络访问权，生成页不会改变宿主会话权限；旧版只读 Side 保留只读权限。
+插件来源解析归 `core/plugins`，Git/npm 不执行安装脚本。`core/mcp` 持有认证、资源与连接版本，Engine 固定 Turn 的 schema/调用对象并拥有撤权、受理和清理。普通 MCP 工具、扩展调用、表单和原始工具结果沿既有权限与回执路径提供；模型投影剔除 `_meta`。Engine 不再持有 App 实例或页面工具执行器；历史 ToolExecution 的序列化字段保留原契约。
 
 插件下载与准备不持有 Engine 目录刷新锁；Store 的跨进程锁和 revision CAS 负责提交，随后从同一安装状态快照在刷新锁内发布目录，连接排空在锁外执行。MCP 清理未确认以类型化错误进入 `cleanupUnknown`，不能按普通失败重连；没有清理凭据的后续断开操作也不能清除此状态。跨实例共享启用状态与本实例受审阅定义分开：hook 调用前读取当前启用状态，后台协调取消已停用包的在途 hooks（包括升级后新版已删除定义的旧调用）；固定 Turn 版本不会固定启用权限。显式 Profile 默认排除插件，仅部署定义的 `allowPluginSkills` 可选择加入，且子任务继续受父任务插件范围约束；hook 角色与 matcher 使用已受理 Profile 身份，压缩保留子任务归属。状态轮询只读安装状态，不枚举包。组件解析按包身份、摘要和政策缓存，每次使用通过 NOFOLLOW 描述符检查文件/目录身份、权限、大小、mtime/ctime；变化后重新校验完整摘要。MCP 调用只验证所属包。该缓存不增加对任意同 UID 并发目录替换的隔离承诺。
 
@@ -132,13 +133,17 @@ macOS Runtime 还随包提供独立 Bash，作为受限命令的私有 shell 资
 
 ## 状态与执行
 
+历史读取与执行准入在同一 Core 内分离：Host 固定项目及存储身份，Core 在执行配置不可用时仍提供鉴权后的历史与回执读取，并阻止新执行。客户端分别投影读取与执行状态，不能因供应商删除或凭据缺失隐藏已保存消息。恢复沿原生命周期与回执完成，不新增历史副本；详见[凭据与历史边界](credential-history-independence.md)。
+
+GUI 重连遇到本工作台管理项目的纯二进制版本冲突时，复用带原服务身份与代际的空闲更新回执，完成清理后再连接新实例。确定因忙碌而拒绝停止时继续观察原实例，由既有重连调度退避等待更新；未确认的停止不重发。未连接项目的会话恢复先尝试有锁保护的持久化只读历史，再连接所选会话所属的执行项目并切换到在线订阅；持久化读取不可用时沿在线读取路径恢复，不批量启动其他工作树。失败原因和连接详情在原页面可达。
+
 GUI 首次展示与后台就绪分别判定。Renderer 在主题和图标加载页可绘制后，通过现有窄 IPC 通知 Main；Main 结合原生绘制事件，只消费一次自动展示机会。关闭窗口取消尚未发生的自动展示，后续恢复不能重新打开或抢焦点。后台、项目及原会话沿现有观察链恢复。初始恢复成功前只显示图标与加载状态，不挂载首页、侧栏、新会话或 Projectless 准备入口；成功后一次性挂载完整工作台。失败留在加载页，通过现有所有者恢复。执行入口继续受连接、会话恢复及 Core 准入约束。恢复失败保留原选择和草稿，并使用现有重试、后台详情及退出路径。
 
 Renderer 的 `state/` 所有者分别管理启动、导航、工作区、任务、外观与通知的界面状态，领域 store 通过 `useSyncExternalStore` 订阅；持久化沿用原偏好键和所有者。`App.tsx` 保留读取与写入跨领域状态的编排 effect，不能把 Core 收据、历史或 UNKNOWN 恢复变成 store 内的重发逻辑。视图组合归 `app-shell/`，原生预览的 Electron 适配归 `app/src/core/preview-native/`，不依赖 Electron 的 URL、坐标、观察与计划逻辑归 `preview/`。窗口、WebContentsView 与后台焦点仍由 Main 的既有所有者管理。
 
-GUI 的 Desktop 服务和 Main 使用 `workbench/client/state-projection` 编码可重建状态。每条连接先发送当前显示窗口的基线，之后按 Project、Thread、Turn、Item 身份发送变化和顺序；未变化的正文不重复传输。Main 只编码筛选后的桌面状态，Renderer 在 contextBridge 之后重组显示快照。缺失基线或序号不连续时重新读取状态，不重发执行请求。支持有界历史的 Core 通过 `areal/thread/observe` 提供近期窗口，较早历史和超大条目由分页与分片读取；Renderer 在主动向上滚轮、键盘、滚动条或触摸阅读时，每次新输入最多读取一页，并在合并后恢复阅读锚点。短历史可通过后续输入继续读取，加载中与失败期间的输入不排队。时间线可聚焦以接收导航键；正常阅读没有普通历史加载按钮，加载只显示状态，失败提供独立重试。Desktop 每个窗口最多缓存 4 页较早正文；卸载页只保留当前快照内的轻量游标记录，在原位置提供可回读占位，回读仍受相同正文缓存上限约束。各阅读视图通过版本化目标保护当前正文页；缓存不足时拒绝新页而不驱逐目标。重新观察或游标失效重建窗口与占位，受保护正文等待权威核实。Messages 的显式阅读状态负责恢复、取消与定位，Desktop history 的 ensureAnchor 在有限扫描内取回缺失正文；缺页拓扑与正文驻留分别管理以保留语义分组身份。显示窗口不包含另一份完整权威历史。正在变化的单个 Item 通知仍整体替换，单条记录解析与活动条目增长的限制见 [Core 历史契约](../api/core.md)。
+Renderer 通过 Host 分别订阅资料库和当前会话。Host 校验连接、会话身份及序列，失效时客户端重新读取原状态。已受理的请求继续使用原请求 ID 核查。支持有界历史的 Core 通过 `areal/thread/observe` 提供近期窗口，较早历史和超大条目由分页与分片读取；Renderer 在主动向上滚轮、键盘、滚动条或触摸阅读时，每次新输入最多读取一页，并在合并后恢复阅读锚点。短历史可通过后续输入继续读取，加载中与失败期间的输入不排队。时间线可聚焦以接收导航键；正常阅读没有普通历史加载按钮，加载只显示状态，失败提供独立重试。Desktop 每个窗口最多缓存 4 页较早正文；卸载页只保留当前快照内的轻量游标记录，在原位置提供可回读占位，回读仍受相同正文缓存上限约束。各阅读视图通过版本化目标保护当前正文页；缓存不足时拒绝新页而不驱逐目标。重新观察或游标失效重建窗口与占位，受保护正文等待权威核实。Messages 的显式阅读状态负责恢复、取消与定位，Desktop history 的 ensureAnchor 在有限扫描内取回缺失正文；缺页拓扑与正文驻留分别管理以保留语义分组身份。显示窗口不包含另一份完整权威历史。正在变化的单个 Item 通知仍整体替换，单条记录解析与活动条目增长的限制见 [Core 历史契约](../api/core.md)。
 
-Renderer 文档重载或崩溃不拥有后台执行生命周期。显式刷新后，新文档从新的投影基线挂接原应用会话，不能重放已受理输入。`test:service-reopen` 用原模型连接上的新增片段和生产 App 的显示验证挂接，并区分文档恢复与应用重启后的新 owner、代际。
+Renderer 文档重载或崩溃后，新文档重新观察原 Turn 和模型连接，保留历史与草稿。`test:service-reopen` 用同一模型连接上的新增片段验证恢复。Main 意外退出时，后继客户端重新挂接原 Host 和 Core。用户确认停止后台再退出时，原停止回执与进程退出分别核对，重开先恢复历史和草稿，随后显式激活项目才产生后继 Core 代际。
 
 同一 Thread 的变更串行，不同 Thread 可并发。模型请求、工具等待及子任务等待不跨等待持有会话锁。模型许可不跨工具执行持有，活动 Turn、模型请求和 OS 进程是独立限额。
 
@@ -160,7 +165,7 @@ Engine 的 `diagnostics` 模块对非权威排障制品执行有界保留，serv
 
 Fork 与 Side 复用 Core/Runtime 的会话、历史和执行所有者。`conversation.origin` 记录内容来源，不承担 Agent 委派或取消归属。Fork 在当前共享工作区分支对话。新建 Side 保存版本 2 和 `sideExecutableV2` 策略，继承来源当前配置并复用普通会话的提交、工具、权限和压缩路径。稳定来源历史仅供模型参考，活动轮次只复制用户输入，子会话界面与执行账本从空白开始。旧版 `sideReadOnlyV1` 在存储校验、工具目录、指令和 Runtime Scope 中保持只读。Renderer 用完整 `Composer` 与 `Messages` 展示每个子会话，以项目、来源和子会话 ID 管理临时标签、草稿与引用。Core 持有创建及关闭收据；关闭先建立持久准入屏障，再停止并结算资源，UNKNOWN 不重放。隐藏面板和切换来源保留活动会话，关闭标签释放该子会话，重启不恢复新标签。Esc 按面板 DOM 归属路由。接口见[桌面 API](../api/desktop.md#side-chat)。源码、确定性本地模型、真实供应商与安装包分别验证。
 
-桌面目录准入核对 Core 保存的 V2 来源与相同物理 cwd，将 Side 及其委派子任务映射到来源 Session 作者；原子首问同样先准入。文件与浏览器结果沿子会话的执行 Core/root 路由。首轮只继承来源已挂载的固定电脑工具定义，旧版 Side 不扩权。
+桌面目录准入核对 Core 保存的 V2 来源与相同物理 cwd，将 Side 及其委派子任务映射到来源 Session 作者；原子首问同样先准入。文件与浏览器结果沿子会话的执行 Core/root 路由。首轮使用固定浏览器工具定义，旧版 Side 不扩权。
 
 提示词预测复用这两个 Composer。只有已显示且开启该功能的 GUI 请求最新成功轮次的候选；Core 保留该轮实际模型实例，独立发送无工具 `promptPrediction` 请求。一个持久化的 `DesktopState.promptPrediction` 标签槽负责来源、去重、恢复与失效；专用通知只更新该槽，Thread 快照负责恢复。待定尝试在重启后不可重试，已有候选原样恢复。预测不创建 Turn/Item、不进入 Solve 上下文。Lexical 在真实文档外显示候选，裸 Tab 仅接受到草稿；新输入暂时隐藏而不删除候选。模型容量、取消和最终发布验证归 Core；设置、需求与呈现归 GUI。详见[Core API](../api/core.md#下一条提示词预测)。
 
@@ -198,11 +203,11 @@ GUI 的 `history-observation` 委托 `catalog-observation` 按项目、连接和
 
 ## 仓库目录
 
-桌面客户端归属见[迁移决策](../adr/0001-desktop-client-module.md)。`clients/gui` 的 Electron 外壳通过共享 Host 连接项目 Core，提供系统原生能力。关闭窗口保留应用；普通退出释放 GUI 连接及其桌面工具资源，Host 继续监督 Core 和已受理工作。GUI 构建、数据隔离与本地包见 [GUI 指南](../../clients/gui/README.md)。iOS/Android Remote 客户端位于 `clients/mobile`，Web、iOS 与 Android 通过 `@areal/remote-client` 共享协议、命令核对与会话状态；平台分别提供 IndexedDB、Keychain 与 Android Keystore 持久化适配。执行和历史权威仍在电脑端 Core/Runtime。Android 使用共享移动入口和原生 Keystore 适配，构建、Origin、兼容性和验收边界见 [Android 开发指南](../development/android-development.md)。
+桌面客户端归属见[迁移决策](../adr/0001-desktop-client-module.md)。`clients/gui` 的 Electron 外壳通过共享 Host 连接项目 Core，提供系统原生能力。关闭窗口保留应用；普通退出释放 GUI 连接及其桌面工具资源，并登记 Host 按需回收。其他客户端、活动工作、定时任务、远程接入或自启服务仍有需求时保留后台；无需求时经原停止回执清理退出。Core 连续空闲十五分钟后可休眠，退出需求登记后可立即回收空闲项目；未来定时任务由 Host 按 published 的下一次触发时间唤醒 Core，即将到期或未结算的任务保活。GUI 构建、数据隔离与本地包见 [GUI 指南](../../clients/gui/README.md)。iOS/Android Remote 客户端位于 `clients/mobile`，Web、iOS 与 Android 通过 `@areal/remote-client` 共享协议、命令核对与会话状态；平台分别提供 IndexedDB、Keychain 与 Android Keystore 持久化适配。执行和历史权威仍在电脑端 Core/Runtime。Android 使用共享移动入口和原生 Keystore 适配，构建、Origin、兼容性和验收边界见 [Android 开发指南](../development/android-development.md)。
 
 GUI的混合消息采用可重建展示投影：Markdown沿Streamdown，严格版本化`areal-ui`数据由共享UI目录校验并以只读React组件展示，Gen UI/MCP仍由原隔离宿主处理。Core保留原始消息和制品权威，复制可使用同一文字投影；这不是持久历史迁移或可执行组件协议。审批和Ask User共享展示外壳，合法动作、草稿、提交锁与UNKNOWN核对仍归原请求控制器。
 
-桌面适配器的项目连接所有者管理退避、连接身份和快照重订；先连接兼容的运行中服务，仅对满足上述正向证明与代际约束的 Core 崩溃请求受控恢复，不重放未知提交。Main 初始化只连接原后台，部署变化展示显式更新入口，不自动换代。Desktop 生命周期 owner 在副作用前持久化绑定目标代际的意图，逐项目通过 Host 回执结算；Main 只保存引用与连接投影并核验原 Desktop 退出。受理未确认只核查原请求，已完成目标不重做；Core 的配置与权限重启边界继续生效。Workbench 共享桌面能力契约，Main 和服务入口校验各自允许的能力并保留结构化错误；Core 仍拥有配置和执行的最终校验。原生预览归 Electron Main，按项目/Thread 释放并有界缓存页面；界面从 Main 的权威快照投影每页一个顶层标签，与文件和终端共用标签栏；页面列表订阅归当前项目/Thread 的窗口投影，标签使用 `pageId` 定位，不建立另一套 Browser 生命周期或执行权限。具体恢复、类型覆盖及页面状态丢失边界见 GUI 指南的生命周期章节。
+桌面适配器的项目连接所有者管理退避、连接身份和快照重订；先连接兼容的运行中服务，仅对满足上述正向证明与代际约束的 Core 崩溃请求受控恢复，不重放未知提交。桌面单实例在接入业务前核对包内程序、工作台和界面构建身份；构建变化时持久化交接记录，通过 Host 的取消停止回执确认全部项目与旧 Host 退出，再启动包内后台并恢复权威快照。交接中断后核查原请求，健康连接完成后才清除记录；不重放被中断或结果未知的提交。升级允许短暂终止运行中任务，不要求用户单独更新内部组件。Desktop 生命周期 owner 在副作用前持久化绑定目标代际的意图，逐项目通过 Host 回执结算；Main 只保存引用与连接投影并核验原 Desktop 退出。受理未确认只核查原请求，已完成目标不重做；Core 的配置与权限重启边界继续生效。Workbench 共享桌面能力契约，Main 和服务入口校验各自允许的能力并保留结构化错误；Core 仍拥有配置和执行的最终校验。原生预览归 Electron Main，按项目/Thread 释放并有界缓存页面；界面从 Main 的权威快照投影每页一个顶层标签，与文件和终端共用标签栏；页面列表订阅归当前项目/Thread 的窗口投影，标签使用 `pageId` 定位，不建立另一套 Browser 生命周期或执行权限。具体恢复、类型覆盖及页面状态丢失边界见 GUI 指南的生命周期章节。
 
 新建会话的跨重启受理证据由 Core 的既有 submissions 日志拥有：Core 在创建副作用前持久受理，发送参数绑定日志覆盖标识和 Engine 启动代际。只有原代际退役、连续日志中无受理且无 Thread 创建回执时，Core 才能给出明确未受理；Desktop 先保存该结果再移除 pending，Renderer 保留草稿。旧记录、日志覆盖缺失和已受理但未结算的记录继续 UNKNOWN，不自动重发。保留、迁移与崩溃窗口见[提交与恢复契约](../api/desktop.md#submissions)。
 
@@ -270,12 +275,10 @@ MCP hook 绑定原工具 generation 与真实 Turn/compaction owner，取消旧 
 
 用户评价在 Clients 层冻结公开历史并复用独立 Side；Core Server 仅适配既有轨迹接收端。边界见 [user feedback](../guides/user-feedback.md).
 
-Cloud 接入归 Clients：桌面适配器保存远端原生 Thread 身份及加密凭据，GUI、CLI 和 TUI 使用同一 app-server 协议连接 Arena 或远程 Core。Arena 工作区生命周期不进入客户端，批任务 HTTP CLI 仅保留兼容入口；消息与执行事实仍归远端 Core/Runtime。本地 Project 不因此变成另一份权威历史，后端运行默认值不由客户端选择。见[Cloud 客户端](../guides/clients.md#cloud)。
+Cloud 的服务地址与 token 由 Host Vault 按来源保存为同一修订；桌面适配器只保留远端原生 Thread 身份及可重建投影。GUI、CLI 和 TUI 经 Host 使用同一 app-server 协议连接 Arena 或远程 Core。Arena 工作区生命周期不进入客户端，批任务 HTTP CLI 仅保留兼容入口；消息与执行事实仍归远端 Core/Runtime。本地 Project 不因此变成另一份权威历史，后端运行默认值不由客户端选择。见[Cloud 客户端](../guides/clients.md#cloud)。
 `core/engine/src/workspace.rs` 在已确认的受管副作用结算边界管理共享作者租约；工具调用并发由 `tools/scheduling.rs` 按可信后端和顺序屏障控制。Runtime 仍拥有进程与清理事实，Core 不通过 shell 文本推断只读或资源已释放。
 
-电脑控制采用独立原生 Helper，Main 拥有生命周期、系统授权与停止，Core 保留准备计划、审批与历史权威。设置只发起用户明确点击的系统授权；观察与模型请求不会弹出授权。原生 AX、截图与输入结果经认证桌面通道返回，未知输入不自动重放。边界与构建见[电脑控制](../api/computer.md)。
 
-外部 LCU 是显式选择的电脑控制方式。Main 持有固定版本原始 CUA client 与每聊天 JS 会话，沿现有 computerHost 认证连接提供原始工具与原生应用授权。Core 向手动新建聊天注入完整初始化指令，产生可信调用身份，复用 MCP 结果投影与媒体持久化，并在权威 turn 结算前等待清理。旧聊天不迁移工具表；provider 切换在执行准入再次校验。LCU 不承载内置浏览器，Preview/browser_v1 的所有者保持不变。
 
 程序化工具位于 `core/engine/src/tools/program`，`tools/edit_files` 提供直接批量编辑入口，两者通过 `tools/composition` 复用原生子调用的准入、预算和结算：无宿主 I/O 的解释器仅产生调用请求，Core 沿既有入口持有权限、预算、历史和结算，Runtime 继续持有原生效果与进程生命周期；不增加 Clients 到 Runtime 的旁路。契约见[程序化工具调用](../guides/programmatic-tools.md)。
 

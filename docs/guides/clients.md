@@ -189,6 +189,12 @@ areal exec --endpoint ws://127.0.0.1:18457/ --auth-file /private/remote-auth.jso
 
 远端 CLI 与 GUI Cloud 恢复线程时按能力选择 `areal/thread/observe`；旧 Core 使用 `thread/read` 读取状态（GUI 显式读取完整 Turn 历史），提交新 Turn 时订阅事件，不通过 `thread/resume` 接管已有桌面工具宿主。旧版读取与订阅不是原子快照；权限或网络错误不会触发降级重试。
 
+## Bot 的模型服务
+
+在 Bot 设置中可以选择 Harness「模型服务」中已启用的模型。Host 会核对当前沙箱的供应商、地址、协议和模型 ID，保存时从沙箱测试回复。Bot 记录只保存模型引用。共享选择不把本机凭据发送给沙箱。
+
+如果沙箱没有同一供应商或凭据不可用，Bot 会提示打开「模型服务」。请核对本机模型配置，并在 EnvArena 的部署配置中为沙箱启用同一模型服务。完成后返回 Bot 设置重新保存。
+
 ## Cloud
 
 `areal cloud` 连接通用 HTTP 后端，提交无状态 Task，不启动本地 Core，不挂载本地项目、不提供 UPFS，也不指定或同步 Harness。GUI 的持久 Session 入口见[GUI 指南](../../clients/gui/README.md#cloud-后端配置)。后端需支持 `POST /harness-tasks` 的 `{ "prompt": "..." }` 请求，并根据服务端默认配置选择运行包、模型与任务环境；客户端不会自行猜测 Harness 或 stream。尚未实现默认契约的后端会明确拒绝提交。

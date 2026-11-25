@@ -13,10 +13,6 @@
       "types": "./client/desktop-contract/transport.cjs",
       "default": "./client/desktop-contract/transport.cjs"
     },
-    "./desktop-contract/mcp-page": {
-      "types": "./client/desktop-contract/mcp-page.cjs",
-      "default": "./client/desktop-contract/mcp-page.cjs"
-    },
     "./desktop-contract/plugin-store": {
       "types": "./client/desktop-contract/plugin-store.cjs",
       "default": "./client/desktop-contract/plugin-store.cjs"
@@ -24,10 +20,6 @@
     "./model-selection": {
       "import": "./client/model-selection.js",
       "require": "./client/model-selection.cjs"
-    },
-    "./state-projection": {
-      "import": "./client/state-projection.js",
-      "require": "./client/state-projection.cjs"
     },
     "./history-projection": {
       "types": "./client/history-projection.cjs",
@@ -119,9 +111,13 @@
     "./desktop-contract/snapshots": {
       "types": "./client/desktop-contract/snapshots.cjs",
       "default": "./client/desktop-contract/snapshots.cjs"
-    }
+    },
+    "./desktop-profile": "./assets/desktop-profile.json",
+    "./builtin-skills/*": "./assets/builtin-skills/*",
+    "./node/*": "./node/*.cjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/core": "2.3.0"
+    "@modelcontextprotocol/core": "2.3.0",
+    "pkijs": "3.4.1"
   }
 }

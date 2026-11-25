@@ -219,12 +219,17 @@ export function TurnNavigation({
     [],
   );
 
+  const [hasRailRoom, setHasRailRoom] = useState(true);
   useEffect(() => {
     const element = container.current;
     if (!element) return;
     let frame: number | undefined;
     const update = () => {
       frame = undefined;
+      if (element.clientWidth > 0) {
+        const enoughRoom = element.clientWidth >= 720;
+        setHasRailRoom((prev) => (prev === enoughRoom ? prev : enoughRoom));
+      }
       const top = element.getBoundingClientRect().top + 72;
       const sections = turnSections(element);
       const atBottom =
@@ -290,7 +295,8 @@ export function TurnNavigation({
     };
   }, [preview?.turnId, preview?.source, container]);
 
-  if (!turns.length) return null;
+  // 仅在 2 轮及以上对话且阅读列左侧有足够留白时显示轮次导航条，避免单轮或窄屏/分屏时压到正文左边缘。
+  if (turns.length < 2 || !hasRailRoom) return null;
   const prompt = (turn: Data) =>
     goalContinuationLabel(turn) ??
     ((turn.items ?? []).find((item: Data) => item.type === "userMessage")?.content ?? [])

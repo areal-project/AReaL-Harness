@@ -2,12 +2,19 @@
 
 import fnmatch
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
+JOURNEY_MANIFEST = ROOT / "clients/gui/scripts/journey-manifest.json"
+spec = importlib.util.spec_from_file_location(
+    "journey_registry", ROOT / "scripts/check-journeys.py"
+)
+journey_registry = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(journey_registry)
 SCOPES = {
     "gui": [
         "design/**",
@@ -54,7 +61,6 @@ WORKFLOW_GROUPS = {
         "core-contracts",
         "gui-native-checks",
         "smoke",
-        "mobile",
     },
     "verify": {"early", "verify", "native", "container", "audit"},
 }
@@ -67,7 +73,6 @@ JOB_GROUPS = {
         "gui": {"gui-build"},
         "core-contracts": {"core-contracts", "gui-native-checks"},
         "smoke": {"smoke"},
-        "mobile": {"mobile"},
     },
     "verify": {
         "plan": None,
@@ -289,6 +294,29 @@ def build_plan(paths, source, manifest):
     """计划不接收环境能力；缺少前提只能产生 blocked，不能删项。"""
     affected = impact(paths)
     items = []
+    registry = journey_registry.load_manifest(JOURNEY_MANIFEST)
+    journeys = registry["journeys"]
+    affected_journeys = sorted(journey_registry.affected(paths, registry))
+    journey_authorities = {
+        journey["id"]: journey["authorities"]
+        for journey in journeys
+        if journey["id"] in affected_journeys
+    }
+    journey_checks = {
+        journey["id"]: journey["checks"]
+        for journey in journeys
+        if journey["id"] in affected_journeys
+    }
+    required_journey_checks = {check for checks in journey_checks.values() for check in checks}
+    journey_evidence = {
+        journey["id"]: {
+            "journeyId": journey["id"],
+            "check": journey["evidenceCheck"],
+            "terminalFacts": journey["terminalFacts"],
+        }
+        for journey in journeys
+        if journey["id"] in affected_journeys and "evidenceCheck" in journey
+    }
 
     def add(
         name,
@@ -357,6 +385,18 @@ def build_plan(paths, source, manifest):
         add("format", ["make", "fmt-check"], "early", phase="commit")
         add("workflow", ["make", "workflow-lint"], "early", phase="commit")
         add(
+            "architecture-boundary",
+            ["python3", "scripts/check-architecture.py"],
+            "early",
+            phase="commit",
+        )
+        add(
+            "journey-registry",
+            ["python3", "scripts/check-journeys.py"],
+            "early",
+            phase="commit",
+        )
+        add(
             "plan-contracts",
             [
                 "python3",
@@ -365,6 +405,7 @@ def build_plan(paths, source, manifest):
                 "scripts.tests.test_ci_contracts",
                 "scripts.tests.test_check_changed",
                 "scripts.tests.test_git_hooks",
+                "scripts.tests.test_architecture_journeys",
             ],
             "early",
             phase="commit",
@@ -441,22 +482,6 @@ def build_plan(paths, source, manifest):
             expected=portable,
         )
         add("gui-audit", ["pnpm", "--dir", "clients/gui", "audit"], "gui-portable")
-        # 手机浏览器专项已随旧远程网关删除；这里只保留类型检查和中继依赖安装。
-        add(
-            "mobile-types",
-            ["pnpm", "--dir", "clients/gui", "mobile:typecheck"],
-            "mobile",
-            requires=("node-24.22.1",),
-            phase="commit",
-            platforms=("darwin", "linux"),
-        )
-        add(
-            "mobile-relay-install",
-            ["npm", "ci", "--ignore-scripts", "--prefix", "services/remote-relay"],
-            "mobile",
-            requires=("node-24.2.0",),
-            platforms=("darwin", "linux"),
-        )
     if affected["relay"]:
         _, _, renderer = gui_builds("relay:", "relay-build")
         add(
@@ -666,13 +691,6 @@ def build_plan(paths, source, manifest):
 
     if affected["gui"]:
         desktop, ui, renderer = gui_builds("macos:", "gui-build", ("darwin",))
-        add(
-            "computer-helper",
-            ["node", "clients/gui/scripts/build-computer-helper.mjs"],
-            "gui-build",
-            requires=("node-24.22.1", "macos-tools", "xcode"),
-            platforms=("darwin",),
-        )
         for entry in manifest:
             if (
                 entry["layer"] != "e2e"
@@ -747,7 +765,7 @@ def build_plan(paths, source, manifest):
                 expected={platform: scripts[shard::2] for platform, scripts in core_tests.items()},
             )
         for entry in manifest:
-            if entry.get("ciSmoke"):
+            if entry.get("ciSmoke") or "smoke:" + entry["script"] in required_journey_checks:
                 add(
                     "smoke:" + entry["script"],
                     ["pnpm", "--dir", "clients/gui", "run", entry["script"]],
@@ -755,13 +773,21 @@ def build_plan(paths, source, manifest):
                     ("gui-core-build", renderer, "gui-design-build", desktop),
                     tuple(sorted(set(entry["requires"]) - {"core-binary", "gui-build"}))
                     + ("node-24.22.1",),
-                    platforms=("darwin",),
+                    platforms=tuple(p for p in entry["platforms"] if p == "darwin"),
                 )
+    journey_registry.validate_checks(registry, items, affected_journeys)
+    for contract in journey_evidence.values():
+        item = next(item for item in items if item["id"] == contract["check"])
+        if "journeyEvidence" in item:
+            raise ValueError("a business evidence runner must belong to one journey")
+        item["journeyEvidence"] = {
+            "journeyId": contract["journeyId"],
+            "terminalFacts": contract["terminalFacts"],
+        }
     production_tasks = {
         "macos:desktop": "desktop-build",
         "macos:ui": "ui-build",
         "macos:renderer": "build-suite",
-        "computer-helper": "computer-helper-build",
     }
     for item in items:
         if item["id"] in production_tasks:
@@ -774,12 +800,31 @@ def build_plan(paths, source, manifest):
         "source": source,
         "paths": paths,
         "fallbackPaths": affected["unknown"],
+        "affectedJourneys": affected_journeys,
+        "journeyAuthorities": journey_authorities,
+        "journeyChecks": journey_checks,
+        "journeyEvidence": journey_evidence,
         "items": items,
     }
     plan["planHash"] = hashlib.sha256(
         json.dumps(plan, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
     return plan
+
+
+def smoke_matrix(plan, manifest):
+    entries = {entry["script"]: entry for entry in manifest}
+    return {
+        "include": [
+            {
+                "scenario": entries[item["command"][-1]].get("ciSmoke")
+                or item["command"][-1].removeprefix("test:"),
+                "script": item["command"][-1],
+            }
+            for item in plan["items"]
+            if item["group"] == "smoke"
+        ]
+    }
 
 
 def require_result(needed, result):
@@ -799,13 +844,7 @@ if __name__ == "__main__":
     args.output.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n")
     groups = {item["group"] for item in plan["items"]}
     manifest = json.loads((ROOT / "clients/gui/scripts/test-manifest.json").read_text())
-    matrix = {
-        "include": [
-            {"scenario": entry["ciSmoke"], "script": entry["script"]}
-            for entry in manifest
-            if entry.get("ciSmoke")
-        ]
-    }
+    matrix = smoke_matrix(plan, manifest)
     host = [
         {
             "os": "ubuntu-24.04",

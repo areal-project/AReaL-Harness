@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ScheduledWorkspace } from "@areal/ui/experimental";
+import { ScheduledWorkspace } from "@areal/ui/compositions";
 import { Button } from "@areal/ui";
 import { CalendarClock, BookOpen, Clock, MoreHorizontal } from "lucide-react";
 export function ScheduledWorkspaceExample() {

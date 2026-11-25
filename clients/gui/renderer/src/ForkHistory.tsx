@@ -38,11 +38,14 @@ export function useForkHistory(projectId: string, thread: Data, action: Action) 
       };
       do {
         const page = reads
-          ? await reads.history({
-              view: "inherited",
-              ...(cursor ? { cursor } : {}),
-              maxBytes: 65536,
-            })
+          ? await reads.history(
+              {
+                view: "inherited",
+                ...(cursor ? { cursor } : {}),
+                maxBytes: 65536,
+              },
+              { projectId, threadId: thread.id },
+            )
           : await action("manage", {
               projectId,
               operation: "inheritedHistory",

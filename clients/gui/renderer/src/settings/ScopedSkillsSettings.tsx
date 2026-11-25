@@ -1,7 +1,7 @@
 import { TitleTooltip } from "@areal/ui";
 import type { ResourceRequest, Scope } from "../services.js";
 import { Textarea } from "@areal/ui";
-import { ResourceScope as ScopeView, CatalogEmpty as EmptyView } from "@areal/ui/experimental";
+import { ResourceScope as ScopeView, CatalogEmpty as EmptyView } from "@areal/ui/compositions";
 import { useI18n, type UiMessage } from "../i18n/IntlProvider.js";
 import { useState } from "react";
 import { BookOpen } from "lucide-react";
@@ -211,10 +211,10 @@ export function ScopedSkillsSettings({
               aria-label={`${item.name || item.id} · ${source}`}
             >
               <Button
-                unstyled
-                data-slot={undefined}
-                type="submit"
-                className="resource-card"
+                type="button"
+                variant="row"
+                size="none"
+                className="min-w-0 flex-1 shrink"
                 aria-label={t("settings.scopedSkillsSettings.viewSkillValue", { value0: item.id })}
                 disabled={busy || !!item.error}
                 onClick={() =>
@@ -226,17 +226,19 @@ export function ScopedSkillsSettings({
                   })
                 }
               >
-                <BookOpen size={20} />
-                <span>
-                  <strong>{item.name}</strong>
-                  <small>{source}</small>
-                  <TitleTooltip title={item.description || item.error}>
-                    <small>
-                      {item.error ||
-                        item.description ||
-                        t("settings.scopedSkillsSettings.viewSkillContent")}
-                    </small>
-                  </TitleTooltip>
+                <span className="resource-card">
+                  <BookOpen size={20} />
+                  <span>
+                    <strong>{item.name}</strong>
+                    <small>{source}</small>
+                    <TitleTooltip title={item.description || item.error}>
+                      <small>
+                        {item.error ||
+                          item.description ||
+                          t("settings.scopedSkillsSettings.viewSkillContent")}
+                      </small>
+                    </TitleTooltip>
+                  </span>
                 </span>
               </Button>
               {item.overridden && (

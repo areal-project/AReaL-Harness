@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from "react";
 import { Button } from "@areal/ui";
-import { ComposerSurface, ComposerToolbar, Disclosure } from "@areal/ui/experimental";
+import { ComposerSurface, ComposerToolbar } from "@areal/ui/compositions";
+import { Disclosure } from "@areal/ui";
 import {
   SettingsPage,
   SettingsSection,

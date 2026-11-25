@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { createIdentity, identityId, secureChannel } from "../packages/remote/src/channel.mjs";
 import { createRemoteWire } from "../packages/remote/src/wire.mjs";
-import { parseRemoteConfig } from "@areal/workbench-service/desktop/core/remote-config.cjs";
 import { browserDeviceName } from "../renderer/remote-web/device-name.mjs";
 import { nativeRelayHostFixture as hostFixture, waitFor } from "./remote-relay-fixture.mjs";
 
@@ -86,7 +85,6 @@ test("same-named devices get distinct names, pairing time and live presence", as
   assert.equal(grantOf(remote, second.peer).displayName, "Chrome · macOS (2)");
   const stored = (await f.persisted()).deviceGrants;
   assert.ok(stored.every((grant) => grant.pairedAt >= before));
-  assert.deepEqual(parseRemoteConfig(await f.persisted()).deviceGrants, stored);
 
   await waitFor(async () => {
     await remote.refresh();
@@ -219,7 +217,7 @@ test("renamed and forgotten devices reject malformed requests", async (t) => {
   assert.equal(operation.previousRevision, beforeForget.revision);
   assert.equal(operation.revision, afterForget.revision);
   assert.deepEqual(afterForget.config, beforeForget.config);
-  assert.deepEqual(parseRemoteConfig(await f.persisted()), beforeForget.config);
+  assert.deepEqual(await f.persisted(), beforeForget.config);
   for (const request of [
     { operation: "renameDevice", id: "peer" },
     { operation: "renameDevice", id: "peer", name: 1 },
@@ -227,22 +225,6 @@ test("renamed and forgotten devices reject malformed requests", async (t) => {
     { operation: "forgetRevoked", id: "peer" },
   ])
     await assert.rejects(async () => f.remote.control(request), /无效手机设置参数/);
-});
-
-test("stored grants accept optional timestamps and reject malformed ones", () => {
-  const grant = {
-    devicePeerId: "peer",
-    displayName: "Device",
-    projectIds: ["project"],
-    capabilities: ["observe"],
-    revision: 1,
-    status: "revoked",
-    pairedAt: 1,
-    revokedAt: 2,
-  };
-  assert.deepEqual(parseRemoteConfig({ deviceGrants: [grant] }).deviceGrants[0], grant);
-  for (const value of [{ pairedAt: "1" }, { revokedAt: 1.5 }])
-    assert.throws(() => parseRemoteConfig({ deviceGrants: [{ ...grant, ...value }] }));
 });
 
 test("browser device names name the browser and system", () => {

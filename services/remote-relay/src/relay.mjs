@@ -67,7 +67,7 @@ export function attachRelay(server, config, store, log, push) {
         if (!peer.role) {
           if (!fields(message, ['protocol', 'role', 'room', 'capability']) || message.protocol !== 'areal.relay.v1' || !roomShape(message.room)) return drop(peer, 'UNAVAILABLE');
           if (message.role === 'host') {
-            if (config.local && !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)) return drop(peer, 'UNAVAILABLE');
+            if (config.local && (req.socket.encrypted || !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress))) return drop(peer, 'UNAVAILABLE');
             if (peer.origin !== undefined || typeof message.capability !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(message.capability) || hash(message.capability) !== message.room || !store.room(message.room)) return drop(peer, 'UNAVAILABLE');
             const previous = hosts.get(message.room);
             if (!previous && hosts.size >= config.maxHosts) return drop(peer, 'CAPACITY_EXCEEDED');
@@ -76,7 +76,7 @@ export function attachRelay(server, config, store, log, push) {
             pending--; clearTimeout(peer.timer); emit(peer, { type: 'ready', ...(peer.pushCapable ? { push: Boolean(push) } : {}), limits: { framesPerSecond: config.framesPerSecond, bytesPerSecond: config.bytesPerSecond, maxFrameBytes: config.maxFrameBytes, heartbeatIntervalMs: Math.min(15000, config.idleTimeoutMs / 3) } });
           } else if (message.role === 'client') {
             const host = hosts.get(message.room); const registration = store.room(message.room);
-            if (message.capability !== undefined || (!config.allowedClientOrigins.includes(peer.origin) && !config.allowedAppOrigins.includes(peer.origin)) || !host?.alive || !registration) return drop(peer, 'UNAVAILABLE');
+            if ((config.localTls && !req.socket.encrypted) || message.capability !== undefined || (!config.allowedClientOrigins.includes(peer.origin) && !config.allowedAppOrigins.includes(peer.origin)) || !host?.alive || !registration) return drop(peer, 'UNAVAILABLE');
             if (host.channels.size >= Math.min(registration.max_channels, config.maxChannelsPerHost)) return drop(peer, 'CAPACITY_EXCEEDED');
             peer.role = 'client'; peer.host = host; peer.room = message.room; peer.channel = randomUUID();
             host.channels.set(peer.channel, peer); pending--; clearTimeout(peer.timer);

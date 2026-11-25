@@ -73,9 +73,8 @@ export function TurnProgress({
           <div className="turn-progress-heading">
             <div className="turn-progress-label">
               <Button
-                unstyled
-                data-slot={undefined}
-                className="turn-progress-summary"
+                variant="ghost-subtle"
+                size="none"
                 type="button"
                 aria-label={t("chat.progress.accessibleLabel", {
                   label: label ?? t("chat.progress.defaultLabel"),

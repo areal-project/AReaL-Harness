@@ -204,7 +204,7 @@ try {
   hostPids.push(hostPid);
   await page.getByRole("button", { name: "设置", exact: true }).click();
   assert.equal(await page.getByRole("button", { name: "后台服务", exact: true }).count(), 0);
-  await page.locator(".provider-catalog-row").filter({ hasText: "Fixture" }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: "Fixture" }).click();
   await page.getByRole("textbox", { name: "供应商名称", exact: true }).fill("Fixture saved");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await until(
@@ -269,7 +269,7 @@ try {
   );
   checks.push("Real Core completes a task using local deterministic model");
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.locator(".provider-catalog-row").filter({ hasText: "Fixture saved" }).click();
+  await page.locator(".provider-catalog button").filter({ hasText: "Fixture saved" }).click();
   await page.getByRole("textbox", { name: "供应商名称", exact: true }).fill("Fixture applied");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   const applied = await until(
@@ -479,7 +479,7 @@ try {
     assert.ok(!preview.includes(secret), `diagnostics excludes ${secret}`);
   await page.screenshot({ path: join(scratch, "feedback-preview.png"), animations: "disabled" });
   await dialog.getByRole("button", { name: "保存到本机" }).click();
-  await dialog.getByText("已保存到本机，尚未发送。请检查内容后导出。").waitFor();
+  await dialog.getByText("已保存到本机，尚未发送。可检查内容后提交或导出。").waitFor();
   await dialog.getByRole("button", { name: "本机反馈", exact: true }).click();
   await dialog.getByRole("button", { name: "查看反馈" }).click();
   await dialog.getByText("查看将附带的诊断内容").click();

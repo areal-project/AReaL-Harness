@@ -75,7 +75,7 @@
 .composer-model-option {
   min-height: var(--spacing-control-lg);
   padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
-  border-radius: var(--radius-choice);
+  border-radius: var(--radius-dialog);
   text-align: left;
   font-size: var(--text-ui-base);
 }

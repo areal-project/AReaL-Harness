@@ -1,7 +1,7 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, MessageCircleQuestion, Pencil, X } from "lucide-react";
-import { QuestionCard } from "@areal/ui/experimental";
+import { QuestionCard, QuestionSummary } from "@areal/ui/compositions";
 import { Feedback } from "./components/ui/feedback.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
 import { Button } from "./components/ui/button.js";
@@ -103,28 +103,56 @@ export function AskUserQuestion({
   };
   // Retain the ZCode elicitation state mechanism with Codex bottom-dock layout.
   // Core receives the original option string or explicit custom text, never a skip.
+  if (submitted) {
+    return (
+      <QuestionSummary
+        summary={t("chat.questions.submittedSummary", { count: questions.length })}
+        items={questions.map((entry) => ({
+          question: String(entry.title ?? ""),
+          answer: answer(drafts[entry.id]),
+        }))}
+      />
+    );
+  }
   return (
     <>
       {collapsed && (
         <Button
           ref={deferred}
           type="button"
-          className="decision-deferred"
+          className="mb-(--spacing-inline)"
           variant="outline"
           aria-label="展开待回答问题"
           onClick={() => setCollapsed(false)}
         >
           <MessageCircleQuestion />
-          问题等待回答<span>展开</span>
+          问题等待回答<span className="ml-3">展开</span>
         </Button>
       )}
       <form
         hidden={collapsed}
         className="ask-user-form"
         onKeyDown={(e) => {
+          if (locked || e.nativeEvent.isComposing) return;
           if (
-            locked ||
-            e.nativeEvent.isComposing ||
+            (e.key === "ArrowDown" || e.key === "ArrowUp") &&
+            options.length > 0 &&
+            !(e.target as HTMLElement).closest('textarea, input[type="radio"]')
+          ) {
+            e.preventDefault();
+            const currentIndex = custom ? -1 : options.indexOf(draft.option);
+            const delta = e.key === "ArrowDown" ? 1 : -1;
+            const nextIndex =
+              currentIndex === -1
+                ? delta > 0
+                  ? 0
+                  : options.length - 1
+                : (currentIndex + delta + options.length) % options.length;
+            const option = options[nextIndex];
+            if (option) update({ mode: "option", option });
+            return;
+          }
+          if (
             !/^[1-9]$/.test(e.key) ||
             (e.target as HTMLElement).closest("input, textarea, button")
           )
@@ -245,8 +273,8 @@ export function AskUserQuestion({
               {unknown ? (
                 <Button
                   type="button"
-                  className="decision-button"
                   variant="outline"
+                  size="sm"
                   disabled={busy}
                   onClick={() => void refresh()}
                 >
@@ -256,8 +284,8 @@ export function AskUserQuestion({
                 <>
                   <Button
                     type="button"
-                    className="decision-button ask-user-defer"
                     variant="outline"
+                    size="sm"
                     disabled={busy || submitted}
                     onClick={() => setCollapsed(true)}
                   >
@@ -265,7 +293,7 @@ export function AskUserQuestion({
                   </Button>
                   <Button
                     type="submit"
-                    className="decision-button decision-primary"
+                    size="sm"
                     disabled={
                       locked || !answer(draft) || (index === questions.length - 1 && !complete)
                     }

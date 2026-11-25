@@ -30,6 +30,7 @@ test("reading a scheduled task does not import its editor or execute task action
     }),
   );
   expect(markup).toContain('data-scheduled-task-menu="task"');
+  expect(markup).toContain('data-scheduled-task-toggle="task"');
   expect(markup).toContain("Review CI");
   expect(editorImport).not.toHaveBeenCalled();
   expect(action).not.toHaveBeenCalled();

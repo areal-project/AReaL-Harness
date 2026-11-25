@@ -36,7 +36,6 @@ export function TrajectoryToggle({
       </span>
       <Switch
         aria-label={t("settings.trajectoryToggle.enableDataFlywheel")}
-        className="trajectory-toggle"
         checked={status.enabled}
         disabled={
           busy ||

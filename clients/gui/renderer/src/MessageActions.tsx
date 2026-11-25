@@ -47,16 +47,17 @@ export function CopyTextAction({
   return (
     <>
       <ControlHintTooltip title={hint}>
-        <Button
-          unstyled
-          data-slot={undefined}
-          className={`icon-button ${className}`}
-          type="button"
-          aria-label={label}
-          onClick={() => void copy()}
-        >
-          {result === "copied" ? <CopiedIcon size={iconSize} /> : <MessageCopy size={iconSize} />}
-        </Button>
+        <span className={className || undefined}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            type="button"
+            aria-label={label}
+            onClick={() => void copy()}
+          >
+            {result === "copied" ? <CopiedIcon size={iconSize} /> : <MessageCopy size={iconSize} />}
+          </Button>
+        </span>
       </ControlHintTooltip>
       {result && (
         <span className="sr-only" role="status">

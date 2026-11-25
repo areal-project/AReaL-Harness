@@ -1,12 +1,16 @@
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  TitleTooltip,
+} from "@areal/ui";
 import { recordItems } from "./data-shapes.js";
 import { useI18n } from "./i18n/IntlProvider.js";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-  DialogTrigger,
-} from "./components/ui/dialog.js";
+import { Button } from "./components/ui/button.js";
 import { HookStatsIcon } from "./interfaceIcons.js";
 import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 import type { Data } from "./services.js";
@@ -41,57 +45,65 @@ export function TurnHookStats({ turn }: { turn: Data }) {
     ...(unknown ? [["结果未知", unknown]] : []),
   ];
   return (
-    <Dialog>
-      <DialogTrigger className="icon-button" aria-label="钩子统计" title="钩子统计">
-        <HookStatsIcon width={14} height={14} />
-      </DialogTrigger>
-      <DialogContent className="hook-stats-dialog" overlayClassName="hook-stats-overlay">
-        <DialogTitle className="hook-stats-title">钩子统计</DialogTitle>
-        <dl className="hook-stats-counts">
-          {counts.map(([label, count]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{count}</dd>
-            </div>
-          ))}
-        </dl>
-        <div className="hook-stats-history">
-          <h3 id={`hook-history-${turn.id}`}>运行历史</h3>
-          {runs.length ? (
-            <ul aria-labelledby={`hook-history-${turn.id}`}>
-              {runs.map(({ hook, tool, itemId }: Data, index: number) => (
-                <li key={`${itemId}:${hook.operationId}:${index}`}>
-                  <div className="hook-stats-row">
-                    <span className="hook-stats-status">
-                      {blocked(hook) ? "已阻止" : (labels[hook.outcome] ?? "状态未知")}
-                    </span>
-                    <span className="hook-stats-event">
-                      {hook.event}
-                      <span>{hook.name}</span>
-                      <span>{tool}</span>
-                    </span>
-                  </div>
-                  <SettingsDisclosure
-                    className="hook-stats-details"
-                    title={t("common.hooks.result")}
-                  >
-                    <pre aria-label={t("common.hooks.result")}>
-                      {hook.result == null
-                        ? "Core 未返回结果"
-                        : JSON.stringify(hook.result, null, 2)}
-                    </pre>
-                  </SettingsDisclosure>
-                </li>
+    <Sheet>
+      <TitleTooltip title="钩子统计">
+        <SheetTrigger
+          render={<Button type="button" variant="ghost-subtle" size="icon" aria-label="钩子统计" />}
+        >
+          <HookStatsIcon width={14} height={14} />
+        </SheetTrigger>
+      </TitleTooltip>
+      <SheetContent side="right" size="md" closeLabel="关闭钩子统计">
+        <SheetHeader>
+          <SheetTitle>钩子统计</SheetTitle>
+          <SheetDescription>{t("common.hooks.turnDescription")}</SheetDescription>
+        </SheetHeader>
+        <SheetBody>
+          <div className="flex min-h-0 flex-1 flex-col gap-[var(--spacing-field)]">
+            <dl className="hook-stats-counts">
+              {counts.map(([label, count]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{count}</dd>
+                </div>
               ))}
-            </ul>
-          ) : (
-            <p>本轮没有钩子运行记录。</p>
-          )}
-        </div>
-        <DialogDescription className="hook-stats-scope">
-          仅包含 Core 返回的本轮工具钩子记录。
-        </DialogDescription>
-      </DialogContent>
-    </Dialog>
+            </dl>
+            <div className="hook-stats-history">
+              <h3 id={`hook-history-${turn.id}`}>运行历史</h3>
+              {runs.length ? (
+                <ul aria-labelledby={`hook-history-${turn.id}`}>
+                  {runs.map(({ hook, tool, itemId }: Data, index: number) => (
+                    <li key={`${itemId}:${hook.operationId}:${index}`}>
+                      <div className="hook-stats-row">
+                        <span className="hook-stats-status">
+                          {blocked(hook) ? "已阻止" : (labels[hook.outcome] ?? "状态未知")}
+                        </span>
+                        <span className="hook-stats-event">
+                          {hook.event}
+                          <span>{hook.name}</span>
+                          <span>{tool}</span>
+                        </span>
+                      </div>
+                      <SettingsDisclosure
+                        className="hook-stats-details"
+                        title={t("common.hooks.result")}
+                      >
+                        <pre aria-label={t("common.hooks.result")}>
+                          {hook.result == null
+                            ? t("common.hooks.noResult")
+                            : JSON.stringify(hook.result, null, 2)}
+                        </pre>
+                      </SettingsDisclosure>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>本轮没有钩子运行记录。</p>
+              )}
+            </div>
+          </div>
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }

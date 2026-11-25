@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, type ComponentProps } from "react";
-import { FeedbackNotice as View } from "@areal/ui/experimental";
+import { FeedbackNotice as View } from "@areal/ui";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { Button, Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@areal/ui";
 import { dismissToast, toast } from "./components/ui/toast.js";

@@ -181,8 +181,8 @@ pub(crate) async fn dispatch(
             | "areal/plugin/importArchive"
             | "areal/plugin/component/configure"
             | "areal/plugin/setup"
-            | "areal/queue/update"
             | "areal/queue/steer"
+            | "areal/queue/update"
             | "areal/queue/remove"
             | "areal/queue/reorder"
             | "areal/queue/pause"
@@ -222,10 +222,10 @@ pub(crate) async fn dispatch(
         let method = method.to_owned();
         let owner = identity.to_owned();
         let snapshot = params.clone();
-        if method == "areal/plugin/setup"
-            || method == "areal/queue/steer"
-            || method == "areal/worktree/command"
-        {
+        if matches!(
+            method.as_str(),
+            "areal/plugin/setup" | "areal/queue/steer" | "areal/worktree/command"
+        ) {
             params["requestId"] = json!(request);
         }
         let reply = engine
@@ -266,12 +266,12 @@ pub(crate) async fn create_side(
     engine: &Arc<Engine>,
     identity: &str,
     params: Value,
-    host: Option<Arc<dyn areal_engine::tools::DynamicToolHost>>,
+    can_inherit_browser: bool,
 ) -> Result<Value, RpcError> {
     let request: SideCreate = parse(params)?;
     let request_id = request.request_id.clone();
     let (mut thread, mut turn) = engine
-        .side_create(identity.into(), request, host)
+        .side_create(identity.into(), request, can_inherit_browser)
         .await
         .map_err(map_error)?;
     thread.turns.clear();
@@ -290,7 +290,7 @@ async fn dispatch_inner(
     params: Value,
 ) -> Result<Value, RpcError> {
     let result = match method {
-        "areal/side/create" => return create_side(engine, identity, params, None).await,
+        "areal/side/create" => return create_side(engine, identity, params, false).await,
         "areal/side/close" => engine.side_close(identity.into(), parse(params)?).await,
         "areal/side/start" => {
             let request: SideStart = parse(params)?;
@@ -747,7 +747,10 @@ async fn dispatch_inner(
             .submit_turn(identity.into(), parse(params)?)
             .await
             .map_err(atomic_mutation_error),
-        "areal/queue/steer" => engine.steer_queue(identity.into(), parse(params)?).await,
+        "areal/queue/steer" => engine
+            .steer_queue(identity.into(), parse(params)?)
+            .await
+            .map_err(atomic_mutation_error),
         "areal/queue/list" => {
             let p: ThreadId = parse(params)?;
             engine.queue(&p.thread_id).await.map(|q| json!(q))

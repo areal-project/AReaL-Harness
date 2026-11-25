@@ -96,7 +96,9 @@ export function MobileDevices({
             ? "settings.mobileSettings.clientKindAndroid"
             : "settings.mobileSettings.clientKindWeb",
       ),
-      t("settings.mobileConnect.projectCount", { count: device.projectIds?.length ?? 0 }),
+      device.projectIds?.includes("*")
+        ? t("settings.mobileConnect.allProjectsShort")
+        : t("settings.mobileConnect.projectCount", { count: device.projectIds?.length ?? 0 }),
       device.online
         ? t("settings.mobileConnect.online")
         : device.lastSeenAt
@@ -133,7 +135,7 @@ export function MobileDevices({
           <small>{t("settings.mobileConnect.activeCount", { count: active.length })}</small>
         )}
       </header>
-      <SettingsGroupCard className="remote-device-list">
+      <SettingsGroupCard>
         {active.map((device) => (
           <DeviceRow
             key={device.devicePeerId}
@@ -194,7 +196,7 @@ export function MobileDevices({
           }
         >
           <div className="remote-revoked-body">
-            <SettingsGroupCard className="remote-device-list">
+            <SettingsGroupCard className="justify-self-stretch">
               {revoked.map((device) => (
                 <DeviceRow
                   key={`${device.devicePeerId}:${device.revision}`}

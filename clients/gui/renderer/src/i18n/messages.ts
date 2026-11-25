@@ -6,7 +6,6 @@ import { composerPriorityMessages } from "./messages/composerPriority.js";
 import { resourceMessages } from "./messages/resources.js";
 import { timelineMessages } from "./messages/timeline.js";
 import { trajectoryMessages } from "./messages/trajectory.js";
-import { mobileMessages } from "./messages/mobile.js";
 import { automationMessages } from "./messages/automation.js";
 import { desktopSettingsMessages } from "./messages/desktopSettings.js";
 import { operationMessages } from "./messages/operations.js";
@@ -20,6 +19,8 @@ import { worktreeMessages } from "./messages/worktrees.js";
 import { settingsSearchMessages } from "./messages/settingsSearch.js";
 import { errorMessages } from "./messages/errors.js";
 import { userStateMessages } from "./messages/userStates.js";
+import { botMessages } from "./messages/bots.js";
+import { labsMessages } from "./messages/labs.js";
 
 export type AppLocale = "zh-CN" | "en";
 export type MessagePair = Record<AppLocale, string>;
@@ -32,7 +33,6 @@ export const messages = {
   ...resourceMessages,
   ...timelineMessages,
   ...trajectoryMessages,
-  ...mobileMessages,
   ...desktopSettingsMessages,
   ...automationMessages,
   ...operationMessages,
@@ -46,6 +46,8 @@ export const messages = {
   ...settingsSearchMessages,
   ...errorMessages,
   ...userStateMessages,
+  ...botMessages,
+  ...labsMessages,
 } as const satisfies Record<string, MessagePair>;
 export type MessageId = keyof typeof messages;
 export const catalogs = Object.fromEntries(

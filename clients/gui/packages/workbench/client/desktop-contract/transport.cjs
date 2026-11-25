@@ -51,12 +51,12 @@ const commandDefinitions = Object.freeze({
       ...operations(recoverable, "start send create close"),
     },
   ],
-  prediction: ["service", "thread", mutation],
+  // 只补一条可丢弃的建议，不占独立业务身份：按读处理，断线不重发。
+  prediction: ["service", "thread", read],
   send: ["service", "thread", recoverable],
   editMessage: ["service", "thread", recoverable],
   continue: ["service", "thread", recoverable],
   stop: ["service", "thread", recoverable],
-  attachBrowser: ["service", "thread", recoverable],
   respond: ["service", "thread", mutation],
   reconcile: ["service", "project", read],
   configure: ["service", "thread", recoverable],
@@ -76,16 +76,16 @@ const commandDefinitions = Object.freeze({
     {
       ...operations(
         read,
-        "pluginComponents pluginStoreSnapshot pluginStoreDoctor pluginHooks pluginMcp mcpApps genUiSource mcpForms mcpToolResult plugins plugin providers mcp profile skills skill inspect context inheritedHistory plan processes process processWait goal permissions interactions processOutput executions execution executionTrace executionTraceResult executionArtifact executionWait agents agentWait workflows server workflow workgroupPolicy workgroups workgroup workgroupWait workgroupArtifact workgroupArtifactStatus workgroupCapabilities workgroupSubmission pluginCapabilities pluginReadiness pluginSubmission processSubmission agentSubmission mcpFormResourceSubmission tasks task taskInbox taskChannel taskDraftHistory taskDraftRead taskSchedulePreview taskScheduleContext taskHistoryCapabilities taskRuns taskRun",
+        "pluginComponents pluginStoreSnapshot pluginStoreDoctor pluginHooks pluginMcp plugins plugin providers mcp profile skills skill inspect context inheritedHistory plan processes process processWait goal permissions interactions processOutput executions execution executionTrace executionTraceResult executionArtifact executionWait agents agentWait workflows server workflow workgroupPolicy workgroups workgroup workgroupWait workgroupArtifact workgroupArtifactStatus workgroupCapabilities workgroupSubmission pluginCapabilities pluginReadiness pluginSubmission processSubmission agentSubmission tasks task taskInbox taskChannel taskDraftHistory taskDraftRead taskSchedulePreview taskScheduleContext taskHistoryCapabilities taskRuns taskRun",
       ),
       ...operations(subscription, "taskWatch taskUnwatch"),
       ...operations(
         recoverable,
-        "pluginUserConfigSave pluginDevelopmentLink pluginDevelopmentUnlink pluginArchiveImport mcpFormResourceStage pluginHooksConfigure hookAcknowledge pluginAuthConfigure pluginConnection pluginComponentConfigure pluginSetup providerSave providerRemove archive unarchive processCloseStdin processStart processWrite processResize processTerminate goalCreate goalUpdate goalPause goalResume goalClear workgroupStart workflowStart workgroupRevise agentSpawn taskCreate taskUpdate taskRunNow taskPause taskResume taskStopRun taskResumeRun taskCancel taskDelete taskReply taskDraftSend",
+        "pluginUserConfigSave pluginDevelopmentLink pluginDevelopmentUnlink pluginArchiveImport pluginHooksConfigure hookAcknowledge pluginAuthConfigure pluginConnection pluginComponentConfigure pluginSetup providerSave providerRemove archive unarchive processCloseStdin processStart processWrite processResize processTerminate goalCreate goalUpdate goalPause goalResume goalClear workgroupStart workflowStart workgroupRevise agentSpawn taskCreate taskUpdate taskRunNow taskPause taskResume taskStopRun taskResumeRun taskCancel taskDelete taskReply taskDraftSend",
       ),
       ...operations(
         mutation,
-        "pluginInstall pluginUninstall pluginResolve pluginConfigure marketplaceAdd marketplaceAddGit marketplaceRemove marketplaceUpdate mcpSave pluginArchivePick pluginAuth pluginAuthCredential mcpAppOpen mcpAppOpenFromResult mcpAppRequest mcpAppClose mcpExtensionCall mcpFormRespond mcpFormPreview mcpFormResourcePrepare mcpFormResourceRelease executionCancel executionApply serverDrain serverGc workgroupApplyArtifact workgroupCancel closeResources planUpdate toolAcknowledge contextCompact permissionsForget providerProbe taskDraftConfirm",
+        "pluginInstall pluginUninstall pluginResolve pluginConfigure marketplaceAdd marketplaceAddGit marketplaceRemove marketplaceUpdate mcpSave pluginArchivePick pluginAuth pluginAuthCredential mcpExtensionCall executionCancel executionApply serverDrain serverGc workgroupApplyArtifact workgroupCancel closeResources planUpdate toolAcknowledge contextCompact permissionsForget providerProbe taskDraftConfirm",
       ),
       taskDraftStart: { effect: "mutation", requestId: "draftId" },
     },
@@ -167,11 +167,6 @@ const commandDefinitions = Object.freeze({
     "app",
     { status: read, ...operations(mutation, "importChrome clearCache clearAll") },
   ],
-  computerControl: [
-    "main",
-    "app",
-    { status: read, ...operations(mutation, "requestAccess openSettings restart stop") },
-  ],
   bugReport: [
     "main",
     "app",
@@ -179,7 +174,7 @@ const commandDefinitions = Object.freeze({
   ],
   exportDiagnostics: ["main", "app", read],
   connectService: ["main", "app", subscription],
-  remoteControl: ["main", "app", mutation],
+  remoteControl: ["service", "app", mutation],
 });
 /** @param {string} name @param {Record<string,unknown>} request @returns {CommandEffect} */
 function commandSemantics(name, request) {

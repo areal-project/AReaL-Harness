@@ -229,7 +229,7 @@ export async function runSharedWorkspace(page, scratch, report, baseline) {
   assert.equal(await side().innerText(), "Side草稿：保留独立问题");
   await capture("04-return");
   const panel = scope.locator(".workspace-side-panel");
-  const fileTab = scope.locator('[data-side-pane-tab-id="文件"]');
+  const fileTab = scope.locator('[data-side-pane-tab-id="files"]');
   await fileTab.hover();
   await fileTab.locator('[aria-label="关闭 文件 标签"]').click();
   await fileTab.waitFor({ state: "detached" });

@@ -37,6 +37,12 @@ impl Client {
         )
         .await
     }
+    pub async fn bots_read(&self, params: Value) -> Result<Value> {
+        self.call("bots.read", params).await
+    }
+    pub async fn bots_command(&self, params: Value) -> Result<Value> {
+        self.call("bots.command", params).await
+    }
 
     pub fn identity(&self) -> &HostIdentity {
         &self.identity
@@ -213,6 +219,13 @@ impl Client {
     }
     pub async fn activity(&self) -> Result<Activity> {
         self.call("host.activity", json!({})).await
+    }
+    pub async fn release_when_unused(&self, request_id: &str) -> Result<Value> {
+        self.call(
+            "host.release",
+            json!({"requestId":request_id,"expectedGeneration":self.identity.generation}),
+        )
+        .await
     }
     pub async fn update_status(&self) -> Result<Value> {
         self.call("host.updateStatus", json!({})).await
@@ -607,6 +620,7 @@ mod tests {
                 auth_file: host_dir.join("auth.json"),
                 pid: std::process::id(),
                 executable_version: version.into(),
+                executable_digest: None,
             };
             storage::write(&host_dir.join("host.json"), &identity).unwrap();
             storage::write(&identity.auth_file, &"fixture-token").unwrap();

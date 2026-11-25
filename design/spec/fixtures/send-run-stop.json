@@ -174,33 +174,33 @@
       "screen": "window",
       "conversation": "thread-idle",
       "draft": "",
-      "settings": "常规"
+      "settings": "general"
     },
     "window.settings-appearance": {
       "screen": "window",
       "conversation": "thread-idle",
       "draft": "",
-      "settings": "外观"
+      "settings": "appearance"
     },
     "window.settings-search": {
       "screen": "window",
       "conversation": "thread-idle",
       "draft": "",
-      "settings": "常规",
+      "settings": "general",
       "settingsSearch": "字号"
     },
     "window.settings-select": {
       "screen": "window",
       "conversation": "thread-idle",
       "draft": "",
-      "settings": "外观",
+      "settings": "appearance",
       "overlay": "theme-select"
     },
     "window.settings-usage": {
       "screen": "window",
       "conversation": "thread-idle",
       "draft": "",
-      "settings": "用量"
+      "settings": "usage"
     },
     "window.settings-snapshots": {
       "screen": "window",
@@ -212,19 +212,13 @@
       "screen": "window",
       "conversation": "thread-idle",
       "draft": "",
-      "settings": "浏览器"
+      "settings": "browser"
     },
     "window.settings-cloud": {
       "screen": "window",
       "conversation": "thread-idle",
       "draft": "",
       "settings": "Cloud"
-    },
-    "window.settings-computer": {
-      "screen": "window",
-      "conversation": "thread-idle",
-      "draft": "",
-      "settings": "电脑控制"
     },
     "window.settings-worktrees": {
       "screen": "window",
@@ -236,25 +230,25 @@
       "screen": "window",
       "conversation": "thread-idle",
       "draft": "",
-      "settings": "钩子"
+      "settings": "hooks"
     },
     "window.settings-models": {
       "screen": "window",
       "conversation": "thread-idle",
       "draft": "",
-      "settings": "模型服务"
+      "settings": "providers"
     },
     "window.settings-mobile": {
       "screen": "window",
       "conversation": "thread-idle",
       "draft": "",
-      "settings": "手机连接"
+      "settings": "mobile"
     },
     "window.settings-flywheel": {
       "screen": "window",
       "conversation": "thread-idle",
       "draft": "",
-      "settings": "数据飞轮"
+      "settings": "trajectory"
     },
     "window.panel": {
       "screen": "window",
@@ -262,7 +256,7 @@
       "draft": "",
       "panel": {
         "tabs": [],
-        "active": "功能"
+        "active": "launcher"
       }
     },
     "window.panel-tabs": {
@@ -270,8 +264,8 @@
       "conversation": "thread-idle",
       "draft": "",
       "panel": {
-        "tabs": ["改动", "文件"],
-        "active": "文件"
+        "tabs": ["changes", "files"],
+        "active": "files"
       }
     },
     "window.panel-full": {
@@ -279,8 +273,8 @@
       "conversation": "thread-idle",
       "draft": "",
       "panel": {
-        "tabs": ["改动", "文件"],
-        "active": "改动",
+        "tabs": ["changes", "files"],
+        "active": "changes",
         "view": "panel"
       }
     },
@@ -289,8 +283,8 @@
       "conversation": "thread-idle",
       "draft": "",
       "panel": {
-        "tabs": ["改动", "文件"],
-        "active": "文件"
+        "tabs": ["changes", "files"],
+        "active": "files"
       },
       "overlay": "panel-add-menu"
     },
@@ -299,8 +293,8 @@
       "conversation": "thread-idle",
       "draft": "",
       "panel": {
-        "tabs": ["改动"],
-        "active": "改动"
+        "tabs": ["changes"],
+        "active": "changes"
       }
     },
     "window.review-scope-menu": {
@@ -308,8 +302,8 @@
       "conversation": "thread-idle",
       "draft": "",
       "panel": {
-        "tabs": ["改动"],
-        "active": "改动"
+        "tabs": ["changes"],
+        "active": "changes"
       },
       "overlay": "review-scope-menu"
     },
@@ -318,8 +312,8 @@
       "conversation": "thread-idle",
       "draft": "",
       "panel": {
-        "tabs": ["改动"],
-        "active": "改动"
+        "tabs": ["changes"],
+        "active": "changes"
       },
       "overlay": "review-files"
     },
@@ -328,8 +322,8 @@
       "conversation": "thread-idle",
       "draft": "",
       "panel": {
-        "tabs": ["文件"],
-        "active": "文件"
+        "tabs": ["files"],
+        "active": "files"
       }
     },
     "window.files-open": {
@@ -337,7 +331,7 @@
       "conversation": "thread-idle",
       "draft": "",
       "panel": {
-        "tabs": ["文件", "file:src/math.ts"],
+        "tabs": ["files", "file:src/math.ts"],
         "active": "file:src/math.ts"
       }
     },
@@ -346,8 +340,8 @@
       "conversation": "thread-idle",
       "draft": "",
       "panel": {
-        "tabs": ["旁路讨论"],
-        "active": "旁路讨论"
+        "tabs": ["side-chat"],
+        "active": "side-chat"
       }
     },
     "window.tasks": {
@@ -492,11 +486,6 @@
             "label": "浏览器",
             "icon": "settings-browser",
             "keywords": "浏览器登录与数据、Cookie"
-          },
-          {
-            "label": "电脑控制",
-            "icon": "settings-computer",
-            "keywords": "系统授权、控制进程、辅助功能、屏幕录制"
           }
         ]
       },
@@ -910,7 +899,11 @@
   "settingsBackend": {
     "$comment": "设置各页的示例后台数据：today 固定，截图不随真实日期变化。",
     "today": "2026-11-07",
-    "feedback": { "enabled": true, "connected": true, "opted_in": true },
+    "feedback": {
+      "enabled": true,
+      "connected": true,
+      "opted_in": true
+    },
     "usage": {
       "days": [
         180000, 240000, 0, 320000, 410000, 150000, 260000, 380000, 90000, 300000, 450000, 220000,
@@ -964,10 +957,6 @@
     ],
     "cloud": {
       "baseURL": "https://cloud.example.com"
-    },
-    "computer": {
-      "accessibility": "granted",
-      "screenRecording": "denied"
     },
     "mobile": {
       "relay": "https://relay.example.com",

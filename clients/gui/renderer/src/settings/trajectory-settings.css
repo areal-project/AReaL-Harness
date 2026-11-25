@@ -8,18 +8,19 @@
   padding: calc(var(--spacing-inline) / 4) var(--spacing-inline);
   font-size: var(--text-ui-sm);
   white-space: nowrap;
-  background: #ffedd5;
-  color: #9a3412;
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+  color: var(--color-warning);
 }
 .trajectory-toggle-control .trajectory-toggle {
-  background: #fed7aa;
-  border: 1px solid #fdba74;
+  background: color-mix(in srgb, var(--color-warning) 24%, transparent);
+  border: var(--border-width-default) solid
+    color-mix(in srgb, var(--color-warning) 42%, transparent);
 }
 .trajectory-toggle-control[data-upload-state="enabled"] .trajectory-toggle-label {
-  background: #dcfce7;
-  color: #166534;
+  background: color-mix(in srgb, var(--color-success) 16%, transparent);
+  color: var(--color-success);
 }
 .trajectory-toggle-control[data-upload-state="enabled"] .trajectory-toggle {
-  background: #bbf7d0;
-  border-color: #86efac;
+  background: color-mix(in srgb, var(--color-success) 24%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 42%, transparent);
 }

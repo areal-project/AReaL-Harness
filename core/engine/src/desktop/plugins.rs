@@ -369,6 +369,9 @@ impl Engine {
                     .map_err(invalid)?;
             }
             self.publish_plugin_snapshot(snapshot, catalog, diagnostics);
+            if changed {
+                self.emit_model_catalog_changed();
+            }
         }
         drop(_refresh);
         self.reconcile_plugin_connections().await?;
@@ -413,7 +416,6 @@ impl Engine {
                         && matches!(
                             entry.backend,
                             crate::tools::Backend::Client
-                                | crate::tools::Backend::Page(_)
                                 | crate::tools::Backend::Mcp(_)
                                 | crate::tools::Backend::Plugin(_)
                                 | crate::tools::Backend::Coordination

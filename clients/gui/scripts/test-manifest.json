@@ -1,27 +1,11 @@
 [
   {
-    "script": "test:workbench-errors",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["protocol", "provider"],
-    "requires": ["gui-build"],
-    "notes": "Actual Workbench process framing and typed error mapping, including the Host error-code inventory."
-  },
-  {
     "script": "test:core-observation",
     "layer": "contract",
     "platforms": ["darwin", "linux"],
     "areas": ["testing", "conversation"],
     "requires": ["core-binary", "native-runtime"],
     "notes": "Create and observe a real isolated Core thread, then verify cleanup of its original service generation."
-  },
-  {
-    "script": "test:workbench-backend",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["service", "lifecycle", "library"],
-    "requires": ["core-binary", "gui-build"],
-    "notes": "Isolated source Host and Node backend; WebSocket receipts, Main attach, crash recovery and Host shutdown. No Electron window or package; native secure storage remains a separate check."
   },
   {
     "script": "test:conversation-baseline-provider",
@@ -85,6 +69,14 @@
     "requires": ["electron", "core-binary", "git", "gui-build"]
   },
   {
+    "script": "test:macos-signing",
+    "layer": "contract",
+    "platforms": ["darwin"],
+    "areas": ["packaging"],
+    "requires": ["macos-tools"],
+    "platformReason": "Uses macOS codesign for resource-seal verification."
+  },
+  {
     "script": "test:macos-dmg",
     "layer": "contract",
     "platforms": ["darwin"],
@@ -100,13 +92,6 @@
     "areas": ["diagnostics"],
     "requires": ["electron", "core-binary", "git", "gui-build", "python3"],
     "notes": "Mixed command; classified by highest browser or Electron boundary."
-  },
-  {
-    "script": "test:state-projection",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["projection"],
-    "requires": []
   },
   {
     "script": "test:recovery",
@@ -254,6 +239,22 @@
     "notes": "Isolated shared Host quit and reconnect. Remote identity recovery is opt-in and requires authorization for test Keychain writes on macOS."
   },
   {
+    "script": "test:stop-reopen",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["lifecycle", "desktop"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "notes": "Isolated real GUI startup, explicit Host stop, GUI exit and reopen through both the settings switch and application menu."
+  },
+  {
+    "script": "test:crash-recovery",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["lifecycle", "desktop"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "notes": "Isolated GUI recovery after the owned Host and Workbench crash with discovery retained."
+  },
+  {
     "script": "test:host-handoff",
     "layer": "e2e",
     "platforms": ["darwin"],
@@ -261,20 +262,6 @@
     "areas": ["lifecycle", "conversation"],
     "requires": ["electron", "core-binary", "native-runtime", "gui-build", "git", "python3"],
     "notes": "Isolated GUI-to-TUI approval handoff and shared history through a real PTY and local model. On macOS, requires authorized test Keychain writes and AREAL_TEST_HOST_KEYCHAIN=1, including for empty GUI configuration."
-  },
-  {
-    "script": "test:legacy-recovery",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["recovery"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
-  },
-  {
-    "script": "test:lifecycle:legacy",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["lifecycle"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
   },
   {
     "script": "test:side-chat-parity",
@@ -342,6 +329,14 @@
     "platforms": ["darwin", "linux"],
     "areas": ["provider"],
     "requires": ["electron", "core-binary", "gui-build", "git"]
+  },
+  {
+    "script": "test:provider-startup-recovery",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["provider"],
+    "requires": ["browser", "gui-build"],
+    "notes": "Production settings components with synthetic read failures and reconnects; verifies catalog and subscription recovery without discarding an unsaved draft."
   },
   {
     "script": "test:context-usage",
@@ -443,8 +438,8 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["history"],
-    "requires": ["browser", "core-binary", "gui-build"],
-    "notes": "Mixed command; classified by highest browser or Electron boundary."
+    "requires": ["electron", "core-binary", "native-runtime", "gui-build"],
+    "notes": "Native Electron writes and real Host/Core history with a local synthetic model."
   },
   {
     "script": "test:architecture",
@@ -497,7 +492,7 @@
     "layer": "contract",
     "platforms": ["darwin", "linux"],
     "areas": ["trajectory"],
-    "requires": ["core-binary"]
+    "requires": ["core-binary", "gui-build"]
   },
   {
     "script": "test:execution-trace-ui",
@@ -573,14 +568,14 @@
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["browser"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:browser-loading",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["browser"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
+    "requires": ["electron", "core-binary", "git", "gui-build", "python3"]
   },
   {
     "script": "test:image-annotations",
@@ -702,6 +697,7 @@
   },
   {
     "script": "test:desktop-settings",
+    "testFiles": ["scripts/desktop-settings-smoke.mjs"],
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["desktop"],
@@ -714,34 +710,6 @@
     "platforms": ["darwin", "linux"],
     "areas": ["desktop"],
     "requires": ["git"]
-  },
-  {
-    "script": "test:mcp-app-lifecycle",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["mcp"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
-  },
-  {
-    "script": "test:mcp-platform",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["mcp"],
-    "requires": ["browser", "git", "gui-build"]
-  },
-  {
-    "script": "test:mcp-page-tools",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["mcp"],
-    "requires": ["electron", "core-binary", "git", "gui-build"]
-  },
-  {
-    "script": "test:mcp-page-tools-transport",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["mcp"],
-    "requires": []
   },
   {
     "script": "test:plugins",
@@ -796,19 +764,30 @@
     "requires": ["electron", "core-binary", "git", "macos-tools", "gui-build"]
   },
   {
+    "script": "test:recovery-electron-history-steer",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "areas": ["recovery", "lifecycle"],
+    "requires": ["electron", "git", "python3", "signed-gui-package"],
+    "platformReason": "Requires a signed macOS application package.",
+    "notes": "Set AREAL_TEST_PACKAGE to the signed .app. Runs both user-requested stop and unexpected Core exit using isolated data and a deterministic local model."
+  },
+  {
     "script": "test:recovery-electron",
     "layer": "e2e",
     "platforms": ["darwin"],
     "areas": ["recovery", "lifecycle"],
     "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "testFiles": ["scripts/support/native-recovery-observation.mjs"],
     "platformReason": "Runner explicitly asserts darwin and uses its existing macOS acceptance setup."
   },
   {
-    "script": "test:gen-ui",
+    "script": "test:recovery-electron-reconnect",
     "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["gen-ui"],
-    "requires": ["electron", "core-binary", "gui-build", "git"]
+    "platforms": ["darwin"],
+    "areas": ["recovery", "lifecycle"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "platformReason": "Runner explicitly asserts darwin and uses its existing macOS acceptance setup."
   },
   {
     "script": "test:conversation-derivation",
@@ -846,6 +825,7 @@
     "platforms": ["darwin", "linux"],
     "areas": ["testing"],
     "requires": [],
+    "testFiles": ["scripts/support/acceptance-binary.mjs"],
     "notes": "脚本单测覆盖任务目录、隔离 Electron 身份、打包、开发服务路由、性能、Core 观察与 Host 传输屏障；不启动应用或调用供应商。"
   },
   {
@@ -895,13 +875,6 @@
     "layer": "contract",
     "platforms": ["darwin", "linux", "win32"],
     "areas": ["conversation", "desktop"],
-    "requires": []
-  },
-  {
-    "script": "test:mobile-storage",
-    "layer": "contract",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["remote", "mobile"],
     "requires": []
   },
   {
@@ -955,13 +928,6 @@
     "requires": ["gui-build", "node-24.22.1"]
   },
   {
-    "script": "test:mobile-android-storage",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote", "mobile"],
-    "requires": ["android-sdk", "android-emulator"]
-  },
-  {
     "script": "test:relay-service",
     "layer": "contract",
     "platforms": ["darwin", "linux"],
@@ -982,7 +948,8 @@
     "platformReason": "Uses the macOS fixed Core runner and optional iOS Simulator.",
     "platforms": ["darwin"],
     "areas": ["remote", "mobile"],
-    "requires": ["electron", "gui-build", "core-build"]
+    "requires": ["electron", "gui-build", "core-build"],
+    "notes": "Native Host with isolated Keychain authorization (AREAL_TEST_HOST_KEYCHAIN=1). Optional iOS Simulator."
   },
   {
     "script": "test:snapshots",
@@ -1070,6 +1037,33 @@
     "notes": "Business journeys in Chromium against the real Host web endpoint: browser approval, open project by path, send, approval with queued input, completion, reload, settings. Electron only bootstraps the library source once and is closed before the web journeys run."
   },
   {
+    "script": "test:desktop-upgrade-unit",
+    "layer": "contract",
+    "platforms": ["darwin"],
+    "platformReason": "Uses isolated real Host processes under /private/tmp.",
+    "areas": ["lifecycle", "desktop"],
+    "requires": ["core-binary"],
+    "notes": "Build identity replacement and recovery of the original stop receipt. AREAL_UPGRADE_OLD_BIN can select an earlier packaged Host."
+  },
+  {
+    "script": "test:host-idle",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Uses isolated real Core/Runtime processes and the production idle TTL on macOS.",
+    "areas": ["lifecycle"],
+    "requires": ["core-binary"],
+    "notes": "Runs for approximately sixteen minutes: idle hibernation, real process exit, preserved scheduling intent, and reactivation of the same project."
+  },
+  {
+    "script": "test:desktop-upgrade",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Uses macOS application bundles and isolated test Keychain entries.",
+    "areas": ["lifecycle", "conversation", "draft"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "notes": "Requires an installed old app or AREAL_UPGRADE_OLD_APP; AREAL_UPGRADE_NEW_APP selects the candidate. Copies the old app and uses isolated data and a local model to verify full backend handoff, interrupted execution, automatic history and draft recovery, and no replay."
+  },
+  {
     "script": "test:history-upgrade",
     "layer": "e2e",
     "platforms": ["darwin"],
@@ -1091,10 +1085,10 @@
     "script": "test:upgrade-guide-lifecycle",
     "layer": "e2e",
     "platforms": ["darwin"],
-    "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
+    "platformReason": "Native lifecycle probe for the macOS upgrade guide.",
     "areas": ["lifecycle", "service"],
-    "requires": ["electron", "core-binary", "gui-build"],
-    "notes": "Old Core stop receipt and Host takeover probe used by the upgrade guide; set AREAL_UPGRADE_OLD_CORE."
+    "requires": ["core-binary", "native-runtime"],
+    "notes": "Uses a fixed Core and an isolated Host-owned service to verify the original UNKNOWN stop receipt after service termination. Set AREAL_UPGRADE_OLD_CORE and AREAL_UPGRADE_OLD_CORE_SHA256."
   },
   {
     "script": "test:web-partial-migration",
@@ -1103,6 +1097,102 @@
     "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
     "areas": ["lifecycle", "service"],
     "requires": ["electron", "core-binary", "gui-build"],
+    "testFiles": ["scripts/support/published-source.mjs"],
     "notes": "Web client against a partially migrated Host; needs AREAL_PARTIAL_CORE_SHA256 of the old Core."
+  },
+  {
+    "script": "test:session-load-performance",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Uses isolated macOS Host/Core services and Chrome to measure actual message paint.",
+    "areas": ["history", "conversation", "service"],
+    "requires": ["chrome", "core-binary", "gui-build"],
+    "notes": "Measures cache misses and revisits with 1500-turn history; enforces a 200ms maximum and retains staged timings and cleanup receipts."
+  },
+  {
+    "script": "test:host-activation",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Uses isolated real Core and Runtime with macOS permission presets.",
+    "areas": ["lifecycle", "conversation"],
+    "requires": ["core-binary"],
+    "notes": "Host-native cold activation without Workbench, ready-generation reuse, explicit-stop preservation and Host cleanup."
+  },
+  {
+    "script": "test:host-scheduled-hibernation",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Uses isolated real Core and Runtime with macOS permission presets.",
+    "areas": ["lifecycle", "tasks"],
+    "requires": ["core-binary"],
+    "notes": "Release hibernates an idle Core with a future schedule; Host timer wakes it and Core completes exactly one original occurrence without Workbench."
+  },
+  {
+    "script": "test:connection-recovery",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "areas": ["recovery", "lifecycle", "conversation"],
+    "requires": [
+      "electron",
+      "browser",
+      "core-binary",
+      "native-runtime",
+      "gui-build",
+      "git",
+      "python3"
+    ],
+    "platformReason": "First pilot uses the macOS Electron owner and native runtime.",
+    "notes": "Real Host/Core and production web Renderer; request-bound faults and six business facts. No installed-package or 15-minute timer claim."
+  },
+  {
+    "script": "test:connection-recovery-counterexamples",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "areas": ["testing", "recovery"],
+    "requires": [
+      "electron",
+      "browser",
+      "core-binary",
+      "native-runtime",
+      "gui-build",
+      "git",
+      "python3"
+    ],
+    "platformReason": "Builds isolated macOS Renderer variants with a native Electron owner.",
+    "notes": "Opt-in fixed baseline and two known defect mutations; not a required smoke or full CI result."
+  },
+  {
+    "script": "test:connection-recovery-contracts",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["testing", "recovery"],
+    "requires": [],
+    "testFiles": ["scripts/support/recovery-exploration.mjs"],
+    "notes": "Mutation applicability and report verdict classification; no product acceptance claim."
+  },
+  {
+    "script": "test:connection-recovery-explore",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "areas": ["testing", "lifecycle", "conversation"],
+    "requires": [
+      "electron",
+      "browser",
+      "core-binary",
+      "native-runtime",
+      "gui-build",
+      "git",
+      "python3"
+    ],
+    "platformReason": "Uses the same macOS source Electron owner as the recovery pilot.",
+    "notes": "Bounded source Web recovery sequences with real Host/Core, data-only replay, exact business-failure shrinking and independent evidence; elective, no package or real idle timer claim."
+  },
+  {
+    "script": "test:ui-audit",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["design-system", "ui"],
+    "requires": ["browser", "gui-build"],
+    "notes": "Quantitative multi-view UI audit (Light/Dark, zh-CN/en, 1280/420@18px/390, overflow/CLS/reduced-motion) and contact sheet generator."
   }
 ]

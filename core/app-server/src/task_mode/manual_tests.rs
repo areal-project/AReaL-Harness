@@ -154,7 +154,7 @@ async fn desktop_tool_readiness_requires_unrestricted_manage_and_tools_and_fixed
     let dir = tempfile::tempdir().unwrap();
     let engine = open(dir.path());
     let owner = auth::Principal::embedded();
-    let request = json!({"bundles":["areal.browser.v1","areal.computer.v1"]});
+    let request = json!({"bundles":["areal.browser.v1"]});
     for denied in [auth::Permission::Manage, auth::Permission::Tools] {
         let mut principal = (*owner).clone();
         principal.permissions.remove(&denied);
@@ -185,6 +185,7 @@ async fn desktop_tool_readiness_requires_unrestricted_manage_and_tools_and_fixed
     for invalid in [
         json!({}),
         json!({"bundles":["other"]}),
+        json!({"bundles":["areal.computer.v1"]}),
         json!({"bundles":[],"hostId":"forged"}),
         json!({"bundles":["areal.browser.v1","areal.browser.v1"]}),
     ] {
@@ -319,10 +320,9 @@ async fn callback(
 
 #[tokio::test]
 async fn scheduled_desktop_callbacks_use_gui_connection_and_never_replay_to_successor() {
-    for (tool, bundle, prepare_method) in [
-        ("browser_v1", "areal.browser.v1", "areal/browser/prepare"),
-        ("computer_v1", "areal.computer.v1", "areal/computer/prepare"),
-    ] {
+    for (tool, bundle, prepare_method) in
+        [("browser_v1", "areal.browser.v1", "areal/browser/prepare")]
+    {
         let dir = tempfile::tempdir().unwrap();
         let engine = Engine::open(
             dir.path(),
@@ -350,7 +350,7 @@ async fn scheduled_desktop_callbacks_use_gui_connection_and_never_replay_to_succ
         let task = create(&engine, &mut scheduler, tool, now(), None, None).await;
         let preparation = prepare(&mut scheduler_rx).await;
         scheduler.tool_host.respond(
-            json!({"id":preparation["id"],"result":{"options":{"approvalTools":["browser_v1","computer_v1"]}}}),
+            json!({"id":preparation["id"],"result":{"options":{"approvalTools":["browser_v1"]}}}),
         );
         let mut calls = Vec::new();
         for index in 0..2 {

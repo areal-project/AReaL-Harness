@@ -2,7 +2,7 @@ import React from "react";
 import { projectUserState } from "../state/userStates.js";
 import { currentErrorText } from "../errors/currentErrorText.js";
 import { agentAssignment, agentName } from "../AgentIdentity.js";
-import { SidePane } from "../app-shell/SidePane.js";
+import { SIDE_PANE_TITLES, SidePane } from "../app-shell/SidePane.js";
 import {
   browserPageId,
   isBrowserTab,
@@ -13,7 +13,6 @@ import { ExecutableSideChatPane } from "../ExecutableSideChatPane.js";
 import { SidebarToggleIcon } from "../homeChromeIcons.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { ImageAnnotationPane } from "../ImageAnnotationViews.js";
-import { useMcpAppsWorkspace } from "../McpAppsWorkspace.js";
 import { type PlatformServices } from "../services.js";
 import { projectExecutionBlocked } from "../state/projectExecution.js";
 import { useSessionNavigation } from "../state/useSessionNavigation.js";
@@ -43,7 +42,6 @@ type WorkspacePanelsProps = {
   annotation: ReturnType<typeof useWorkspaceAnnotation>;
   surfaces: ReturnType<typeof useWorkbenchSurfaces>;
   browserWorkspace: ReturnType<typeof useBrowserWorkspace>;
-  mcpWorkspace: ReturnType<typeof useMcpAppsWorkspace>;
   taskCenterOpen: boolean;
   services: PlatformServices;
   dark: boolean;
@@ -69,7 +67,6 @@ function usePanelTabLifecycle(props: WorkspacePanelsProps) {
     side,
     documents,
     browserWorkspace,
-    mcpWorkspace,
     showFiles,
     openTerminal,
     openBrowser,
@@ -86,8 +83,6 @@ function usePanelTabLifecycle(props: WorkspacePanelsProps) {
 
   const canClose = async (names: string[]) => {
     if (!project) return false;
-    for (const name of names.filter((name) => name.startsWith("mcp-app:")))
-      await mcpWorkspace.close(name);
     const closingChildren = new Set(names.filter(isSideChatTab).map((name) => name.slice(5)));
     const paths = [
       ...names.filter((name) => name.startsWith("file:")).map((name) => name.slice(5)),
@@ -134,19 +129,19 @@ function usePanelTabLifecycle(props: WorkspacePanelsProps) {
     if (!project) return;
     const childId = isSideChatTab(name) ? name.slice(5) : parseSideResourceTab(name)?.childId;
     if (childId && !sideChats.hasChild(project.id, childId)) {
-      workspacePanels.selectPanel("功能");
+      workspacePanels.selectPanel("launcher");
       return;
     }
     if (workspaceView !== "split") workspacePanels.selectLayout("panel");
-    if (name === "文件") {
+    if (name === "files") {
       showFiles();
       return;
     }
-    if (name === "终端") {
+    if (name === "terminal") {
       openTerminal(true);
       return;
     }
-    if (name === "预览") {
+    if (name === "preview") {
       void openBrowser(true);
       return;
     }
@@ -268,7 +263,6 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     annotation,
     surfaces,
     browserWorkspace,
-    mcpWorkspace,
     taskCenterOpen,
     empty,
     currentTitle,
@@ -302,8 +296,8 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
             hideDisabled={annotationPending}
             workspaceKey={project?.root ?? "projectless"}
             ownerTaskId={threadId || null}
-            active="图片标注"
-            names={["图片标注"]}
+            active="image-annotation"
+            names={["image-annotation"]}
             onSelect={() => {}}
             onChange={() => {}}
             onHide={finishImageAnnotation}
@@ -340,7 +334,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
             title: empty ? t("common.navigation.newConversation") : currentTitle,
             onChange: (mode) => {
               if (
-                (panel === "旁路讨论" || isSideChatTab(panel)) &&
+                (panel === "side-chat" || isSideChatTab(panel)) &&
                 mode === "split" &&
                 matchMedia("(max-width: 1200px)").matches
               )
@@ -350,8 +344,8 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
             actions: taskActions,
             navigation: !sidebar ? (
               <Button
-                unstyled
-                className="icon-button"
+                variant="ghost-subtle"
+                size="icon"
                 aria-label={t("common.navigation.expandSidebar")}
                 aria-expanded={false}
                 aria-controls="areal-sidebar"
@@ -383,45 +377,40 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
                   const resource = parseSideResourceTab(name)!.resource;
                   return resource.startsWith("browser:")
                     ? "浏览器"
-                    : resource.startsWith("mcp-app:")
-                      ? "应用"
-                      : resource.startsWith("file:")
-                        ? resource.slice(5).split("/").pop()
-                        : resource;
+                    : resource.startsWith("file:")
+                      ? resource.slice(5).split("/").pop()
+                      : (SIDE_PANE_TITLES[resource] ?? resource);
                 })()
               : isSideChatTab(name)
                 ? t("chat.side.numbered", {
                     ordinal: sideChats.tabs.find((tab) => tab.id === name)?.ordinal ?? "",
                   })
-                : name.startsWith("mcp-app:")
-                  ? mcpWorkspace.titleFor(name)
-                  : isBrowserTab(name)
-                    ? (() => {
-                        const page = browserWorkspace.pages.find(
-                          (page) => page.pageId === browserPageId(name),
-                        );
-                        let title = page?.title;
-                        if (!title && page?.url) {
-                          try {
-                            title = new URL(page.url).host;
-                          } catch {
-                            title = page.url;
-                          }
+                : isBrowserTab(name)
+                  ? (() => {
+                      const page = browserWorkspace.pages.find(
+                        (page) => page.pageId === browserPageId(name),
+                      );
+                      let title = page?.title;
+                      if (!title && page?.url) {
+                        try {
+                          title = new URL(page.url).host;
+                        } catch {
+                          title = page.url;
                         }
-                        return (
-                          (title || "新标签页") +
-                          (page?.resource === "suspended" ? " · 已暂停" : "")
-                        );
-                      })()
-                    : name.startsWith("agent:")
-                      ? agentAssignment(thread ?? {}, name.slice(6)) || agentName(name.slice(6))
-                      : isTerminalTab(name)
-                        ? terminalTitle(
-                            terminalOwner(project?.id ?? "", threadId),
-                            name,
-                            project?.root ?? "",
-                          )
-                        : undefined
+                      }
+                      return (
+                        (title || "新标签页") + (page?.resource === "suspended" ? " · 已暂停" : "")
+                      );
+                    })()
+                  : name.startsWith("agent:")
+                    ? agentAssignment(thread ?? {}, name.slice(6)) || agentName(name.slice(6))
+                    : isTerminalTab(name)
+                      ? terminalTitle(
+                          terminalOwner(project?.id ?? "", threadId),
+                          name,
+                          project?.root ?? "",
+                        )
+                      : undefined
           }
           onChange={(tabs) =>
             workspacePanels.replaceTabs(
@@ -430,7 +419,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
             )
           }
           onHide={hidePanel}
-          auxiliary={panel === "文件" ? workspaceFileTree : undefined}
+          auxiliary={panel === "files" ? workspaceFileTree : undefined}
           render={panelBody}
         />
       )}

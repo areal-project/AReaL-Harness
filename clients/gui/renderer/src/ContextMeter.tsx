@@ -101,12 +101,19 @@ export function ContextMeter({
       }}
     >
       <PopoverTrigger
-        className="context-meter-trigger"
-        aria-label={t("chat.context.occupancy")}
-        title={label}
-        data-testid="context-meter"
+        render={
+          <Button
+            type="button"
+            variant="ghost-subtle"
+            size="icon"
+            shape="pill"
+            aria-label={t("chat.context.occupancy")}
+            title={label}
+            data-testid="context-meter"
+          />
+        }
       >
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" className="size-4.5" aria-hidden="true">
           <circle className="context-ring-track" cx="12" cy="12" r="8" />
           <circle
             className="context-ring-value"
@@ -123,139 +130,142 @@ export function ContextMeter({
         side="top"
         sideOffset={10}
         align="end"
-        className="context-usage-popover context-meter-popover"
+        variant="flush"
+        className="overflow-hidden"
         data-testid="context-popover"
       >
-        <div className="context-usage-header">
-          <PopoverTitle>{t("chat.context.title")}</PopoverTitle>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="context-usage-close"
-            aria-label={t("chat.context.close")}
-            onClick={() => setOpen(false)}
-          >
-            <CloseIcon size={16} />
-          </Button>
-        </div>
-        <div className="context-usage-total">
-          <strong>
-            {percent !== null
-              ? `${Math.round(percent)}%`
-              : estimate
-                ? `≈${tokenCount(estimate.tokens)}`
-                : "—"}
-            <small>
-              {estimate
-                ? percent !== null
-                  ? t("chat.context.usedEstimate")
-                  : t("chat.context.inputEstimate")
-                : t("chat.context.noEstimate")}
-            </small>
-          </strong>
-          <span>
-            {estimate ? `≈${tokenCount(estimate.tokens)} / ` : ""}
-            {budget?.windowTokens
-              ? tokenCount(budget.windowTokens)
-              : budget
-                ? t("chat.context.unlimited")
-                : "—"}{" "}
-            Token
-          </span>
-        </div>
-        {percent !== null && (
-          <div className="context-capacity" aria-label={t("chat.context.allocation")}>
-            <span className="context-capacity-input" style={{ width: `${percent}%` }} />
-            <span className="context-capacity-reserve" style={{ width: `${reservePercent}%` }} />
+        <div className="context-usage-popover context-meter-popover flex max-w-full flex-col">
+          <div className="context-usage-header">
+            <PopoverTitle>{t("chat.context.title")}</PopoverTitle>
+            <Button
+              type="button"
+              variant="ghost-subtle"
+              size="icon"
+              className="-my-1.5 -mr-1.5"
+              aria-label={t("chat.context.close")}
+              onClick={() => setOpen(false)}
+            >
+              <CloseIcon size={16} />
+            </Button>
           </div>
-        )}
-        {budget && (
-          <>
-            <div className="context-budget">
-              <span>
-                {t("chat.context.input", {
-                  tokens: estimate ? `≈${tokenCount(estimate.tokens)}` : "—",
-                })}
-              </span>
-              <span>
-                {t("chat.context.reserve", { tokens: tokenCount(budget.outputReserveTokens) })}
-              </span>
-              <span>
-                {t("chat.context.available", {
-                  tokens: available !== null ? `≈${tokenCount(available)}` : "—",
-                })}
-              </span>
+          <div className="context-usage-total">
+            <strong>
+              {percent !== null
+                ? `${Math.round(percent)}%`
+                : estimate
+                  ? `≈${tokenCount(estimate.tokens)}`
+                  : "—"}
+              <small>
+                {estimate
+                  ? percent !== null
+                    ? t("chat.context.usedEstimate")
+                    : t("chat.context.inputEstimate")
+                  : t("chat.context.noEstimate")}
+              </small>
+            </strong>
+            <span>
+              {estimate ? `≈${tokenCount(estimate.tokens)} / ` : ""}
+              {budget?.windowTokens
+                ? tokenCount(budget.windowTokens)
+                : budget
+                  ? t("chat.context.unlimited")
+                  : "—"}{" "}
+              Token
+            </span>
+          </div>
+          {percent !== null && (
+            <div className="context-capacity" aria-label={t("chat.context.allocation")}>
+              <span className="context-capacity-input" style={{ width: `${percent}%` }} />
+              <span className="context-capacity-reserve" style={{ width: `${reservePercent}%` }} />
             </div>
-            <div className="context-budget" aria-label={t("chat.context.source")}>
-              <span>
-                {budget.reportedWindowTokens != null ? reportedSource : capacitySource}{" "}
-                {budget.reportedWindowTokens != null
-                  ? tokenCount(budget.reportedWindowTokens)
-                  : budget.windowTokens
-                    ? tokenCount(budget.windowTokens)
-                    : t("chat.context.unlimited")}
-              </span>
-              <span>
-                {t("chat.context.userBudget", {
-                  tokens:
-                    budget.userBudgetTokens != null
-                      ? tokenCount(budget.userBudgetTokens)
-                      : t("chat.context.unset"),
-                })}
-              </span>
-            </div>
-            <div className="context-model">{reading?.basis.model}</div>
-            {budget.userBudgetTokens != null &&
-              budget.reportedWindowTokens != null &&
-              budget.userBudgetTokens > budget.reportedWindowTokens && (
-                <p className="context-model" role="status">
-                  {t("chat.context.budgetCapped")}
-                </p>
-              )}
-          </>
-        )}
-        {estimate && (
-          <>
-            <div className="context-composition-heading">
-              <span>{t("chat.context.composition")}</span>
-              <span>{t("chat.context.allEstimated")}</span>
-            </div>
-            <div className="context-composition" aria-label={t("chat.context.categories")}>
-              {estimate.parts.map((part) => (
-                <TitleTooltip
-                  key={part.kind}
-                  title={`${contextLabels[part.kind]} · ≈${tokenCount(part.estimatedTokens)}`}
-                >
-                  <span
-                    className={`context-color-${part.kind}`}
-                    style={{ flexGrow: part.estimatedTokens }}
-                  />
-                </TitleTooltip>
-              ))}
-            </div>
-            <div className="context-categories">
-              {estimate.parts.map((part) => (
-                <Category part={part} total={estimate.tokens} key={part.kind} />
-              ))}
-            </div>
-          </>
-        )}
-        {reading?.kind === "unavailable" && (
-          <p role="status">
-            {
+          )}
+          {budget && (
+            <>
+              <div className="context-budget">
+                <span>
+                  {t("chat.context.input", {
+                    tokens: estimate ? `≈${tokenCount(estimate.tokens)}` : "—",
+                  })}
+                </span>
+                <span>
+                  {t("chat.context.reserve", { tokens: tokenCount(budget.outputReserveTokens) })}
+                </span>
+                <span>
+                  {t("chat.context.available", {
+                    tokens: available !== null ? `≈${tokenCount(available)}` : "—",
+                  })}
+                </span>
+              </div>
+              <div className="context-budget" aria-label={t("chat.context.source")}>
+                <span>
+                  {budget.reportedWindowTokens != null ? reportedSource : capacitySource}{" "}
+                  {budget.reportedWindowTokens != null
+                    ? tokenCount(budget.reportedWindowTokens)
+                    : budget.windowTokens
+                      ? tokenCount(budget.windowTokens)
+                      : t("chat.context.unlimited")}
+                </span>
+                <span>
+                  {t("chat.context.userBudget", {
+                    tokens:
+                      budget.userBudgetTokens != null
+                        ? tokenCount(budget.userBudgetTokens)
+                        : t("chat.context.unset"),
+                  })}
+                </span>
+              </div>
+              <div className="context-model">{reading?.basis.model}</div>
+              {budget.userBudgetTokens != null &&
+                budget.reportedWindowTokens != null &&
+                budget.userBudgetTokens > budget.reportedWindowTokens && (
+                  <p className="context-model" role="status">
+                    {t("chat.context.budgetCapped")}
+                  </p>
+                )}
+            </>
+          )}
+          {estimate && (
+            <>
+              <div className="context-composition-heading">
+                <span>{t("chat.context.composition")}</span>
+                <span>{t("chat.context.allEstimated")}</span>
+              </div>
+              <div className="context-composition" aria-label={t("chat.context.categories")}>
+                {estimate.parts.map((part) => (
+                  <TitleTooltip
+                    key={part.kind}
+                    title={`${contextLabels[part.kind]} · ≈${tokenCount(part.estimatedTokens)}`}
+                  >
+                    <span
+                      className={`context-color-${part.kind}`}
+                      style={{ flexGrow: part.estimatedTokens }}
+                    />
+                  </TitleTooltip>
+                ))}
+              </div>
+              <div className="context-categories">
+                {estimate.parts.map((part) => (
+                  <Category part={part} total={estimate.tokens} key={part.kind} />
+                ))}
+              </div>
+            </>
+          )}
+          {reading?.kind === "unavailable" && (
+            <p role="status">
               {
-                awaitingRequest: "正在组装上下文",
-                instructionBasisChanged: "模型配置已变更，等待新的上下文",
-                modelUnavailable: "模型当前不可用",
-              }[reading.reason]
-            }
-          </p>
-        )}
-        {!reading && !error && (
-          <p role="status">{busy ? t("chat.context.reading") : t("chat.context.empty")}</p>
-        )}
-        {error && <p role="alert">{error}</p>}
+                {
+                  awaitingRequest: "正在组装上下文",
+                  instructionBasisChanged: "模型配置已变更，等待新的上下文",
+                  modelUnavailable: "模型当前不可用",
+                }[reading.reason]
+              }
+            </p>
+          )}
+          {!reading && !error && (
+            <p role="status">{busy ? t("chat.context.reading") : t("chat.context.empty")}</p>
+          )}
+          {error && <p role="alert">{error}</p>}
+        </div>
       </PopoverContent>
     </Popover>
   );

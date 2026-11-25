@@ -135,7 +135,7 @@ fn attention_from_inputs(inputs: &ConfigInputs) -> Option<&'static str> {
     if !config.trajectory.enabled {
         return None;
     }
-    match areal_server::trajectory::status(&config.trajectory) {
+    match areal_trajectory::status(&config.trajectory) {
         Ok(status) if matches!(status["state"].as_str(), Some("degraded" | "invalid")) => {
             Some(WARNING)
         }
@@ -191,9 +191,7 @@ pub fn run(options: Options) -> Result<()> {
     };
     let mut config = load_management_config(&inputs)?;
     let mut result = match options.command {
-        Command::FeedbackStatus => {
-            areal_server::trajectory::feedback::request(&config.trajectory, None)?
-        }
+        Command::FeedbackStatus => areal_trajectory::feedback::request(&config.trajectory, None)?,
         Command::FeedbackSubmit => {
             use std::io::Read;
             let mut bytes = Vec::new();
@@ -204,12 +202,12 @@ pub fn run(options: Options) -> Result<()> {
                 bytes.len() <= (16 << 20) + (128 << 10),
                 "feedback_request_oversize"
             );
-            areal_server::trajectory::feedback::request(
+            areal_trajectory::feedback::request(
                 &config.trajectory,
                 Some(serde_json::from_slice(&bytes)?),
             )?
         }
-        Command::Status => areal_server::trajectory::status(&config.trajectory)?,
+        Command::Status => areal_trajectory::status(&config.trajectory)?,
         Command::SetEnabled {
             enabled,
             expected_revision,
@@ -220,26 +218,26 @@ pub fn run(options: Options) -> Result<()> {
                 expected_revision.unwrap_or_else(|| config.trajectory.source_revision.clone());
             config =
                 areal_config::set_trajectory_enabled(&inputs, enabled, Some(&expected_revision))?;
-            areal_server::trajectory::configure(&config.trajectory)?;
+            areal_trajectory::configure(&config.trajectory)?;
             if enabled && !was_enabled {
-                areal_server::trajectory::resume_retained(&config.trajectory)?
+                areal_trajectory::resume_retained(&config.trajectory)?
             } else {
-                areal_server::trajectory::status(&config.trajectory)?
+                areal_trajectory::status(&config.trajectory)?
             }
         }
-        Command::Retry => areal_server::trajectory::retry_failed(&config.trajectory)?,
+        Command::Retry => areal_trajectory::retry_failed(&config.trajectory)?,
         Command::SyncConfig { resume_retained } => {
-            areal_server::trajectory::configure(&config.trajectory)?;
+            areal_trajectory::configure(&config.trajectory)?;
             if resume_retained && config.trajectory.enabled {
-                areal_server::trajectory::resume_retained(&config.trajectory)?
+                areal_trajectory::resume_retained(&config.trajectory)?
             } else {
-                areal_server::trajectory::status(&config.trajectory)?
+                areal_trajectory::status(&config.trajectory)?
             }
         }
         Command::Suspend => {
             config.trajectory.enabled = false;
-            areal_server::trajectory::configure(&config.trajectory)?;
-            areal_server::trajectory::status(&config.trajectory)?
+            areal_trajectory::configure(&config.trajectory)?;
+            areal_trajectory::status(&config.trajectory)?
         }
     };
     result["configPath"] = serde_json::json!(

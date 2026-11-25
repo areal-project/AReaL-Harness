@@ -78,6 +78,8 @@ If real users still experience meaningful waits, measure Core cold startup and m
 
 ## Reproduction
 
+The GUI benchmark below belongs to the retired Node catalog coordinator. Use the separate checkout at `461c09bd7` for the historical runner and the linked source hashes for measured inputs.
+
 ```sh
 cargo test --locked -p areal-engine -p areal-app-server --jobs 3 -- --test-threads=4
 cargo test --locked --release -p areal-app-server --lib catalog_tests

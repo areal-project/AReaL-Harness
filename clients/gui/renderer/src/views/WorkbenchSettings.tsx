@@ -1,4 +1,5 @@
 import { SnapShotSettings } from "../snapshots/SnapShotSettings.js";
+import { BackendServiceStatus } from "../BackendStatusNotice.js";
 import { lazy, Suspense, type ReactNode } from "react";
 import { Button } from "../components/ui/button.js";
 import { useI18n } from "../i18n/IntlProvider.js";
@@ -10,14 +11,13 @@ import type {
 } from "../services.js";
 import { BrowserSettings } from "../settings/BrowserSettings.js";
 import { CloudSettings } from "../settings/CloudSettings.js";
-import { ComputerSettings } from "../settings/ComputerSettings.js";
-import { CreationRecoverySettings } from "../settings/CreationRecoverySettings.js";
 import { CoreCapabilitiesSettings } from "../settings/CoreCapabilitiesSettings.js";
 import { PluginDoctorSummary } from "../settings/PluginDoctorSummary.js";
 import { AppearanceSettings, GeneralSettings } from "../settings/DisplaySettings.js";
 import { HooksSettings } from "../settings/HooksSettings.js";
 import { MobileSettings } from "../settings/MobileSettings.js";
 import { ModelSettings } from "../settings/ModelSettings.js";
+import { LabsSettings } from "../settings/LabsSettings.js";
 import { SessionSettings } from "../settings/ResourceSettings.js";
 import { ServiceStatusSettings } from "../settings/ServiceStatusSettings.js";
 import { SettingsPage } from "../settings/SettingsWorkspace.js";
@@ -82,9 +82,9 @@ export function WorkbenchSettings({
   const library = snapshot.library ?? {};
   const { theme, setTheme, uiFontSize, setUiFontSize } = appearance;
   const { backendActionPending, backendActionError, runBackendAction } = backend;
-  const pageClass = ["插件", "Skills", "MCP"].includes(settingsTab)
+  const pageClass = ["plugins", "Skills", "MCP"].includes(settingsTab)
     ? "plugins-settings-page"
-    : settingsTab === "模型服务"
+    : settingsTab === "providers"
       ? "model-settings-page"
       : undefined;
   return (
@@ -95,14 +95,24 @@ export function WorkbenchSettings({
       title={settingsLabel(settingsTab, t)}
       subtitle={settingsSubtitle(settingsTab, t)}
     >
-      {settingsTab === "外观" ? (
+      {settingsTab !== "diagnostics" && snapshot.connection?.state === "unavailable" && (
+        <BackendServiceStatus
+          connection={snapshot.connection}
+          update={snapshot.backendUpdate}
+          lifecycle={snapshot.lifecycle}
+          pending={backendActionPending}
+          error={backendActionError}
+          onAction={(kind) => void runBackendAction(kind)}
+        />
+      )}
+      {settingsTab === "appearance" ? (
         <AppearanceSettings
           theme={theme}
           setTheme={setTheme}
           fontSize={uiFontSize}
           setFontSize={setUiFontSize}
         />
-      ) : settingsTab === "常规" ? (
+      ) : settingsTab === "general" ? (
         <GeneralSettings
           settings={library.settings}
           power={snapshot.power}
@@ -113,7 +123,7 @@ export function WorkbenchSettings({
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
           updates={Boolean(services.updateState)}
-          onDiagnostics={() => setSettingsTab("高级诊断")}
+          onDiagnostics={() => setSettingsTab("diagnostics")}
         />
       ) : settingsTab === "SnapShots" ? (
         <SnapShotSettings
@@ -122,7 +132,7 @@ export function WorkbenchSettings({
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
         />
-      ) : settingsTab === "浏览器" ? (
+      ) : settingsTab === "browser" ? (
         <BrowserSettings
           settings={library.settings}
           action={resourceAction}
@@ -130,12 +140,6 @@ export function WorkbenchSettings({
         />
       ) : settingsTab === "Cloud" ? (
         <CloudSettings action={resourceAction} />
-      ) : settingsTab === "电脑控制" ? (
-        <ComputerSettings
-          settings={library.settings}
-          action={resourceAction}
-          connected={snapshot.connection?.state === "ready"}
-        />
       ) : settingsTab === "Worktrees" ? (
         <WorktreesSettings
           onAddProject={async () => {
@@ -148,32 +152,39 @@ export function WorkbenchSettings({
           initialProjectId={worktreeSettingsTarget.projectId}
           initialTab={worktreeSettingsTarget.tab}
         />
-      ) : settingsTab === "钩子" ? (
+      ) : settingsTab === "hooks" ? (
         <HooksSettings
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
           onConnect={reconnectService}
         />
-      ) : settingsTab === "模型服务" ? (
-        <ModelSettings action={action} subscription={snapshot.subscription} />
-      ) : settingsTab === "会话配置" ? (
+      ) : settingsTab === "providers" ? (
+        <ModelSettings
+          action={action}
+          subscription={snapshot.subscription}
+          providerRevision={snapshot.providerRevision}
+          connectionState={snapshot.connection?.state ?? "connecting"}
+        />
+      ) : settingsTab === "session" ? (
         <SessionSettings
           key={`${project?.id}:${thread?.id}`}
           project={project}
           thread={thread}
           action={resourceAction}
         />
-      ) : settingsTab === "手机连接" ? (
+      ) : settingsTab === "mobile" ? (
         <MobileSettings action={resourceAction} projects={snapshot.projects} />
-      ) : settingsTab === "数据飞轮" ? (
+      ) : settingsTab === "trajectory" ? (
         <TrajectorySettings
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
           onStatus={onTrajectoryStatus}
         />
-      ) : ["高级诊断", "后台服务"].includes(settingsTab) ? (
+      ) : settingsTab === "Labs" ? (
+        <LabsSettings />
+      ) : ["diagnostics", "service"].includes(settingsTab) ? (
         <>
-          <Button variant="ghost" onClick={() => setSettingsTab("常规")}>
+          <Button variant="ghost" onClick={() => setSettingsTab("general")}>
             {t("settings.diagnostics.back")}
           </Button>
           <p className="settings-section-desc">{t("settings.diagnostics.description")}</p>
@@ -199,11 +210,6 @@ export function WorkbenchSettings({
             onTask={initialReleased ? onTask : undefined}
             onOpen={initialReleased ? onOpen : undefined}
           />
-          <CreationRecoverySettings
-            projects={snapshot.projects}
-            connected={snapshot.connection?.state === "ready"}
-            action={resourceAction}
-          />
           <CoreCapabilitiesSettings
             projects={snapshot.projects}
             connected={snapshot.connection?.state === "ready"}
@@ -214,7 +220,7 @@ export function WorkbenchSettings({
             }
           />
         </>
-      ) : settingsTab === "用量" ? (
+      ) : settingsTab === "usage" ? (
         <Suspense fallback={<div className="settings-empty">{t("common.loading")}</div>}>
           <UsageDashboard action={resourceAction} />
         </Suspense>

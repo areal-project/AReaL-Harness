@@ -1,0 +1,64 @@
+.areal-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--spacing-field);
+  width: 100%;
+  max-width: calc(var(--reading-width) / 2);
+  margin-inline: auto;
+  padding: var(--spacing-section) var(--spacing-panel);
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-fog);
+  color: var(--color-foreground);
+}
+
+.areal-empty-state[data-size="compact"] {
+  gap: var(--spacing-inline);
+  padding: var(--spacing-field);
+}
+
+.areal-empty-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-foreground-subtle);
+}
+
+.areal-empty-state-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--spacing-inline) / 2);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.areal-empty-state-title {
+  color: var(--color-foreground);
+  font-size: var(--text-ui-lg);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-ui);
+  overflow-wrap: anywhere;
+}
+
+.areal-empty-state[data-size="compact"] .areal-empty-state-title {
+  font-size: var(--text-ui-base);
+}
+
+.areal-empty-state-description {
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-caption);
+  line-height: var(--line-height-ui-sm);
+  overflow-wrap: anywhere;
+}
+
+.areal-empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-inline);
+}

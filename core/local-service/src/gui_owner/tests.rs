@@ -34,11 +34,12 @@ async fn owner_pipe_remains_open_until_its_writer_is_dropped() {
             .is_err()
     );
     drop(writer);
-    assert!(lifetime.check_open().is_err());
+    // 并行进程测试的 fork 到 exec 之间可能短暂继承 CLOEXEC 写端；以真实 EOF 作为结束信号。
     tokio::time::timeout(std::time::Duration::from_secs(1), lifetime.closed())
         .await
         .unwrap()
         .unwrap();
+    assert!(lifetime.check_open().is_err());
 }
 
 #[test]

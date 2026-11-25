@@ -2,13 +2,13 @@
 id: markdown-table
 title: MarkdownTable
 summary: Markdown表格、虚拟横向阅读及复制导出。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: composition
 aliases: ["Markdown表格、虚拟横向阅读及复制导出"]
 related: ["button"]
-exports: ["buildMarkdownTableText", "buildCsvTableText", "resolveMarkdownTableStickyScrollbarMode", "resolveMarkdownTableStickyScrollbarOffset", "resolveMarkdownTableFrameDistances", "resolveMarkdownTableVirtualScrollbarMetrics", "resolveMarkdownTableVirtualScrollMax", "MarkdownTable", "MarkdownTableHeader", "MarkdownTableBody", "MarkdownTableRow", "MarkdownTableHead", "MarkdownTableCell"]
+exports: ["MarkdownTable", "MarkdownTableHeader", "MarkdownTableBody", "MarkdownTableRow", "MarkdownTableHead", "MarkdownTableCell"]
 ---
 
 # MarkdownTable Markdown表格、虚拟横向阅读及复制导出
@@ -27,7 +27,7 @@ Markdown表格、虚拟横向阅读及复制导出，沿现有生产用途。
 
 ## 行为
 
-`R-MARKDOWNTABLE-001` 横向滚动属于表格内部；隐藏的虚拟滑块也被轨道裁切，宽容器缩窄后不能撑宽页面。
+`R-MARKDOWNTABLE-001` 横向滚动属于表格内部；隐藏的虚拟滑块也被轨道裁切，宽容器缩窄后不能撑宽页面。**检查：**`clients/gui/packages/ui/src/conversation/markdown-table/markdown-table.test.ts`
 
 ## 内容
 

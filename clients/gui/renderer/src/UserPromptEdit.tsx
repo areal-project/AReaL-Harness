@@ -1,7 +1,6 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import { errorText } from "./errors/errorCopy.js";
 import "./UserPromptEdit.css";
-import { stripGenUiModelContext } from "@areal/gen-ui/contract";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ChatPromptEditor } from "./prompt-editor/ChatPromptEditor.js";
 import { EditMessageIcon } from "./interfaceIcons.js";
@@ -25,12 +24,10 @@ export function UserPromptEdit({
   const { t } = useI18n();
   const key = `areal-gui:edit:${project.id}:${thread.id}:${item.id}`;
   const composerKey = `areal-gui:draft:${project.id}:${thread.id}`;
-  const original = stripGenUiModelContext(
-    (item.content ?? [])
-      .filter((part: Data) => part.type === "text" && !part.mcpContent)
-      .map((part: Data) => part.text)
-      .join("\n"),
-  );
+  const original = (item.content ?? [])
+    .filter((part: Data) => part.type === "text" && !part.mcpContent)
+    .map((part: Data) => part.text)
+    .join("\n");
   const [unknown, setUnknown] = useState<string | null>(() =>
     localStorage.getItem(`${key}:pending`),
   );
@@ -114,24 +111,25 @@ export function UserPromptEdit({
   return (
     <>
       <ControlHintTooltip title="编辑消息">
-        <Button
-          unstyled
-          data-slot={undefined}
-          className="icon-button"
-          type="button"
-          aria-label="编辑消息"
-          disabled={busy || pending || !project.state?.connected || thread.desktop?.archived}
-          onClick={() => {
-            setText(localStorage.getItem(key) ?? original);
-            setAnchor({
-              expectedTurnId: thread.turns?.at(-1)?.id,
-              expectedConfigRevision: project.configurations?.[thread.id]?.revision,
-            });
-            setOpen(true);
-          }}
-        >
-          <EditMessageIcon size={14} />
-        </Button>
+        <span>
+          <Button
+            variant="ghost-subtle"
+            size="icon-sm"
+            type="button"
+            aria-label="编辑消息"
+            disabled={busy || pending || !project.state?.connected || thread.desktop?.archived}
+            onClick={() => {
+              setText(localStorage.getItem(key) ?? original);
+              setAnchor({
+                expectedTurnId: thread.turns?.at(-1)?.id,
+                expectedConfigRevision: project.configurations?.[thread.id]?.revision,
+              });
+              setOpen(true);
+            }}
+          >
+            <EditMessageIcon size={14} />
+          </Button>
+        </span>
       </ControlHintTooltip>
       {open && (
         <section role="region" aria-label="编辑用户消息" className="user-prompt-edit w-full">
@@ -151,21 +149,14 @@ export function UserPromptEdit({
             submitting={busy}
             submitLabel="发送"
             betweenCancelAndSubmitAction={
-              <Button
-                type="button"
-                variant="outline"
-                className="user-prompt-edit-cancel"
-                disabled={!!unknown || busy}
-                onClick={close}
-              >
+              <Button type="button" variant="outline" disabled={!!unknown || busy} onClick={close}>
                 取消
               </Button>
             }
             submitControl={
               <Button
                 type="submit"
-                variant="secondary"
-                className="user-prompt-edit-send"
+                variant="default"
                 aria-label="发送"
                 disabled={disabled || !text.trim()}
               >

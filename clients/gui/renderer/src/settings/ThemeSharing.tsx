@@ -153,10 +153,9 @@ export function ThemeSharing({ mode }: { mode: SharedTheme["variant"] }) {
   return (
     <>
       <Button
-        unstyled
-        data-slot={undefined}
         type="button"
-        className="appearance-text-action"
+        variant="ghost-subtle"
+        size="icon"
         aria-label={t("settings.themeSharing.importValueTheme", { value0: label })}
         onClick={() => {
           setText("");
@@ -169,10 +168,9 @@ export function ThemeSharing({ mode }: { mode: SharedTheme["variant"] }) {
         <Download size={16} aria-hidden="true" />
       </Button>
       <Button
-        unstyled
-        data-slot={undefined}
         type="button"
-        className="appearance-text-action"
+        variant="ghost-subtle"
+        size="icon"
         aria-label={t("settings.themeSharing.copyValueTheme", { value0: label })}
         disabled={copying}
         onClick={() => void copy()}
@@ -207,7 +205,8 @@ export function ThemeSharing({ mode }: { mode: SharedTheme["variant"] }) {
             }}
             placeholder={prefix + "…"}
             spellCheck={false}
-            className="min-h-28 font-mono"
+            mono
+            className="min-h-28"
           />
           {(error || invalid) && (
             <p role="alert" className="text-ui-sm text-destructive">

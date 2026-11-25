@@ -3,6 +3,39 @@
   user-select: none;
 }
 
+.settings-modal-sidebar {
+  width: calc(var(--spacing-inline) * 31);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-settings-modal-nav);
+  border-right: var(--border-width-default) solid var(--color-border-hairline);
+}
+
+.settings-modal-sidebar .settings-sidebar-header {
+  padding: var(--spacing-panel) var(--spacing-3) var(--spacing-inline);
+}
+
+.settings-modal-sidebar .settings-sidebar-title {
+  font-size: var(--text-ui-lg);
+  margin: 0 var(--spacing-inline) var(--spacing-3);
+}
+
+.settings-modal-sidebar .settings-category-navigation {
+  padding: var(--spacing-inline) var(--spacing-3) var(--spacing-panel);
+}
+
+.settings-modal-sidebar .settings-group-label {
+  font-size: var(--text-ui-sm);
+}
+
+.settings-modal-sidebar .settings-navigation-item,
+.settings-modal-sidebar .settings-navigation-item span {
+  font-size: var(--text-ui-caption);
+  line-height: var(--line-height-ui-sm);
+}
+
 .settings-sidebar .settings-sidebar-header {
   display: flex;
   flex-direction: column;
@@ -21,7 +54,7 @@
 
 .settings-sidebar .settings-navigation-search input {
   height: var(--spacing-control-lg);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-pill);
   background: var(--color-sidebar-item);
   border: var(--border-width-default) solid transparent;
   font-size: var(--text-ui-base);
@@ -46,9 +79,20 @@
   flex-direction: column;
   gap: var(--spacing-field);
   overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
   min-height: 0;
   padding: var(--spacing-inline);
+}
+@media not all and ((prefers-contrast: more) or (forced-colors: active)) {
+  .settings-sidebar .settings-category-navigation {
+    scrollbar-width: none;
+  }
+  .settings-sidebar .settings-category-navigation::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
 }
 
 .settings-sidebar .settings-category-navigation section {
@@ -58,9 +102,10 @@
 }
 
 .settings-sidebar .settings-group-label {
-  font-size: var(--text-ui-base);
+  font-size: var(--text-ui-caption);
   font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-ui);
+  line-height: var(--line-height-ui-sm);
+  letter-spacing: var(--tracking-ui-subtle);
   color: var(--color-foreground-subtle);
   padding: 0 var(--spacing-inline) calc(var(--spacing-inline) / 2);
   margin: 0;
@@ -134,9 +179,9 @@
   .settings-sidebar .settings-category-navigation {
     display: flex;
     flex: none;
-    gap: 4px;
+    gap: calc(var(--spacing-inline) / 2);
     overflow-x: auto;
-    padding-bottom: 8px;
+    padding-bottom: var(--spacing-inline);
   }
 }
 @media (max-width: 640px) {
@@ -165,9 +210,15 @@
   .settings-sidebar .settings-category-navigation {
     flex: none;
     flex-direction: row;
-    gap: 4px;
+    gap: calc(var(--spacing-inline) / 2);
     overflow-x: auto;
-    padding-bottom: 8px;
+    padding-right: var(--spacing-field);
+    padding-bottom: var(--spacing-inline);
+    mask-image: linear-gradient(
+      to right,
+      currentColor calc(100% - var(--spacing-field)),
+      transparent 100%
+    );
   }
 }
 @media (max-width: 640px) {
@@ -178,7 +229,7 @@
 
 @media (max-width: 640px) {
   .settings-sidebar {
-    width: 156px;
+    width: calc(var(--spacing-inline) * 39 / 2);
   }
 }
 @media (max-width: 640px) {
@@ -192,6 +243,17 @@
   align-items: center;
   gap: calc(var(--spacing-inline) / 2);
   flex-shrink: 0;
+}
+.sidebar-chrome .workspace-navigation {
+  width: 100%;
+}
+.workspace-history-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing-inline) / 4);
+}
+.sidebar-chrome .workspace-history-controls {
+  margin-left: auto;
 }
 .workspace-navigation button:disabled {
   opacity: var(--opacity-disabled);
@@ -234,8 +296,8 @@
 /* 带计数的图标按钮：胶囊形，常驻显示数字。 */
 .icon-button[data-variant="count"] {
   width: auto;
-  gap: 6px;
-  padding: 0 8px 0 6px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
+  padding: 0 var(--spacing-inline) 0 calc(var(--spacing-inline) * 3 / 4);
   border-radius: var(--radius-pill);
   background: var(--color-surface-elevated);
 }

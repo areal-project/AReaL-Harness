@@ -18,8 +18,15 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  stopAndAssertFixtureHost,
+} from "./application-cleanup.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
+
+const require = createRequire(new URL("../app/package.json", import.meta.url));
+const { GuiSourceSession, requestIdFor } = require("@areal/client/gui-source");
 
 // 直接运行 runner 的收尾代码，外部应用边界用本测试持有的真实子进程替代。
 const source = await readFile(new URL("./history-copy-smoke.mjs", import.meta.url), "utf8");
@@ -280,11 +287,12 @@ const prepareHistorySource = new Function(
   "randomUUID",
   "lstat",
   "cp",
+  "requestIdFor",
   source.slice(
     source.indexOf("async function prepareHistorySource("),
     source.indexOf("async function call("),
   ) + "return prepareHistorySource;",
-)(assert, rename, mkdir, writeFile, join, randomUUID, lstat, cp);
+)(assert, rename, mkdir, writeFile, join, randomUUID, lstat, cp, requestIdFor);
 
 // 原迁移拒绝非空且无清理凭据的 Store；新夹具必须用全新 Host 登记来承载副本。
 test(
@@ -293,10 +301,6 @@ test(
     skip: !process.env.AREAL_CORE_BIN && "requires built AREAL_CORE_BIN",
   },
   async (t) => {
-    const require = createRequire(new URL("../app/package.json", import.meta.url));
-    const {
-      GuiHostProjects,
-    } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
     const root = await realpath(await mkdtemp(join(tmpdir(), "areal-history-source-test-")));
     const coreHome = join(root, "core");
     const project = { id: "a".repeat(24), root: join(root, "workspace") };
@@ -306,7 +310,7 @@ test(
     const path = join(project.id, "state", randomUUID() + ".json");
     await writeFile(join(coreHome, path), history);
     await writeFile(join(coreHome, "projects.json"), JSON.stringify([project]));
-    const owner = new GuiHostProjects({
+    const owner = new GuiSourceSession({
       binary: process.env.AREAL_CORE_BIN,
       home: join(root, "host"),
       source: { profile: join(root, "profile"), coreHome, legacyServiceHome: join(root, "host") },
@@ -315,8 +319,16 @@ test(
     t.after(async () => {
       try {
         if (owner.client.generation) {
-          const receipt = await owner.client.stop(randomUUID(), owner.client.generation, "ifIdle");
-          assert.equal(receipt.state, "completed");
+          await stopAndAssertFixtureHost(
+            owner.options.binary,
+            {
+              ...process.env,
+              AREAL_HARNESS_HOME: owner.home,
+              AREAL_HARNESS_SERVICE_HOME: owner.home,
+              AREAL_CORE_HOME: coreHome,
+            },
+            root,
+          );
         }
       } finally {
         owner.close();
@@ -326,14 +338,16 @@ test(
     assert.ok(owner.sourceId);
     assert.deepEqual(await readFile(join(coreHome, path)), history);
     assert.deepEqual(await readFile(join(coreHome + "-history-staging", path)), history);
-    const binding = owner.resolve(project.id);
+    const matchBinding = (state) =>
+      state.bindings.find((entry) => entry.alias.legacyProjectId === project.id);
+    const binding = matchBinding(await owner.client.sourceState(owner.source));
     assert.equal(binding.workspace, project.root);
     await assert.rejects(lstat(join(binding.dataDir, "service.lock")), { code: "ENOENT" });
-    const observer = new GuiHostProjects({ ...owner.options, singletonHeld: false });
+    const observer = new GuiSourceSession({ ...owner.options, singletonHeld: false });
     try {
       await observer.init();
       assert.equal(observer.sourceId, owner.sourceId);
-      assert.equal(observer.resolve(project.id).projectId, binding.projectId);
+      assert.equal(matchBinding(observer.state).projectId, binding.projectId);
     } finally {
       observer.close();
     }

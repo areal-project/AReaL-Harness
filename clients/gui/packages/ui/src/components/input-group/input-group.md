@@ -2,8 +2,8 @@
 id: input-group
 title: InputGroup
 summary: 组合输入，沿用现有生产实现与交互。
-status: experimental
-entry: experimental
+status: stable
+entry: index
 layer: core
 category: control
 aliases: ["组合输入"]

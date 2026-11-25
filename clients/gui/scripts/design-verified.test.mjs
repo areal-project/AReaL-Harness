@@ -16,6 +16,13 @@ test("component CSS literals are reported; tokens, zero and hairlines are allowe
     "4: rgb(",
     "4: 0.5rem",
   ]);
+  const responsive = `@media (max-width: 600px) {
+  .a { padding: var(--spacing-inline); }
+}
+@container dock (max-width: 620px) {
+  .b { padding: 12px; }
+}`;
+  assert.deepEqual(literalFindings(responsive), ["5: 12px"]);
 });
 
 test("host CSS selecting component internals is reported; prefixes do not match longer names", () => {

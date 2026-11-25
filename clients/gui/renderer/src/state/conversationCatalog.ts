@@ -1,4 +1,5 @@
 import { browserAnnotationTitle } from "../browserAnnotations.js";
+import { getPendingMessage } from "../pendingMessage.js";
 import { conversationUserState } from "./userStates.js";
 import { imageAnnotationTitle } from "../imageAnnotations.js";
 import type { Data } from "../services.js";
@@ -21,6 +22,8 @@ export function conversationCatalog(
           .find((i: Data) => i.type === "userMessage")
           ?.content?.find((p: Data) => p.type === "text")?.text ||
           summary.preview ||
+          // 新建会话首条消息发出但尚未投影前复用待发正文，避免侧栏先闪“新对话”再跳变标题。
+          getPendingMessage(`areal-gui:draft:${owner.id}:${summary.id}`)?.text ||
           "新对话",
       ),
     );
@@ -73,7 +76,7 @@ export function conversationCatalog(
       })
       .map((summary) => {
         const t = owner.state?.threads[summary.id];
-        const status = conversationUserState(owner, summary.id, t);
+        const status = conversationUserState(owner, summary.id, t, summary);
         return {
           owner,
           summary,
@@ -90,8 +93,11 @@ export function conversationCatalog(
           archived: t?.desktop?.archived || summary.desktop?.archived,
           pinned: !!library.threads?.[`${owner.id}:${summary.id}`]?.pinned,
           unread: !!library.threads?.[`${owner.id}:${summary.id}`]?.unread,
-          // 未启动的项目没有在跑的东西，不画"加载中"；只有已连接但摘要还没到时才算待定。
-          statePending: owner.state?.connected === true && owner.summariesLoaded === false,
+          // 已有缓存的后台刷新不替换整批图标；首次没有摘要时才显示待更新。
+          statePending:
+            owner.state?.connected === true &&
+            owner.summariesLoaded === false &&
+            owner.summariesFreshness !== "cached",
           status,
           running: status.kind === "working",
           attention: status.kind === "needsYou",

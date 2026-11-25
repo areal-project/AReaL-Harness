@@ -3,19 +3,24 @@ import type { Data } from "./services.js";
 import { ERROR_CODES, errorCode, errorText, rawText } from "./errors/errorCopy.js";
 import { UiMessageError, type Translate } from "./i18n/uiMessage.js";
 
-export type RecoveryFailure = DesktopError;
+export type RecoveryFailure = DesktopError & {
+  activationState?: "pending" | "blocked";
+  activationReason?: string;
+  activationId?: string;
+};
 export type RecoveryOperation = Extract<
   NonNullable<DesktopError["outcome"]>,
   { operation: unknown }
 >["operation"];
 export type RecoveryOwner = { projectId: string; threadId: string; connectionGeneration: number };
+export type RestorationOwner = RecoveryOwner & { hostGeneration?: string; connectionId?: string };
 export type RecoveryNotice = RecoveryOwner & {
   id: string;
   message: string;
   kind: "error" | "unconfirmed";
   requestId?: string;
   operation?: RecoveryOperation;
-  settings?: "模型服务" | "会话配置";
+  settings?: "providers" | "session";
   detail?: string;
 };
 type PendingOperation = {
@@ -46,6 +51,13 @@ export function sameRecoveryOwner(left: RecoveryOwner | undefined, right: Recove
     left?.projectId === right.projectId &&
     left.threadId === right.threadId &&
     left.connectionGeneration === right.connectionGeneration
+  );
+}
+export function sameRestorationOwner(left: RestorationOwner | undefined, right: RestorationOwner) {
+  return (
+    sameRecoveryOwner(left, right) &&
+    left?.hostGeneration === right.hostGeneration &&
+    left?.connectionId === right.connectionId
   );
 }
 export function sameRecoveryOperation(left: RecoveryOperation, right: RecoveryOperation) {
@@ -118,8 +130,24 @@ export function recoveryMessage(
     return "操作结果待确认。";
   if (["migrationBlocked", "MIGRATION_PENDING"].includes(String(failure.code)))
     return "旧运行状态尚未确认，暂时无法打开项目。历史和草稿已保留，请先检查原任务的停止结果。";
+  if (
+    failure.code === "CORE_BINARY_UPDATE_REQUIRED" ||
+    (rawText(failure) ?? "").startsWith("service configuration conflict (binaries)")
+  )
+    return "服务需要更新才能继续打开对话。历史和草稿已保留，请重新连接以完成更新。";
+  if (failure.code === "LIFECYCLE_INCOMPLETE")
+    return "连接恢复尚未完成，历史和草稿已保留。请查看连接详情，确认恢复进度。";
+  if (failure.code === "ACTIVATION_BLOCKED" && failure.activationReason === "explicitlyStopped")
+    return context === "view"
+      ? "项目已手动停止，当前仅显示已保存记录。需要继续执行时请重新连接项目。"
+      : "项目已停止，请先恢复项目。";
+  if (failure.code === "ACTIVATION_PENDING")
+    return context === "view"
+      ? "项目仍在启动中，请稍后重试加载。"
+      : "项目启动尚未完成，消息尚未提交，草稿已保留。";
   if (t && failure instanceof UiMessageError) return errorText(t, failure);
   const code = errorCode(failure);
+  if (t && code === "stopInProgress") return errorText(t, failure);
   if (t && context === "operation" && code && Object.hasOwn(ERROR_CODES, code))
     return errorText(t, failure);
   if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(reasonAndCode(failure)))
@@ -161,9 +189,9 @@ export function recoveryMessage(
 
 export function recoverySettings(failure: RecoveryFailure): RecoveryNotice["settings"] {
   const reason = reasonAndCode(failure);
-  if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(reason)) return "模型服务";
+  if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(reason)) return "providers";
   if (failure.code === -32003 || /permission|forbidden|权限|denied|config|配置/i.test(reason))
-    return "会话配置";
+    return "session";
 }
 
 export function isTechnicalErrorMessage(message: string) {

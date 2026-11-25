@@ -1,5 +1,5 @@
 import { recordItems, stringItems } from "./data-shapes.js";
-import { CommandDetails as DetailsView } from "@areal/ui/experimental";
+import { CommandDetails as DetailsView } from "@areal/ui/compositions";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { CopyTextAction } from "./MessageActions.js";
 import { commandResult, toolPresentation } from "./conversationPresentation.js";

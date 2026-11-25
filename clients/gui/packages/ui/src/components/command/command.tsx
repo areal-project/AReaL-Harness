@@ -2,21 +2,32 @@ import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
 
 import { cn } from "../../lib/utils.js";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../dialog/dialog.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../dialog/dialog.js";
 import { InputGroup, InputGroupAddon } from "../input-group/input-group.js";
 import { SearchIcon, CheckIcon } from "lucide-react";
 
 function Command({
   className,
   loop = false,
+  variant = "default",
   ...props
-}: React.ComponentProps<typeof CommandPrimitive>) {
+}: React.ComponentProps<typeof CommandPrimitive> & {
+  variant?: "default" | "embedded";
+}) {
   return (
     <CommandPrimitive
       data-slot="command"
       loop={loop}
       className={cn(
-        "flex size-full flex-col overflow-hidden rounded-xl bg-popover p-1 text-popover-foreground",
+        variant === "embedded"
+          ? "flex size-full flex-col overflow-hidden bg-transparent p-0 text-foreground"
+          : "flex size-full flex-col overflow-hidden rounded-xl bg-popover p-1 text-popover-foreground",
         className,
       )}
       {...props}
@@ -100,12 +111,20 @@ function CommandList({ className, ...props }: React.ComponentProps<typeof Comman
 
 function CommandEmpty({
   className,
+  density = "default",
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Empty>) {
+}: React.ComponentProps<typeof CommandPrimitive.Empty> & {
+  density?: "default" | "compact";
+}) {
   return (
     <CommandPrimitive.Empty
       data-slot="command-empty"
-      className={cn("py-6 text-center text-ui-base/relaxed", className)}
+      className={cn(
+        density === "compact"
+          ? "px-4 py-5 text-center text-ui-base/relaxed text-foreground-subtle"
+          : "py-6 text-center text-ui-base/relaxed",
+        className,
+      )}
       {...props}
     />
   );
@@ -113,13 +132,17 @@ function CommandEmpty({
 
 function CommandGroup({
   className,
+  divided = false,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Group>) {
+}: React.ComponentProps<typeof CommandPrimitive.Group> & {
+  divided?: boolean;
+}) {
   return (
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
         "overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2.5 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-ui-base **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-foreground-subtle",
+        divided && "border-b border-border last:border-b-0",
         className,
       )}
       {...props}
@@ -143,15 +166,27 @@ function CommandSeparator({
 function CommandItem({
   className,
   children,
+  active = false,
+  size = "default",
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Item>) {
+}: React.ComponentProps<typeof CommandPrimitive.Item> & {
+  active?: boolean;
+  size?: "default" | "md" | "icon";
+}) {
   return (
     <CommandPrimitive.Item
       data-slot="command-item"
+      data-active={active || undefined}
       className={cn(
         // cmdk 键盘上下键只会切换 data-selected，之前没有同步背景色，
         // 导致键盘选中态和鼠标 hover 态看起来不是同一个状态。这里让两者共用 menu-hover。
-        "group/command-item relative flex min-h-7 cursor-default items-center gap-2 rounded-lg px-2.5 py-1.5 text-ui-base/relaxed outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 hover:bg-menu-hover data-selected:bg-menu-hover data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 data-selected:*:[svg]:text-foreground",
+        "group/command-item relative flex cursor-default items-center gap-2 rounded-lg text-ui-base/relaxed outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 hover:bg-menu-hover data-selected:bg-menu-hover data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 data-selected:*:[svg]:text-foreground",
+        size === "icon"
+          ? "size-6 min-h-6 shrink-0 justify-center p-0 text-foreground-subtle"
+          : size === "md"
+            ? "min-h-8 cursor-pointer px-2 py-1 text-ui-base"
+            : "min-h-7 px-2.5 py-1.5",
+        active && "bg-selected data-selected:bg-selected",
         className,
       )}
       {...props}

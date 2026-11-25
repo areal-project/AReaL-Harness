@@ -3,13 +3,33 @@ import { ActivityIcon } from "../../activity-icons.js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/tooltip/tooltip.js";
 import { cn } from "../../lib/utils.js";
 
-type RowProps = { icon?: ReactNode } & HTMLAttributes<HTMLDivElement>;
-type RowButtonProps = { icon?: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>;
+type RowProps = {
+  icon?: ReactNode;
+  variant?: "default" | "image" | "file";
+} & HTMLAttributes<HTMLDivElement>;
+type RowButtonProps = {
+  icon?: ReactNode;
+  variant?: "default" | "reasoning";
+} & ButtonHTMLAttributes<HTMLButtonElement>;
 
 /** One fact in the conversation timeline: icon, text, optional status and actions. */
-export function ActivityRow({ icon, className, children, ...props }: RowProps) {
+export function ActivityRow({
+  icon,
+  variant = "default",
+  className,
+  children,
+  ...props
+}: RowProps) {
   return (
-    <div {...props} className={cn("areal-activity-row", className)}>
+    <div
+      {...props}
+      className={cn(
+        "areal-activity-row tool-summary-row",
+        variant === "image" && "tool-image-row",
+        variant === "file" && "tool-file-row",
+        className,
+      )}
+    >
       {icon}
       {children}
     </div>
@@ -19,13 +39,22 @@ export function ActivityRow({ icon, className, children, ...props }: RowProps) {
 /** A row whose whole surface toggles its own details. */
 export function ActivityRowButton({
   icon,
+  variant = "default",
   className,
   children,
   type = "button",
   ...props
 }: RowButtonProps) {
   return (
-    <button {...props} type={type} className={cn("areal-activity-row", className)}>
+    <button
+      {...props}
+      type={type}
+      className={cn(
+        "areal-activity-row tool-summary-row",
+        variant === "reasoning" && "reasoning-summary",
+        className,
+      )}
+    >
       {icon}
       {children}
     </button>

@@ -38,7 +38,7 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   margin: calc(var(--spacing-inline) * 5 / 2) 0 calc(var(--spacing-inline) * 3 / 2);
 }
 .remote-project-heading h2 {
-  font-size: 21px;
+  font-size: var(--text-ui-title);
   font-weight: 600;
 }
 .remote-project-group {
@@ -64,7 +64,7 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   justify-content: flex-start;
   gap: calc(var(--spacing-inline) * 3 / 2);
   min-height: calc(var(--spacing-field) * 3);
-  font-size: 17px;
+  font-size: var(--text-ui-heading);
 }
 .remote-project-row span {
   overflow: hidden;
@@ -109,7 +109,7 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   flex-shrink: 0;
 }
 .remote-chat-heading span {
-  font-size: var(--text-fixed-caption);
+  font-size: var(--text-ui-sm);
   max-width: 45%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -117,7 +117,7 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   color: var(--color-foreground-subtle);
 }
 .remote-chat-title {
-  font-size: var(--text-fixed-section-title);
+  font-size: var(--text-ui-xl);
   margin: var(--spacing-field) var(--spacing-inline) 0;
   flex-shrink: 0;
 }
@@ -128,7 +128,7 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   overflow: visible;
 }
 .remote-gui-composer > p {
-  font-size: var(--text-fixed-label);
+  font-size: var(--text-ui-caption);
   margin: var(--spacing-inline) calc(var(--spacing-inline) / 2);
 }
 #remote-session-ui .message-column {

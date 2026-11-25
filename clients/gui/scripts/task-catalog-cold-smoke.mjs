@@ -1,3 +1,5 @@
+import { createFixtureThread, fixtureWorkbench } from "./support/desktop-fixture.mjs";
+import { openProjectInDesktop } from "./support/journey-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -8,8 +10,12 @@ import { fileURLToPath } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { applicationFixture } from "./application-fixture.mjs";
-import { withSmokeDeadline } from "./smoke-deadline.mjs";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  readFixtureHost,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../.."),
   gui = process.env.AREAL_COLD_GUI_ROOT
     ? resolve(process.env.AREAL_COLD_GUI_ROOT)
@@ -18,33 +24,20 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../.."),
       : join(root, "clients/gui");
 const require = createRequire(join(root, "clients/gui/app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection, waitForServiceExit } = require(
-  join(gui, "app/src/core/service-client.cjs"),
-);
 const binary = resolve(process.env.AREAL_CORE_BIN || join(root, "target/debug/areal"));
-const seed = process.env.AREAL_COLD_FIXTURE_MANIFEST
-  ? JSON.parse(await readFile(process.env.AREAL_COLD_FIXTURE_MANIFEST, "utf8"))
-  : undefined;
-if (seed) {
-  assert.match(seed.scratch, /^\/private\/tmp\/areal-cold-red-[A-Za-z0-9]+$/);
-  assert.ok(
-    seed.cleanup.length && seed.cleanup.every((entry) => entry.stopped),
-    "only a stopped owned cold fixture may be reused",
-  );
-}
-const scratch = seed?.scratch ?? (await makeTempDir("areal-cold-red-"));
+const scratch = await makeTempDir("areal-cold-");
 const evidence = process.env.AREAL_COLD_EVIDENCE
   ? resolve(process.env.AREAL_COLD_EVIDENCE)
   : await trackedMkdtemp(join(root, ".scratch/task-catalog-cold-"));
 await mkdir(evidence, { recursive: true });
-const primary = join(scratch, "primary"),
+const primary = join(scratch, "demo"),
   user = join(scratch, "user");
 await mkdir(primary, { recursive: true });
 await mkdir(user, { recursive: true });
 const config = join(scratch, "config.toml");
 await writeFile(
   config,
-  'schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:9/v1/chat/completions"\n',
+  'schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:9/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n',
 );
 const inherited = { ...process.env };
 for (const key of Object.keys(inherited))
@@ -52,6 +45,7 @@ for (const key of Object.keys(inherited))
     delete inherited[key];
 const env = {
   ...inherited,
+  HOME: user,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_CORE_USER_HOME: user,
@@ -60,20 +54,7 @@ const env = {
   AREAL_CORE_CONFIG: config,
   AREAL_CORE_BIN: binary,
 };
-const startTrace = join(evidence, "owner-starts.jsonl");
-await writeFile(startTrace, "");
-const fixture = await applicationFixture(
-  gui,
-  join(scratch, "app"),
-  `
-const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
-const originalStart = CoreBackend.prototype.startProject;
-CoreBackend.prototype.startProject = function(id) {
-  require("node:fs").appendFileSync(${JSON.stringify(startTrace)}, JSON.stringify({projectId:id,at:Date.now()})+"\\n");
-  return originalStart.call(this, id);
-};
-`,
-);
+const fixture = await applicationFixture(gui, join(scratch, "app"));
 const irrelevantOwners = [],
   scheduledOwners = [];
 const identity = {
@@ -102,7 +83,6 @@ async function sourceHashes() {
   }
   for (const directory of [
     join(gui, "app/src"),
-    join(gui, "app/bridge"),
     join(gui, "app/assets"),
     join(gui, "renderer/dist"),
     join(gui, "packages"),
@@ -118,7 +98,65 @@ const sourceBefore = await sourceHashes();
 const errors = [],
   cleanup = [];
 let app, page, taskOwner, task, primaryId, observation, previewDetail, failure;
-const objective = "COLD_PERSISTED_TASK";
+const startup = process.argv.includes("--startup");
+const objective = startup ? "STARTUP_CATALOG_SAVED_TASK" : "COLD_PERSISTED_TASK";
+let pendingActivation;
+function holdOriginalActivation(socket) {
+  const remote = socket.connectToServer();
+  socket.onMessage((message) => {
+    const frame = JSON.parse(message.toString());
+    const { command, request } = frame.params ?? {};
+    if (
+      frame.method !== "desktop.command" ||
+      command !== "connect" ||
+      request?.projectId !== taskOwner ||
+      request.resumeScheduling !== true
+    ) {
+      remote.send(message);
+      return;
+    }
+    assert.equal(pendingActivation, undefined, "the original explicit activation is issued once");
+    pendingActivation = {
+      id: frame.id,
+      receivedAt: Date.now(),
+      release: () => remote.send(message),
+    };
+  });
+  remote.onMessage((message) => {
+    const frame = JSON.parse(message.toString());
+    if (pendingActivation && frame.id === pendingActivation.id) {
+      pendingActivation.result = frame.result;
+      pendingActivation.error = frame.error;
+    }
+    socket.send(message);
+  });
+}
+const workspaces = new Map();
+const services = () =>
+  JSON.parse(
+    execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8", timeout: 20000 }),
+  );
+function generations(ids) {
+  const records = services();
+  return ids.map((id) => ({
+    projectId: id,
+    services: records
+      .filter((row) => row.workspace === workspaces.get(id))
+      .map(({ serviceId, generation, state }) => ({ serviceId, generation, state })),
+  }));
+}
+async function rememberWorkspace(projectId) {
+  const owner = await until(
+    async () => (await snapshot()).projects.find((item) => item.id === projectId),
+    "original native project alias",
+  );
+  assert.ok(owner.root.startsWith(scratch + "/"));
+  workspaces.set(projectId, owner.root);
+}
+const ready = (projectId) =>
+  services().some((row) => row.workspace === workspaces.get(projectId) && row.state === "ready");
+const readTasks = (projectId) =>
+  fixtureWorkbench(page, "tasks.read", { operation: "list", projectId });
 async function until(fn, label) {
   const end = Date.now() + 120000;
   while (Date.now() < end) {
@@ -149,8 +187,9 @@ async function launch() {
   });
   page = await app.firstWindow();
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-  await until(async () => (await snapshot()).connection?.state === "ready", "Desktop ready");
+  await page
+    .locator('[data-testid="areal-workbench"][data-startup-ready="true"]')
+    .waitFor({ timeout: 120000 });
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];
     w.setSize(1488, 1056);
@@ -160,135 +199,92 @@ async function launch() {
 }
 async function close() {
   if (!app) return;
-  const metadata = await readFile(join(scratch, "core/service.json"), "utf8").then(JSON.parse);
-  await page.getByRole("button", { name: "首页", exact: true }).click();
-  const connection = new ServiceConnection();
-  try {
-    await connection.connect(metadata);
-    const hello = await until(async () => {
-      const value = await connection.request("hello", {
-        protocol: metadata.protocol,
-        identity: metadata.identity,
-      });
-      return !value.service.activeCommands && !value.service.starting && value;
-    }, "all submitted catalog and control commands settle before fixture shutdown");
-    await connection.request(
-      "stopService",
-      {
-        protocol: metadata.protocol,
-        cancel: true,
-        expectedDesktopGeneration: metadata.desktopGeneration,
-        expectedTargets: hello.service.targets,
-      },
-      true,
-    );
-    await waitForServiceExit(join(scratch, "core"), metadata);
-  } finally {
-    connection.close();
-  }
-  await withSmokeDeadline(
-    "catalog fixture exit",
-    () => app.evaluate(({ app }) => app.exit(0)),
-    5000,
-  ).catch(() => {});
-  await closeSmokeApplication(app);
-  app = null;
-  await assertApplicationStopped(binary, env, metadata);
-  cleanup.push({
-    pid: metadata.pid,
-    stopped: true,
-    method:
-      "identity-checked service stop and fixture exit; product quit is outside this catalog check",
+  const host = await readFixtureHost(env);
+  const pid = app.process().pid;
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 0 });
   });
+  const directory = join(evidence, `quit-${pid}`);
+  await mkdir(directory);
+  let receipt;
+  try {
+    if (host) {
+      receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, directory);
+      assert.equal(receipt?.state, "completed");
+    }
+  } finally {
+    const closing = app;
+    app = null;
+    await closeSmokeApplication(closing);
+    await assertApplicationStopped(binary, env, { pid, hostPid: host?.pid });
+  }
+  cleanup.push({ pid, hostPid: host?.pid, stopRequestId: receipt?.requestId, stopped: true });
 }
 try {
-  if (!seed) {
-    await launch();
-    await app.evaluate(({ dialog }, directory) => {
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
-    }, primary);
-    await page.evaluate(() => window.arealDesktop.chooseProject());
-    primaryId = (
-      await until(
-        async () =>
-          (await snapshot()).projects.find((p) => p.root === primary && p.state?.connected),
-        "primary ready",
-      )
-    ).id;
-    for (let index = 0; index < 30; index++) {
-      const owner = await call("projectless", { operation: "prepare", requestId: randomUUID() });
-      irrelevantOwners.push(owner.projectId);
-    }
-    for (let index = 0; index < 3; index++) {
-      const prepared = await call("projectless", { operation: "prepare", requestId: randomUUID() });
-      taskOwner = prepared.projectId;
-      await call("connect", { projectId: taskOwner });
-      await until(
-        async () => (await snapshot()).projects.find((p) => p.id === taskOwner)?.state?.connected,
-        "task owner ready",
-      );
-      const source = await call("create", { projectId: taskOwner, requestId: randomUUID() });
-      task = await call("manage", {
-        operation: "taskCreate",
-        projectId: taskOwner,
-        requestId: randomUUID(),
-        mode: "scheduled",
-        objective: index === 2 ? objective : `${objective}_${index}`,
-        sourceThreadId: source.threadId,
-        interactionMode: "interactive",
-        schedule: { at: Math.floor(Date.now() / 1000) + 86400 },
-      });
-      scheduledOwners.push(taskOwner);
-    }
-    await writeFile(join(evidence, "saved-task.json"), JSON.stringify(task, null, 2));
-    await page.evaluate((id) => localStorage.setItem("areal-gui:project", id), primaryId);
-    await close();
-  } else {
-    taskOwner = seed.taskOwner;
-    task = { id: seed.taskId };
-    irrelevantOwners.push(...seed.irrelevantOwners);
-    scheduledOwners.push(...seed.scheduledOwners);
-    const owners = JSON.parse(await readFile(join(scratch, "core/projects.json"), "utf8"));
-    primaryId = owners.find((owner) => owner.root === primary).id;
-    assert.equal(
-      seed.identity.sha256,
-      identity.sha256,
-      "reused fixture keeps the same Core binary",
-    );
-  }
   await launch();
-  await call("connect", { projectId: primaryId });
-  await until(
-    async () => (await snapshot()).projects.find((p) => p.id === primaryId)?.state?.connected,
-    "primary ready",
-  );
-  assert.equal(
-    !!(await snapshot()).projects.find((p) => p.id === taskOwner)?.state?.connected,
-    false,
-    "scheduled owner cold before click",
-  );
-  await writeFile(startTrace, "");
-  const projectionSource = await readFile(
-    join(gui, "packages/workbench/client/state-projection.cjs"),
-    "utf8",
-  );
-  await page.evaluate((source) => {
-    const module = { exports: {} };
-    Function("module", source)(module);
-    const reader = new module.exports.ProjectionReader();
-    window.__coldProjectionErrors = [];
-    window.arealDesktop.onProjection((message) => {
-      try {
-        window.__coldSnapshot = reader.read(message.frame);
-      } catch (error) {
-        window.__coldProjectionErrors.push(error.message);
-      }
+  await openProjectInDesktop(app, page, primary);
+  await page.getByTestId("chat-input").waitFor();
+  primaryId = await page.getByTestId("areal-workbench").getAttribute("data-project-id");
+  assert.ok(primaryId);
+  await rememberWorkspace(primaryId);
+  for (let index = 0; index < 30; index++) {
+    const owner = await call("projectless", { operation: "prepare", requestId: randomUUID() });
+    await rememberWorkspace(owner.projectId);
+    irrelevantOwners.push(owner.projectId);
+  }
+  for (let index = 0; index < 3; index++) {
+    const prepared = await call("projectless", { operation: "prepare", requestId: randomUUID() });
+    taskOwner = prepared.projectId;
+    await rememberWorkspace(taskOwner);
+    await call("connect", { projectId: taskOwner });
+    await until(() => ready(taskOwner), "task owner ready");
+    const source = await createFixtureThread(page, taskOwner, {
+      model: { providerId: "fixture", modelId: "fixture" },
     });
-    window.arealDesktop.requestProjection(999999);
-  }, projectionSource);
-  await page.waitForFunction(() => window.__coldSnapshot);
-  await page.getByRole("button", { name: "定时任务", exact: true }).evaluate(
-    (button, { objective, taskOwner }) => {
+    await until(async () => {
+      // Core 进程 ready 之后，仍须证明 Host 已安装该 owner 的调度连接。
+      const result = await fixtureWorkbench(page, "manage.read", {
+        operation: "taskScheduleContext",
+        projectId: taskOwner,
+        timeZone: "UTC",
+      }).catch((error) => {
+        if (!String(error.message).includes("scheduleHostUnavailable")) throw error;
+        return null;
+      });
+      return Number.isFinite(result?.coreNow);
+    }, "original scheduled owner reachable through Host");
+    task = await call("manage", {
+      operation: "taskCreate",
+      projectId: taskOwner,
+      requestId: randomUUID(),
+      mode: "scheduled",
+      objective: index === 2 ? objective : `${objective}_${index}`,
+      sourceThreadId: source.threadId,
+      interactionMode: "interactive",
+      schedule: { at: Math.floor(Date.now() / 1000) + 86400 },
+    });
+    scheduledOwners.push(taskOwner);
+  }
+  await writeFile(join(evidence, "saved-task.json"), JSON.stringify(task, null, 2));
+  await page.evaluate((id) => localStorage.setItem("areal-gui:project", id), primaryId);
+  await close();
+  await launch();
+  if (startup) {
+    await page.routeWebSocket(/\/host\/socket$/, holdOriginalActivation);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]').waitFor();
+  }
+  await call("connect", { projectId: primaryId });
+  await until(() => ready(primaryId), "primary ready");
+  const allColdOwners = [...irrelevantOwners, ...scheduledOwners];
+  assert.ok(
+    allColdOwners.every((id) => !ready(id)),
+    "all unrelated owners are initially cold",
+  );
+  const beforeSelection = generations(allColdOwners);
+  await page
+    .getByRole("button", { name: "定时任务", exact: true })
+    .evaluate((button, objective) => {
       const timing = (window.__coldTaskTiming = { clickedAt: null, visibleAt: null });
       let frame = 0;
       const check = () => {
@@ -297,7 +293,7 @@ try {
           (el) => el.getAttribute("aria-label") === "打开定时任务 " + objective,
         );
         if (!row || frame) return;
-        frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(async () => {
           frame = 0;
           const box = row.getBoundingClientRect(),
             style = getComputedStyle(row);
@@ -310,12 +306,9 @@ try {
           ) {
             timing.visibleAt = performance.now();
             timing.visibleWallAt = Date.now();
-            timing.executionReady = !!window.__coldSnapshot.projects.find((p) => p.id === taskOwner)
-              ?.state?.connected;
-            timing.owner = window.__coldSnapshot.projects.find((p) => p.id === taskOwner);
             timing.disabled = row.disabled;
             timing.statuses = [...document.querySelectorAll('[role="status"]')].map(
-              (el) => el.textContent,
+              (el) => el.getAttribute("aria-label") ?? el.textContent,
             );
             timing.rowText = row.textContent;
             observer.disconnect();
@@ -332,9 +325,7 @@ try {
         },
         { once: true, capture: true },
       );
-    },
-    { objective, taskOwner },
-  );
+    }, objective);
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
   const row = page.getByRole("button", { name: `打开定时任务 ${objective}`, exact: true });
   await row.waitFor({ timeout: 60000 });
@@ -348,31 +339,25 @@ try {
       2,
     ),
   );
-  assert.ok(
-    !observation.owner?.core?.runtimeEpoch,
-    "Persisted task must be visible before execution Core authenticates",
-  );
+  observation.executionReady = ready(taskOwner);
+  assert.equal(observation.executionReady, false, "published row appears while owner stays cold");
   assert.equal(observation.disabled, false, "Published task row remains selectable");
   await row.click();
-  previewDetail = await page.evaluate(
-    ({ taskOwner }) => ({
-      owner: window.__coldSnapshot.projects.find((owner) => owner.id === taskOwner),
-      text: document.querySelector(".task-conversation")?.textContent,
-      mutations: [...document.querySelectorAll(".task-conversation button")]
-        .filter((button) =>
-          ["暂停", "开启", "立即运行", "停止本次运行", "删除"].includes(button.textContent?.trim()),
-        )
-        .map((button) => ({ label: button.textContent, disabled: button.disabled })),
-    }),
-    { taskOwner },
-  );
-  assert.equal(
-    !!previewDetail.owner?.state?.connected,
-    false,
-    "Opening the preview must exercise the unobserved connecting state",
-  );
+  await page.locator(".task-conversation").waitFor();
+  previewDetail = await page.evaluate(() => ({
+    text: document.querySelector(".task-conversation")?.textContent,
+    statuses: [...document.querySelectorAll('.task-conversation [role="status"]')].map(
+      (el) => el.getAttribute("aria-label") ?? el.textContent,
+    ),
+    mutations: [...document.querySelectorAll(".task-conversation button")]
+      .filter((button) =>
+        ["暂停", "开启", "立即运行", "停止本次运行", "删除"].includes(button.textContent?.trim()),
+      )
+      .map((button) => ({ label: button.textContent, disabled: button.disabled })),
+  }));
+  assert.equal(ready(taskOwner), false, "opening preview does not start the owner");
   assert.ok(
-    /连接|更新任务状态|尚未确认/.test(previewDetail.text),
+    /连接|更新任务状态|尚未确认/.test([previewDetail.text, ...previewDetail.statuses].join(" ")),
     "Published task opens a connecting placeholder",
   );
   assert.ok(
@@ -388,52 +373,116 @@ try {
     join(evidence, "preview-connecting.aria.txt"),
     await page.locator("body").ariaSnapshot(),
   );
-  const coldStarts = (await readFile(startTrace, "utf8"))
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map(JSON.parse);
+  const passive = generations(allColdOwners);
+  assert.deepEqual(passive, beforeSelection, "catalog and selection never start any cold owner");
+  await writeFile(join(evidence, "passive-generations.json"), JSON.stringify(passive, null, 2));
+  await page
+    .locator(`main[data-task-id="${task.id}"]`)
+    .getByRole("button", { name: "打开项目以更新", exact: true })
+    .click();
+  if (startup) {
+    const held = await until(() => pendingActivation, "original native activation intercepted");
+    if (process.env.AREAL_TASK_CATALOG_SLOW_HANDSHAKE === "1")
+      await new Promise((resolve) => setTimeout(resolve, 6500));
+    assert.equal(ready(taskOwner), false, "the held request has not started Core");
+    assert.equal(
+      await row.isVisible(),
+      true,
+      "persisted row remains visible during pending activation",
+    );
+    assert.equal(
+      await page.getByRole("alert").count(),
+      0,
+      "the pending operation does not surface an error",
+    );
+    const published = await readTasks(taskOwner);
+    assert.ok(
+      published.owners.some(
+        (owner) =>
+          owner.projectId === taskOwner &&
+          owner.status === "unobserved" &&
+          owner.source === "published" &&
+          owner.coverage?.kind === "snapshot",
+      ),
+    );
+    assert.equal(published.data.filter((row) => row.id === task.id).length, 1);
+    await writeFile(
+      join(evidence, "pending-activation.json"),
+      JSON.stringify(
+        {
+          id: held.id,
+          receivedAt: held.receivedAt,
+          published,
+        },
+        null,
+        2,
+      ),
+    );
+    held.release();
+    await until(() => held.result || held.error, "original activation reply observed");
+    assert.equal(held.error, undefined);
+    assert.equal(held.result.state, "ready");
+  }
+  await until(() => ready(taskOwner), "explicitly refreshed owner ready");
   assert.deepEqual(
-    coldStarts.filter((entry) =>
-      [...irrelevantOwners, ...scheduledOwners].includes(entry.projectId),
-    ),
-    [],
-    "catalog and selection never start any cold owner",
-  );
-  await writeFile(join(evidence, "passive-starts.json"), JSON.stringify(coldStarts, null, 2));
-  await page.getByRole("button", { name: "刷新这个项目", exact: true }).last().click();
-  await until(
-    async () => (await snapshot()).projects.find((p) => p.id === taskOwner)?.state?.connected,
-    "explicitly refreshed owner ready",
-  );
-  const explicitStarts = (await readFile(startTrace, "utf8"))
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map(JSON.parse);
-  assert.equal(
-    explicitStarts.filter((entry) => irrelevantOwners.includes(entry.projectId)).length,
-    0,
+    generations(allColdOwners.filter((id) => id !== taskOwner)),
+    beforeSelection.filter((item) => item.projectId !== taskOwner),
     "explicit refresh leaves unrelated owners cold",
   );
   await until(() => row.isEnabled(), "management row enabled");
+  if (startup) {
+    const live = await readTasks(taskOwner);
+    assert.ok(
+      live.owners.some(
+        (owner) =>
+          owner.projectId === taskOwner && owner.status === "ready" && owner.source === "live",
+      ),
+    );
+    assert.equal(live.data.filter((row) => row.id === task.id).length, 1);
+    await writeFile(join(evidence, "ready-directory.json"), JSON.stringify(live, null, 2));
+    if (process.env.AREAL_TASK_CATALOG_WEB_HANDOFF === "1") {
+      await writeFile(
+        join(scratch, "web-handoff.json"),
+        JSON.stringify({
+          home: env.AREAL_HARNESS_SERVICE_HOME,
+          projectId: taskOwner,
+          taskId: task.id,
+        }),
+      );
+      console.log(JSON.stringify({ webHandoff: scratch }));
+      await until(
+        () =>
+          readFile(join(scratch, "web-done"), "utf8").then(
+            () => true,
+            () => false,
+          ),
+        "Web handoff completion",
+      );
+    }
+  }
   if ((await row.getAttribute("aria-pressed")) !== "true") await row.click();
-  const currentTask = (await call("tasks", { operation: "list", projectId: taskOwner })).data.find(
-    (value) => value.id === task.id,
-  );
+  const currentTask = (await readTasks(taskOwner)).data.find((value) => value.id === task.id);
+  const taskMenu = page.locator(`[data-scheduled-task-menu="${task.id}"]`);
+  const manageTask = async (label) => {
+    if (!(await taskMenu.isVisible())) {
+      await page
+        .locator(`main[data-task-id="${task.id}"]`)
+        .getByRole("button", { name: "任务资源", exact: true })
+        .click();
+    }
+    await taskMenu.click();
+    await page.getByRole("menuitem", { name: label, exact: true }).click();
+  };
   if (currentTask.paused) {
-    await page.getByRole("button", { name: "开启", exact: true }).click();
+    await manageTask("开启");
     await until(
-      async () =>
-        !(await call("tasks", { operation: "list", projectId: taskOwner })).data.find(
-          (value) => value.id === task.id,
-        ).paused,
+      async () => !(await readTasks(taskOwner)).data.find((value) => value.id === task.id).paused,
       "reused task enabled before pause acceptance",
     );
   }
-  await page.getByRole("button", { name: "暂停", exact: true }).click();
+  await manageTask("暂停");
   const readback = await until(async () => {
-    const r = await call("tasks", { operation: "list", projectId: taskOwner });
+    const r = await readTasks(taskOwner);
     assert.equal(r.errors.length, 0);
     const found = r.data.filter((t) => t.id === task.id);
     assert.equal(found.length, 1);
@@ -446,21 +495,23 @@ try {
     "Persisted task must be visible before owner execution ready",
   );
   assert.ok(
-    observation.statuses.some((text) =>
+    [...observation.statuses, observation.rowText].some((text) =>
       /状态.*刷新|刷新.*状态|正在更新任务状态|尚未确认最新状态|上次记录|本次读取/.test(text),
     ),
     "Persisted preview explicitly identifies status refresh",
   );
   assert.deepEqual(errors, [], "No renderer errors");
-  assert.deepEqual(
-    await page.evaluate(() => window.__coldProjectionErrors),
-    [],
-    "Read-only projection observer decoded every frame",
-  );
 } catch (e) {
   failure = e.stack;
   console.error(failure);
-  if (page) await page.screenshot({ path: join(evidence, "failure.png") }).catch(() => {});
+  if (page) {
+    await page.screenshot({ path: join(evidence, "failure.png") }).catch(() => {});
+    await page
+      .locator("body")
+      .ariaSnapshot()
+      .then((tree) => writeFile(join(evidence, "failure.aria.txt"), tree))
+      .catch(() => {});
+  }
 } finally {
   try {
     await close();
@@ -484,6 +535,7 @@ try {
     JSON.stringify(
       {
         passed: !failure,
+        startup,
         identity,
         sourceBefore,
         sourceAfter,
@@ -500,7 +552,7 @@ try {
         drift,
         failure,
         boundary:
-          "Real persisted future Task via production bridge/Core setup, real source Electron/renderer, no startup delay, actual browser click through visible rAF. Read-only projection observer uses production ProjectionReader. Primary connected; scheduled owner cold. Physical input, real provider, installed package and OS cache eviction are not covered.",
+          "Real persisted future Task via production bridge/Core setup, real source Electron/renderer, no startup delay, actual browser click through visible rAF. Read-only owner status is observed through the isolated Rust service inventory. Primary connected; scheduled owner cold. Physical input, real provider, installed package and OS cache eviction are not covered.",
       },
       null,
       2,

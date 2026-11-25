@@ -432,27 +432,29 @@ export function PluginSkillsPage({
       aria-label={`${item.name} · ${sourceLabel(item)}`}
     >
       <Button
-        unstyled
-        data-slot={undefined}
-        type="submit"
-        className="plugin-row-info"
+        type="button"
+        variant="row"
+        size="none"
+        className="min-w-0 flex-1 shrink"
         aria-label={t("settings.pluginSkillsPage.viewSkillValue", { value0: item.id })}
         disabled={busy || !!item.error}
         onClick={() => onOpen(item)}
       >
-        <span className="plugin-resource-icon plugin-skill-icon" aria-hidden="true">
-          <svg width="16" height="18" viewBox="0 0 16 18">
-            <path d="M8 1 14 4.5 8 8 2 4.5Z" fill="#ffd38a" />
-            <path d="M2 4.5 8 8 8 16 2 12.5Z" fill="#ffe8bc" />
-            <path d="M8 8 14 4.5 14 12.5 8 16Z" fill="#ad8be5" />
-          </svg>
-        </span>
-        <span>
-          <TitleTooltip title={`${item.name} · ${sourceLabel(item)}`}>
-            <strong>{item.name}</strong>
-          </TitleTooltip>
-          <small className={compact ? undefined : "sr-only"}>{sourceLabel(item)}</small>
-          <small>{item.error || item.description || item.id}</small>
+        <span className="plugin-row-info">
+          <span className="plugin-resource-icon plugin-skill-icon" aria-hidden="true">
+            <svg width="16" height="18" viewBox="0 0 16 18">
+              <path d="M8 1 14 4.5 8 8 2 4.5Z" fill="#ffd38a" />
+              <path d="M2 4.5 8 8 8 16 2 12.5Z" fill="#ffe8bc" />
+              <path d="M8 8 14 4.5 14 12.5 8 16Z" fill="#ad8be5" />
+            </svg>
+          </span>
+          <span>
+            <TitleTooltip title={`${item.name} · ${sourceLabel(item)}`}>
+              <strong>{item.name}</strong>
+            </TitleTooltip>
+            <small className={compact ? undefined : "sr-only"}>{sourceLabel(item)}</small>
+            <small>{item.error || item.description || item.id}</small>
+          </span>
         </span>
       </Button>
       {compact && item.pluginId ? (
@@ -499,10 +501,11 @@ export function PluginSkillsPage({
         )}
         {values.length > 6 && !query.trim() && (
           <Button
-            unstyled
-            data-slot={undefined}
-            type="submit"
-            className="plugin-skills-more"
+            type="button"
+            variant="ghost-subtle"
+            size="sm"
+            align="start"
+            className="mt-3"
             aria-expanded={!!expanded[key]}
             aria-controls={id}
             onClick={() => setExpanded((current) => ({ ...current, [key]: !current[key] }))}
@@ -583,6 +586,7 @@ export function PluginSkillsPage({
           items={owners}
           value={activeScope}
           onValueChange={setScopeId}
+          scrollable
         />
       </div>
       {preview(

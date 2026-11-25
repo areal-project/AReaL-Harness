@@ -4,49 +4,106 @@ import { fileURLToPath } from "node:url";
 
 const root = new URL("../", import.meta.url);
 const tokens = JSON.parse(await readFile(new URL("tokens.json", root), "utf8"));
-const foundation = [
-  "text-ui-base",
-  "text-ui-caption",
-  "text-page-title",
-  "text-conversation",
-  "conversation-line",
-  "conversation-gap",
-  "spacing-inline",
-  "spacing-field",
-  "spacing-section",
-  "spacing-panel",
-  "radius-control",
-  "radius-button",
-  "radius-panel",
-  "radius-dialog",
-  "motion-fast",
-  "motion-normal",
-  "color-destructive",
+
+// 面向业务页面与 Agent 的精选语义 Token 总账（≤ 46 个，按用途分组；禁止页面直接引用 D2/D3 或内部派生角色）。
+const sections = [
+  {
+    title: "Colors · 颜色（表面 / 文字 / 边框 / 动作 / 状态）",
+    items: [
+      { source: "palette", name: "--color-background" },
+      { source: "palette", name: "--color-surface" },
+      { source: "palette", name: "--color-popover" },
+      { source: "palette", name: "--color-foreground" },
+      { source: "palette", name: "--color-foreground-subtle" },
+      { source: "palette", name: "--color-foreground-subtlest" },
+      { source: "palette", name: "--color-settings-secondary" },
+      { source: "palette", name: "--color-border" },
+      { source: "palette", name: "--color-border-hover" },
+      { source: "palette", name: "--color-primary" },
+      { source: "palette", name: "--color-primary-foreground" },
+      { source: "palette", name: "--color-brand" },
+      { source: "foundation", name: "color-destructive" },
+      { source: "palette", name: "--color-status-running" },
+      { source: "palette", name: "--color-status-success" },
+      { source: "palette", name: "--color-status-attention" },
+      { source: "palette", name: "--color-status-error" },
+      { source: "palette", name: "--color-status-unknown" },
+    ],
+  },
+  {
+    title: "Spacing · 间距（4px 基准阶梯 + 语义角色）",
+    items: [
+      { source: "foundation", name: "spacing-1" },
+      { source: "foundation", name: "spacing-2" },
+      { source: "foundation", name: "spacing-3" },
+      { source: "foundation", name: "spacing-4" },
+      { source: "foundation", name: "spacing-6" },
+      { source: "foundation", name: "spacing-8" },
+      { source: "foundation", name: "spacing-inline" },
+      { source: "foundation", name: "spacing-field" },
+      { source: "foundation", name: "spacing-section" },
+      { source: "foundation", name: "spacing-panel" },
+    ],
+  },
+  {
+    title: "Typography · 字号（界面轴 + 阅读轴）",
+    items: [
+      { source: "foundation", name: "text-page-title" },
+      { source: "foundation", name: "text-ui-xl" },
+      { source: "foundation", name: "text-ui-lg" },
+      { source: "foundation", name: "text-ui-base" },
+      { source: "foundation", name: "text-ui-caption" },
+      { source: "foundation", name: "text-conversation" },
+      { source: "foundation", name: "conversation-line" },
+      { source: "foundation", name: "conversation-gap" },
+    ],
+  },
+  {
+    title: "Shapes · 圆角",
+    items: [
+      { source: "foundation", name: "radius-button" },
+      { source: "foundation", name: "radius-control" },
+      { source: "foundation", name: "radius-panel" },
+      { source: "foundation", name: "radius-dialog" },
+      { source: "foundation", name: "radius-composer" },
+      { source: "foundation", name: "radius-pill" },
+    ],
+  },
+  {
+    title: "Elevation & Motion · 阴影、动效与层级",
+    items: [
+      { source: "foundation", name: "shadow-menu" },
+      { source: "foundation", name: "shadow-overlay" },
+      { source: "foundation", name: "shadow-dialog" },
+      { source: "foundation", name: "motion-fast" },
+      { source: "foundation", name: "motion-normal" },
+      { source: "foundation", name: "layer-dialog" },
+    ],
+  },
 ];
-const palette = [
-  "--color-background",
-  "--color-foreground",
-  "--color-foreground-subtle",
-  "--color-settings-secondary",
-  "--color-border",
-  "--color-primary",
-  "--color-primary-foreground",
-  "--color-brand",
-];
-const rows = [
-  ...foundation.map((name) => {
+
+function resolveRow({ source, name }) {
+  if (source === "foundation") {
     assert.ok(tokens.foundation[name]?.$description, `Missing foundation role ${name}`);
-    return ["--" + name, tokens.foundation[name].$description];
-  }),
-  ...palette.map((name) => {
-    assert.ok(tokens.palette.roles[name]?.meaning, `Missing palette role ${name}`);
-    return [name, tokens.palette.roles[name].meaning];
-  }),
-];
+    return [`--${name}`, tokens.foundation[name].$description];
+  }
+  assert.ok(tokens.palette.roles[name]?.meaning, `Missing palette role ${name}`);
+  return [name, tokens.palette.roles[name].meaning];
+}
+
+const blocks = sections.map((section) => {
+  const rows = section.items.map(resolveRow);
+  return (
+    `## ${section.title}\n\n| CSS variable / 变量 | Source description / 来源说明 |\n| --- | --- |\n` +
+    rows.map(([name, meaning]) => `| \`${name}\` | ${meaning.replaceAll("|", "\\|")} |`).join("\n")
+  );
+});
+
 const document =
-  "# Token entry / Token 入口\n\n<!-- Generated by scripts/token-reference.mjs from tokens.json. -->\n\nCommon roles selected from [tokens.json](tokens.json). Descriptions come from the same metadata as the full reference. This index contains no copied values. / 常用角色按用途筛选，说明直接读取同一元数据，不复制数值。\n\n| CSS variable / 变量 | Source description / 来源说明 |\n| --- | --- |\n" +
-  rows.map(([name, meaning]) => `| \`${name}\` | ${meaning.replaceAll("|", "\\|")} |`).join("\n") +
+  "# Token entry / Token 入口\n\n<!-- Generated by scripts/token-reference.mjs from tokens.json. -->\n\nCurated semantic roles from [tokens.json](tokens.json). Business pages should pick exclusively from this table; values live only in `tokens.json`. / 面向业务页面与 Agent 的精选语义角色总账，数值仅维护于 `tokens.json`。\n\n" +
+  blocks.join("\n\n") +
   "\n\n[Complete generated reference / 完整生成参考](src/generated/tokens.md) · [Consumer entry / 使用者入口](README.md) · [English](README.en.md)\n";
+
 const path = new URL("token-reference.md", root);
 if (process.argv.includes("--write")) await writeFile(path, document);
 else

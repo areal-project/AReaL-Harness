@@ -22,14 +22,32 @@ class HostProtocolSchemaTests(unittest.TestCase):
     def setUpClass(cls):
         cls.schema = json.loads((ROOT / GEN.SCHEMA).read_text())
 
+    def test_remote_methods_require_a_known_lane(self):
+        for lane in (None, "background", []):
+            with self.subTest(lane=lane):
+                changed = copy.deepcopy(self.schema)
+                method = changed["x-current"]["remote"]["methods"]["turn.stop"]
+                if lane is None:
+                    del method["x-lane"]
+                else:
+                    method["x-lane"] = lane
+                with self.assertRaisesRegex(ValueError, r"remote/turn\.stop: .*x-lane"):
+                    GEN.validate_schema(changed)
+
     def test_current_inventory_matches_actual_dispatch_and_handshake(self):
         GEN.check_inventory(self.schema, ROOT)
         changed = copy.deepcopy(self.schema)
         changed["$defs"]["RemoteReady"]["properties"]["methods"]["items"]["enum"].remove(
             "session.create"
         )
-        with self.assertRaisesRegex(ValueError, "remoteLegacy.*session.create"):
+        with self.assertRaisesRegex(ValueError, "remoteLegacy.*drift"):
             GEN.check_inventory(changed, ROOT)
+        for name in ("RemoteReady", "RemoteDescription"):
+            for bound in ("minItems", "maxItems"):
+                changed = copy.deepcopy(self.schema)
+                changed["$defs"][name]["properties"]["methods"][bound] -= 1
+                with self.assertRaisesRegex(ValueError, f"remoteLegacy {name}.*bounds"):
+                    GEN.check_inventory(changed, ROOT)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for name in (
@@ -40,14 +58,12 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 "gateway/uploads.rs",
                 "workbench_route.rs",
                 "plugins.rs",
+                "bots.rs",
                 "loopback.rs",
             ):
                 target = root / "core/host/src" / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / "core/host/src" / name, target)
-            backend = root / "services/workbench/src/backend-main.cjs"
-            backend.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(ROOT / "services/workbench/src/backend-main.cjs", backend)
             source = root / "core/host/src/gateway/session.rs"
             source.write_text(
                 source.read_text().replace(
@@ -80,21 +96,6 @@ class HostProtocolSchemaTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "loopback.added"):
                 GEN.check_inventory(self.schema, root)
             shutil.copyfile(ROOT / "core/host/src/loopback.rs", source)
-            backend.write_text(
-                backend.read_text().replace(
-                    '"core.callback"', '"private.added", "core.callback"', 1
-                )
-            )
-            with self.assertRaisesRegex(ValueError, "private.added"):
-                GEN.check_inventory(self.schema, root)
-            shutil.copyfile(ROOT / "services/workbench/src/backend-main.cjs", backend)
-            backend.write_text(
-                backend.read_text().replace(
-                    'request.event === "core.event"', 'request.event === "future.event"', 1
-                )
-            )
-            with self.assertRaisesRegex(ValueError, "future.event"):
-                GEN.check_inventory(self.schema, root)
 
     def test_generator_is_deterministic_and_check_never_repairs_stale_files(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -109,13 +110,11 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 Path("core/host/src/gateway/uploads.rs"),
                 Path("core/host/src/workbench_route.rs"),
                 Path("core/host/src/plugins.rs"),
+                Path("core/host/src/bots.rs"),
             ):
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / name, target)
-            backend = root / "services/workbench/src/backend-main.cjs"
-            backend.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(ROOT / "services/workbench/src/backend-main.cjs", backend)
             shutil.copyfile(
                 ROOT / "schemas/areal-core-v1.json", root / "schemas/areal-core-v1.json"
             )
@@ -133,29 +132,19 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 GEN.generate(root, check=True)
             self.assertEqual(original, [(root / name).read_bytes() for name in GEN.OUTPUTS])
 
-    def test_private_owner_direction_and_closed_tuple_contracts_are_checked(self):
-        changed = copy.deepcopy(self.schema)
-        changed["x-current"]["workbench"]["methods"]["core.attach"]["x-owner"] = "workbench"
-        with self.assertRaisesRegex(ValueError, "invalid private owner"):
-            GEN.validate_schema(changed)
-        changed = copy.deepcopy(self.schema)
-        changed["x-current"]["workbench"]["events"]["pages.event"]["x-owner"] = "host"
-        with self.assertRaisesRegex(ValueError, "invalid event owner"):
-            GEN.validate_schema(changed)
-        changed = copy.deepcopy(self.schema)
-        path = changed["$defs"]["WorkbenchPrivateLibraryPatchParams"]["properties"]["patches"][
-            "items"
-        ]["properties"]["path"]["oneOf"][0]
-        path["items"] = True
-        with self.assertRaisesRegex(ValueError, "exact closed length"):
-            GEN.validate_schema(changed)
-
     def test_unsupported_shapes_fail_instead_of_generating_wide_types(self):
         for shape in (
             {"allOf": [{"type": "string"}]},
             {"type": ["string", "null"]},
             {"$ref": "#/missing"},
             {"type": "object", "patternProperties": {".*": {"type": "string"}}},
+            {
+                "type": "array",
+                "prefixItems": [{"type": "string"}],
+                "items": True,
+                "minItems": 1,
+                "maxItems": 1,
+            },
             {
                 "type": "object",
                 "properties": {"known": {"type": "string"}},
@@ -211,11 +200,6 @@ validate('#/$defs/WorkbenchProviderReadResult', {...providerStatus,credentialErr
 validate('#/$defs/WorkbenchProviderReadResult', {...providerStatus,credentialErrors:{provider:'arbitrary diagnostic'}}, false);
 validate('#/$defs/WorkbenchProviderReadResult', {...providerStatus,unregisteredCredentialState:{}}, false);
 
-validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['settings','httpProxy'],before:null,after:'opaque'}]});
-validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['settings','sidebarSort'],before:null,after:'manual'}]}, false);
-validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['httpProxy','settings'],before:null,after:'opaque'}]}, false);
-validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['projects','project','worktreeEnvironments'],before:[],after:[]}]});
-validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['projects','project','navigationSummaries'],before:[],after:[]}]}, false);
 const privateRead = {sourceId:'fixture',projectId:'project',lease:canonicalUuid,method:'thread/read',params:{threadId:'thread',includeTurns:true}};
 validate('#/$defs/WorkbenchPrivateCoreRequestParams', privateRead);
 validate('#/$defs/WorkbenchPrivateCoreRequestParams', {...privateRead,method:'arbitrary/execute'}, false);
@@ -223,10 +207,6 @@ validate('#/$defs/WorkbenchPrivateCoreRequestParams', {...privateRead,params:{..
 const privateUpdate = {...privateRead,method:'areal/task/update',params:{taskId:'task',requestId:canonicalUuid,expectedRevision:1,scheduleV2:null}};
 validate('#/$defs/WorkbenchPrivateCoreRequestParams', privateUpdate);
 validate('#/$defs/WorkbenchPrivateCoreRequestParams', {...privateUpdate,params:{...privateUpdate.params,scheduleV2:{version:2}}}, false);
-const originalQuery = {...privateRead,method:'areal/task/create',params:{requestId:canonicalUuid}};
-validate('#/$defs/WorkbenchPrivateExecutionReconcileParams', originalQuery);
-validate('#/$defs/WorkbenchPrivateExecutionReconcileParams', {...originalQuery,params:{...originalQuery.params,arbitrary:true}}, false);
-validate('#/$defs/WorkbenchPrivateExecutionSubmitParams', originalQuery, false);
 const explicitWorktreeProfile = {commandId:canonicalUuid,request:{sourceId:'host',operation:'worktreeOpen',projectId:'project',requestId:canonicalUuid,agentProfile:{id:'fixture',revision:'revision'}}};
 validate('#/$defs/LocalWorktreeCommandParams', explicitWorktreeProfile);
 validate('#/$defs/LocalWorktreeCommandParams', {...explicitWorktreeProfile,request:{...explicitWorktreeProfile.request,operation:'worktreeDelete'}}, false);
@@ -246,9 +226,6 @@ validate('#/$defs/WorkbenchPrivateCoreBlobParams', {...blobUpload,callId:'call'}
 validate('#/$defs/WorkbenchPrivateCoreBlobParams', {...blobUpload,callId:'call',hostGeneration:'generation'});
 validate('#/$defs/WorkbenchPrivateWorkbenchUtilityParams', {operation:'feedbackSubmit',document:'a'.repeat(1048577)});
 validate('#/$defs/WorkbenchPrivateWorkbenchUtilityParams', {operation:'modelsWrite',document:'a'.repeat(1048577)}, false);
-
-validate('#/$defs/WorkbenchPrivatePagesEvent', {version:1,event:'pages.event',params:{connection:'connection',token:'page',notification:{jsonrpc:'2.0',method:'ui/notifications/closed'}}});
-validate('#/$defs/WorkbenchPrivatePagesEvent', {version:1,event:'pages.event',params:{connection:'connection',token:'page',notification:{},extra:true}}, false);
 
 
 

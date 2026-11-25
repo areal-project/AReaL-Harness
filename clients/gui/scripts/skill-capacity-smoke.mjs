@@ -9,9 +9,12 @@ import { CoreClient } from "../packages/runtime-client/core.js";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
-const { ScopedResources } = require("@areal/workbench-service/desktop/core/scoped-resources.cjs");
 const { executeCore } = createRequire(import.meta.url)("./support/core-process-fixture.cjs");
-const { BUILTIN_SKILL_ID } = require("@areal/workbench-service/desktop/core/builtin-skills.cjs");
+const builtin = {
+  id: "openai-skill-creator",
+  revision: "fixture-v1",
+  root: join(gui, "packages/workbench/assets/builtin-skills/openai-skill-creator"),
+};
 const WebSocket = require("ws");
 assert.ok(process.env.AREAL_CORE_BIN, "Set AREAL_CORE_BIN to the built Core under test");
 const binary = resolve(process.env.AREAL_CORE_BIN);
@@ -27,7 +30,7 @@ await writeFile(
   'schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:9/v1/chat/completions"\n',
 );
 const environment = {
-  ...process.env,
+  ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("AREAL_"))),
   HOME: join(scratch, "process-home"),
   AREAL_HARNESS_HOME: join(scratch, "configuration"),
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
@@ -41,17 +44,27 @@ async function fixture(label) {
   const root = join(scratch, label, "workspace");
   for (const path of [home, userHome, root, join(home, "scratch")])
     await mkdir(path, { recursive: true });
-  const project = { id: label, root };
-  const backend = {
-    home,
-    userHome,
-    saved: [project],
-    desktopConfig: require.resolve("@areal/workbench-service/desktop/core/desktop-profile.json"),
-    save: (name, value) => writeFile(join(home, name), JSON.stringify(value)),
+  return { home, userHome, root };
+}
+async function deployment(fixture, revision, current, previous) {
+  const profile = { id: "fixture", revision };
+  const definition = {
+    ...profile,
+    displayName: "Skill capacity fixture",
+    instructions: "Read the requested skill.",
+    skills: [...current, builtin].map(({ id, revision }) => ({ id, revision })),
   };
-  const resources = new ScopedResources(backend);
-  await resources.init();
-  return { home, userHome, root, project, resources };
+  const value = {
+    profiles: [...(previous?.value.profiles ?? []), definition],
+    skills: [
+      ...(previous?.value.skills.filter(({ id }) => id !== builtin.id) ?? []),
+      ...current,
+      builtin,
+    ],
+  };
+  const path = join(fixture.home, `deployment-${revision}.json`);
+  await writeFile(path, JSON.stringify(value));
+  return { path, profile, value };
 }
 async function skill(base, id) {
   const root = join(base, ".agents/skills", id);
@@ -60,7 +73,7 @@ async function skill(base, id) {
     join(root, "SKILL.md"),
     `---\nname: ${id}\ndescription: Capacity fixture\n---\nInstructions for ${id}.\n`,
   );
-  return root;
+  return { id, revision: "fixture-v1", root };
 }
 async function core(args) {
   const { stdout } = await executeCore(binary, ["service", ...args, "--json"], {
@@ -130,10 +143,8 @@ let passed = false;
 try {
   const linked = await fixture("linked");
   const target = await skill(join(scratch, "external"), "linked-skill");
-  await mkdir(join(linked.userHome, ".agents/skills"), { recursive: true });
-  await symlink(target, join(linked.userHome, ".agents/skills/linked-skill"));
-  const linkedDeployment = await linked.resources.deployment(linked.project);
-  let linkedService = await start(linked, linkedDeployment);
+  const linkedDeployment = await deployment(linked, "outside", [target]);
+  const linkedService = await start(linked, linkedDeployment);
   const linkedThread = await create(linkedService, linkedDeployment);
   const linkedSkill = (await list(linkedService, linkedThread)).find(
     (s) => s.id === "linked-skill",
@@ -144,22 +155,24 @@ try {
     /Instructions for linked-skill/,
   );
   await stop(linkedService);
-  checks.push("ordinary thread lists and reads a user skill linked outside its discovery root");
+  checks.push("ordinary thread lists and reads a registered skill outside its workspace");
 
   const history = await fixture("history");
-  for (let i = 0; i < 7; i++) await skill(history.userHome, `old-${i}`);
-  const previous = await history.resources.deployment(history.project);
+  const original = [];
+  for (let i = 0; i < 7; i++) original.push(await skill(history.userHome, `old-${i}`));
+  const previous = await deployment(history, "previous", original);
   let service = await start(history, previous);
   const oldThread = await create(service, previous);
   const oldCatalog = await list(service, oldThread);
   assert.equal(oldCatalog.length, 8);
-  assert.ok(oldCatalog.some((skill) => skill.id === BUILTIN_SKILL_ID));
-  const oldSkills = oldCatalog.filter((skill) => skill.id !== BUILTIN_SKILL_ID);
+  assert.ok(oldCatalog.some((skill) => skill.id === builtin.id));
+  const oldSkills = oldCatalog.filter((skill) => skill.id !== builtin.id);
   assert.equal(oldSkills.length, 7);
   await stop(service);
-  history.resources.value.skills.user = Object.fromEntries(oldSkills.map((s) => [s.id, false]));
-  for (let i = 0; i < 151; i++) await skill(history.root, `current-${String(i).padStart(3, "0")}`);
-  const current = await history.resources.deployment(history.project);
+  const versions = [];
+  for (let i = 0; i < 151; i++)
+    versions.push(await skill(history.root, `current-${String(i).padStart(3, "0")}`));
+  const current = await deployment(history, "current", versions, previous);
   const catalog = JSON.parse(await readFile(current.path, "utf8"));
   assert.equal(catalog.skills.length, 159);
   assert.equal(catalog.profiles.at(-1).skills.length, 152);
@@ -167,8 +180,8 @@ try {
   const thread = await create(service, current);
   const currentCatalog = await list(service, thread);
   assert.equal(currentCatalog.length, 152);
-  assert.ok(currentCatalog.some((skill) => skill.id === BUILTIN_SKILL_ID));
-  const currentSkills = currentCatalog.filter((skill) => skill.id !== BUILTIN_SKILL_ID);
+  assert.ok(currentCatalog.some((skill) => skill.id === builtin.id));
+  const currentSkills = currentCatalog.filter((skill) => skill.id !== builtin.id);
   assert.equal(currentSkills.length, 151);
   assert.equal(currentSkills[0].id, "current-000");
   assert.equal(currentSkills.at(-1).id, "current-150");
@@ -216,15 +229,20 @@ try {
   );
 
   const capacity = await fixture("capacity");
-  // The mandatory built-in skill occupies one of the 512 registered slots.
+  const registered = [];
   for (let i = 0; i < 511; i++)
-    await skill(i < 256 ? capacity.userHome : capacity.root, `skill-${String(i).padStart(3, "0")}`);
-  const full = await capacity.resources.deployment(capacity.project);
+    registered.push(
+      await skill(
+        i < 256 ? capacity.userHome : capacity.root,
+        `skill-${String(i).padStart(3, "0")}`,
+      ),
+    );
+  const full = await deployment(capacity, "capacity", registered);
   service = await start(capacity, full);
   const fullThread = await create(service, full);
   const fullSkills = await list(service, fullThread);
   assert.equal(fullSkills.length, 512);
-  assert.ok(fullSkills.some((skill) => skill.id === BUILTIN_SKILL_ID));
+  assert.ok(fullSkills.some((skill) => skill.id === builtin.id));
   for (const index of [0, 510])
     assert.equal(
       (
@@ -238,34 +256,35 @@ try {
     );
   await stop(service);
   const saved = await readFile(full.path, "utf8");
-  const references = await readFile(join(capacity.home, "capacity-skills.json"), "utf8");
-  const extraRoot = await skill(capacity.root, "extra");
-  await assert.rejects(capacity.resources.deployment(capacity.project), /513.*512/);
-  assert.equal(await readFile(full.path, "utf8"), saved);
-  assert.equal(await readFile(join(capacity.home, "capacity-skills.json"), "utf8"), references);
   const oversized = JSON.parse(saved);
-  oversized.skills.push({ id: "extra", revision: "v1", root: extraRoot });
+  oversized.skills.push(await skill(capacity.root, "extra"));
   const overflow = join(capacity.home, "overflow.json");
   await writeFile(overflow, JSON.stringify(oversized));
   let startupError;
-  await assert.rejects(start(capacity, { path: overflow }), (error) => {
-    startupError = error.stderr || error.message;
-    assert.match(error.stderr || error.message, /skills 513 \(limit 512\)/);
-    return true;
-  });
-  await writeFile(join(scratch, "core-overflow-stderr.txt"), startupError);
-  checks.push(
-    "GUI and real Core accept 512 and reject 513 registered versions without overwriting the saved GUI deployment",
+  // Host 可退回历史只读；容量边界在真正加载部署的 Core 启动入口验证。
+  await assert.rejects(
+    executeCore(
+      binary,
+      [
+        "app-server",
+        "--config",
+        config,
+        "--data-dir",
+        join(capacity.home, "overflow-state"),
+        "--desktop-config",
+        overflow,
+      ],
+      { env: environment, cwd: capacity.root, timeout: 30000 },
+    ),
+    (error) => {
+      startupError = error.stderr || error.message;
+      assert.match(error.stderr || error.message, /skills 513 \(limit 512\)/);
+      return true;
+    },
   );
+  await writeFile(join(scratch, "core-overflow-stderr.txt"), startupError);
+  checks.push("real Core accepts 512 and rejects 513 registered versions at deployment load");
 
-  const directory = await fixture("directory");
-  const root = join(directory.userHome, ".agents/skills");
-  await skill(directory.userHome, "valid");
-  for (let i = 0; i < 511; i++) await writeFile(join(root, `entry-${i}.txt`), "index");
-  assert.equal((await directory.resources.scan("user"))[0].id, "valid");
-  await writeFile(join(root, "extra.txt"), "index");
-  await assert.rejects(directory.resources.scan("user"), /513.*512/);
-  checks.push("GUI scan counts raw directory entries and enforces the 512/513 boundary");
   passed = true;
 } finally {
   const cleanup = await Promise.allSettled([...running].map(stop));

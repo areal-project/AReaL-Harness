@@ -170,13 +170,9 @@ class CiContracts(unittest.TestCase):
         plan, reports = self.gate_fixture(("clients/gui/renderer/src/Composer.tsx",))
         required = {
             "smoke:test:composer-files",
-            "mobile-types",
-            "mobile-relay-install",
         }
         items = {item["id"]: item for item in plan["items"]}
         self.assertTrue(required <= items.keys(), required - items.keys())
-        self.assertEqual(scope.CI_PLATFORMS["mobile"], "linux")
-        self.assertEqual(scope.JOB_GROUPS["gui"]["mobile"], {"mobile"})
         for name in required:
             missing = copy.deepcopy(reports)
             for report in missing:
@@ -199,12 +195,11 @@ class CiContracts(unittest.TestCase):
             "macos:ui",
             "macos:renderer",
             "macos:bundle",
-            "computer-helper",
             "smoke:test:composer-files",
         }
         self.assertTrue(expensive <= full)
         self.assertFalse(expensive & quick)
-        self.assertTrue({"portable:renderer", "portable:bundle", "mobile-types"} <= quick)
+        self.assertTrue({"portable:renderer", "portable:bundle"} <= quick)
         for item in plan["items"]:
             if item["id"] in quick:
                 self.assertTrue(set(item["dependsOn"]) <= quick, item["id"])
@@ -400,13 +395,13 @@ class CiContracts(unittest.TestCase):
             "clients/gui/app/assets/builtin-skills/sample/SKILL.md",
             "core/config/prompt.md",
             "examples/plugin-marketplace/sample/skills/sample/SKILL.md",
-            "services/workbench/src/host-library-store.ts",
+            "services/workbench/src/host-core-client.mts",
         ):
             with self.subTest(path=path):
                 impact = scope.impact([path])
                 self.assertTrue(impact["shared"] or impact["gui"])
         self.assertEqual(
-            scope.impact(["services/workbench/src/host-library-store.ts"])["unknown"], []
+            scope.impact(["services/workbench/src/host-core-client.mts"])["unknown"], []
         )
         for path in (
             "README.md",
@@ -617,14 +612,48 @@ class CiContracts(unittest.TestCase):
                     {"script": script, "status": "passed", "passed": True, "exitCode": 0}
                     for script in item["expectedTests"][platform]
                 ]
+            if "journeyEvidence" in item:
+                contract = item["journeyEvidence"]
+                # 门禁单测使用合成观察文件，仍走生产报告导入路径。
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "report.json"
+                    (path.parent / "observation.json").write_text('{"fixture": true}')
+                    path.write_text(
+                        json.dumps(
+                            {
+                                "schemaVersion": 1,
+                                "journeyId": contract["journeyId"],
+                                "identity": report["identity"],
+                                "status": "passed",
+                                "facts": [
+                                    {
+                                        "id": name,
+                                        "status": "passed",
+                                        "evidence": ["observation.json"],
+                                    }
+                                    for name in contract["terminalFacts"]
+                                ],
+                                "firstFailure": None,
+                                "reached": ["fixture"],
+                                "unreached": [],
+                                "cleanup": {"status": "passed", "evidence": ["observation.json"]},
+                            }
+                        )
+                    )
+                    result["journeyReport"] = str(path)
+                    result["journeyEvidence"] = preflight.verification_evidence.read_journey_report(
+                        path, contract, report["identity"]
+                    )
             report["results"].append(result)
+        for report in grouped.values():
+            report["evidence"] = preflight.verification_evidence.build(plan, report)
         return plan, list(grouped.values())
 
     def test_shared_fixture_and_error_changes_select_their_contracts(self):
         for path in (
             "clients/gui/scripts/support/core-observation.mjs",
             "clients/gui/scripts/support/host-transport-barrier.mjs",
-            "services/workbench/src/backend-main.cjs",
+            "core/host/src/gateway/stop.rs",
             "core/host/src/gateway/session.rs",
         ):
             with self.subTest(path=path):
@@ -632,7 +661,7 @@ class CiContracts(unittest.TestCase):
                 portable = next(item for item in plan["items"] if item["id"] == "gui-portable")
                 for platform in ("darwin", "linux"):
                     self.assertIn("test:script-units", portable["expectedTests"][platform])
-                    self.assertIn("test:workbench-errors", portable["expectedTests"][platform])
+                    self.assertIn("test:host-client", portable["expectedTests"][platform])
                     self.assertNotIn("test:core-observation", portable["expectedTests"][platform])
                     core = [
                         script
@@ -648,14 +677,14 @@ class CiContracts(unittest.TestCase):
                             result["tests"] = [
                                 test
                                 for test in result["tests"]
-                                if test["script"] != "test:workbench-errors"
+                                if test["script"] != "test:host-client"
                             ]
                 self.assertIn(
                     "missing or duplicate runner tests: gui-portable",
                     gate.validate(plan, reports, scope.WORKFLOW_GROUPS["gui"], ("run", "2")),
                 )
 
-    def test_workbench_source_changes_require_the_core_boundary_check(self):
+    def test_retired_workbench_paths_require_the_absence_check(self):
         for path in (
             "services/workbench/src/desktop/core/project-connections.cjs",
             "services/workbench/src/new-owner.ts",
@@ -748,7 +777,6 @@ class CiContracts(unittest.TestCase):
             outputs = [
                 root / "clients/gui" / relative / "fixture.cjs"
                 for relative in (
-                    "packages/gen-ui/dist",
                     "packages/browser-automation/dist",
                     "packages/browser-data/dist",
                     "app/src/core/snapshots/build",
@@ -791,7 +819,6 @@ class CiContracts(unittest.TestCase):
             "gui",
             "core-contracts",
             "smoke",
-            "mobile",
         }
         self.assertEqual(set(scope.JOB_GROUPS["gui"]), expected)
         jobs = {name: {"result": "success"} for name in expected}
@@ -857,7 +884,7 @@ class CiContracts(unittest.TestCase):
         self.assertEqual(gate.validate_jobs(plan, "gui", jobs), [])
 
     def test_gui_plan_preserves_every_current_production_build_prerequisite(self):
-        plan, _ = self.gate_fixture(("clients/gui/native/computer-helper/Sources/main.swift",))
+        plan, _ = self.gate_fixture(("clients/gui/renderer/src/App.tsx",))
         config = (ROOT / "clients/gui/vite.config.mts").read_text()
         block = config.split('"build-suite": {', 1)[1].split('"design-build": {', 1)[0]
         dependencies = json.loads(re.search(r"dependsOn: (\[[^\]]+\])", block).group(1))
@@ -865,11 +892,6 @@ class CiContracts(unittest.TestCase):
             item.get("productionTask") for item in plan["items"] if item["group"] == "gui-build"
         }
         self.assertTrue(set(dependencies) <= tasks)
-        helper = next(item for item in plan["items"] if item["id"] == "computer-helper")
-        self.assertEqual(
-            helper["command"], ["node", "clients/gui/scripts/build-computer-helper.mjs"]
-        )
-        self.assertIn("xcode", helper["requires"])
 
     def test_native_dmg_contract_has_one_declared_mac_owner(self):
         plan, _ = self.gate_fixture()
@@ -999,7 +1021,13 @@ class PreflightExecution(unittest.TestCase):
         shutil.copy2(ROOT / "Makefile", self.root / "Makefile")
         (self.root / "clients/gui").mkdir(parents=True)
         (self.root / "scripts").mkdir()
-        for name in ("ci-preflight.py", "check-changed.py", "ci-scope.py"):
+        for name in (
+            "ci-preflight.py",
+            "check-changed.py",
+            "ci-scope.py",
+            "check-journeys.py",
+            "verification-evidence.py",
+        ):
             shutil.copy2(ROOT / "scripts" / name, self.root / "scripts" / name)
         (self.root / "scripts/ci-fingerprint.py").write_text("print('{}')\n")
         self.bin = self.root / "bin"

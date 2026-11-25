@@ -17,6 +17,11 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("ci_scope", ROOT / "scripts/ci-scope.py")
 scope = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(scope)
+spec = importlib.util.spec_from_file_location(
+    "verification_evidence", ROOT / "scripts/verification-evidence.py"
+)
+verification_evidence = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(verification_evidence)
 
 
 def write_report(path, value):
@@ -84,6 +89,7 @@ def progress(plan, report):
 
 def publish_progress(plan, report, output):
     report["progress"] = progress(plan, report)
+    report["evidence"] = verification_evidence.build(plan, report)
     write_report(output / "report.json", report)
     summary = {
         key: value
@@ -94,6 +100,10 @@ def publish_progress(plan, report, output):
         json.dumps({"report": str(output / "report.json"), "progress": summary}),
         flush=True,
     )
+
+
+def validate_evidence(report, plan):
+    return verification_evidence.validate(report, plan)
 
 
 def matching_core(root=ROOT):
@@ -244,7 +254,6 @@ def artifacts(item, root):
     if item["id"].endswith(":desktop"):
         # 将同一构建的桌面模块连同摘要交付给消费者，禁止重新编译混入新输出。
         for relative in (
-            "packages/gen-ui/dist",
             "packages/browser-automation/dist",
             "packages/browser-data/dist",
             "app/src/core/snapshots/build",
@@ -262,11 +271,6 @@ def artifacts(item, root):
             *sorted((directory / "assets").glob("*.js")),
             *sorted((directory / "assets").glob("*.css")),
         ]
-    if item["id"] == "computer-helper":
-        directory = root / "clients/gui/native/computer-helper/build/AReaL Computer Helper.app"
-        files = [path for path in sorted(directory.rglob("*")) if path.is_file()]
-        if not files:
-            raise ValueError("computer helper build did not produce its signed app")
     return {str(path.relative_to(root)): digest(path) for path in files}
 
 
@@ -383,6 +387,19 @@ def run_plan(
                                 "--plan=" + str(output / "plan.json"),
                                 "--item=" + item["id"],
                             ]
+                        if "journeyEvidence" in item:
+                            journey_report = (
+                                output / "children" / item["id"].replace(":", "_") / "report.json"
+                            )
+                            journey_report.parent.mkdir(parents=True, exist_ok=True)
+                            if journey_report.exists():
+                                raise ValueError(
+                                    "refusing to reuse an existing business journey report"
+                                )
+                            env["AREAL_JOURNEY_REPORT"] = str(journey_report.resolve())
+                            env["AREAL_VERIFICATION_IDENTITY"] = json.dumps(
+                                identity, sort_keys=True
+                            )
                         # 复用产物身份检查，在启动任何源码 GUI 场景前拒绝混用构建。
                         if item["group"] == "smoke":
                             startup = output / (item["id"].replace(":", "_") + "-startup.json")
@@ -415,6 +432,17 @@ def run_plan(
                             status="passed" if completed.returncode == 0 else "failed",
                             exitCode=completed.returncode,
                         )
+                        if "journeyEvidence" in item:
+                            result["journeyReport"] = str(journey_report.resolve())
+                            detail = verification_evidence.read_journey_report(
+                                journey_report, item["journeyEvidence"], identity
+                            )
+                            result["journeyEvidence"] = detail
+                            if detail["status"] != "passed":
+                                result.update(
+                                    status=detail["status"],
+                                    reason="business journey: " + str(detail["firstFailure"]),
+                                )
                         if "expectedTests" in item:
                             detail = json.loads(child.read_text())
                             if (
@@ -489,6 +517,8 @@ def run_plan(
         completedAt=datetime.now(timezone.utc).isoformat(),
         elapsedMs=round((time.monotonic() - started) * 1000),
     )
+    report["evidence"] = verification_evidence.build(plan, report)
+    validate_evidence(report, plan)
     publish_progress(plan, report, output)
     return report
 
@@ -570,7 +600,7 @@ def main():
     fresh = scope.input_key(ROOT, plan["source"]["baseRevision"]) == plan["source"]["inputHash"]
     ready = fresh and all(
         any(result["id"] == name and result["status"] == "passed" for result in report["results"])
-        for name in ("macos:renderer", "gui-core-build", "gui-design-build", "computer-helper")
+        for name in ("macos:renderer", "gui-core-build", "gui-design-build")
     )
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as stream:

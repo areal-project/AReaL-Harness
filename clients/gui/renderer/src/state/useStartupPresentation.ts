@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PlatformServices } from "../services.js";
 import type { RecoveryOwner } from "../recoveryPresentation.js";
+import { markRendererStartup } from "./startupTiming.js";
 
 type PresentationGate = {
   themeReady: boolean;
@@ -24,14 +25,20 @@ export function useStartupPresentation(
   const [startupDelayed, setStartupDelayed] = useState(false);
   useEffect(() => {
     if (restorationFailed || startupReady || projectFailureReady)
-      setInitialPresentation((previous) =>
-        previous === "ready" ? previous : startupReady || projectFailureReady ? "ready" : "failed",
-      );
+      setInitialPresentation((previous) => {
+        if (previous === "ready") return previous;
+        const next = startupReady || projectFailureReady ? "ready" : "failed";
+        if (next === "ready") markRendererStartup("initial_released");
+        return next;
+      });
   }, [startupReady, restorationFailed, projectFailureReady]);
   useEffect(() => {
     setStartupDelayed(false);
     if (initialReleased) return;
-    const timer = window.setTimeout(() => setStartupDelayed(true), 15000);
+    const timer = window.setTimeout(() => {
+      markRendererStartup("startup_delayed");
+      setStartupDelayed(true);
+    }, 15000);
     return () => window.clearTimeout(timer);
   }, [
     initialReleased,
@@ -45,12 +52,20 @@ export function useStartupPresentation(
     if (!themeReady || presented.current) return;
     let active = true,
       frame = 0;
-    void document.fonts.ready.then(() => {
+    // 避免系统字体加载异常拖慢首帧展示，最多等待 150ms。
+    void Promise.race([
+      document.fonts.ready,
+      new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 150);
+      }),
+    ]).then(() => {
       if (!active) return;
+      markRendererStartup("fonts_ready");
       frame = requestAnimationFrame(() => {
         frame = requestAnimationFrame(() => {
           if (!active) return;
           presented.current = true;
+          markRendererStartup("present_ready");
           setShellReady(true);
           void services.presentReady?.().catch(() => {});
         });

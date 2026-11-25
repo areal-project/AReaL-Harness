@@ -52,7 +52,7 @@
   color: var(--color-foreground-subtle);
 }
 .usage-metric strong {
-  font-size: calc(var(--text-fixed-section-title) * 1.15);
+  font-size: calc(var(--text-ui-xl) * 1.15);
   font-weight: var(--font-weight-strong);
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -74,7 +74,7 @@
 .usage-section-heading select,
 .usage-section-heading input {
   border: var(--border-width-default) solid var(--color-border);
-  border-radius: var(--radius-compact-row);
+  border-radius: var(--radius-compact);
   padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
   background: transparent;
   font-size: var(--text-ui-sm);
@@ -98,7 +98,7 @@
       calc(var(--spacing-inline) * 3 / 2)
     );
   gap: var(--border-width-default);
-  font-size: var(--text-fixed-metadata);
+  font-size: var(--text-ui-xs);
   line-height: calc(var(--spacing-inline) * 3 / 2);
   white-space: nowrap;
   color: var(--color-foreground-subtle);
@@ -125,7 +125,7 @@
   position: relative;
 }
 .usage-month {
-  font-size: var(--text-fixed-metadata);
+  font-size: var(--text-ui-xs);
   white-space: nowrap;
   color: var(--color-foreground-subtle);
   width: 0;
@@ -167,7 +167,7 @@ button.usage-cell:focus-visible {
   align-items: center;
   justify-content: flex-end;
   gap: calc(var(--spacing-inline) / 2);
-  font-size: var(--text-fixed-metadata);
+  font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
   margin: calc(var(--spacing-inline) * 3 / 2) 0 calc(var(--spacing-inline) * 5 / 2);
 }
@@ -230,14 +230,14 @@ button.usage-cell:focus-visible {
   height: calc(var(--spacing-inline) / 2);
   width: 100%;
   max-width: 440px;
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
   background: var(--color-hover);
 }
 .usage-rank-track span {
   display: block;
   height: 100%;
   background: var(--color-activity);
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
 }
 .usage-ranking li > span:last-child {
   font-size: var(--text-ui-base);
@@ -282,7 +282,7 @@ button.usage-cell:focus-visible {
     padding: calc(var(--spacing-inline) * 3 / 2);
   }
   .usage-metric strong {
-    font-size: var(--text-fixed-section-title);
+    font-size: var(--text-ui-xl);
   }
   .usage-section {
     padding: var(--spacing-field);

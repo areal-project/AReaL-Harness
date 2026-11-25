@@ -78,6 +78,9 @@ class HostClient {
     /** @type {string[]} */
     this.capabilities = [];
     this.home = "";
+    /** @type {{pid:number}|undefined} */ this.identity = undefined;
+    /** @type {{executableVersion:string,executableDigest?:string}|undefined} */ this.hello =
+      undefined;
     /** @type {((event:unknown)=>void)|null} */ this.desktopCoreEvent = null;
     /** @type {(()=>void)|null} */ this.desktopCoreClosed = null;
     /** @type {Map<string,HostJournal>} */
@@ -117,11 +120,16 @@ class HostClient {
     if (!stat.isSocket() || stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0)
       throw new Error("Host socket must be private and owned by this user");
     const socket = (this.socket = connect(descriptor.socketPath));
-    socket.on("data", (bytes) => this.receive(bytes));
-    socket.on("error", (error) => this.fail(error));
-    socket.on("close", () =>
-      this.fail(new Error("Host connection closed; mutation outcome may be unknown")),
-    );
+    socket.on("data", (bytes) => {
+      if (this.socket === socket) this.receive(bytes);
+    });
+    socket.on("error", (error) => {
+      if (this.socket === socket) this.fail(error);
+    });
+    socket.on("close", () => {
+      if (this.socket === socket)
+        this.fail(new Error("Host connection closed; mutation outcome may be unknown"));
+    });
     const hello = await this.request("hello", {
       protocolVersions: [1],
       capabilities: this.desktopCore ? ["desktopCore"] : [],
@@ -139,11 +147,13 @@ class HostClient {
     this.hostId = hello.hostId;
     this.generation = hello.generation;
     this.capabilities = hello.capabilities;
+    this.identity = descriptor;
+    this.hello = hello;
     this.#intentKey = token;
     return hello;
   }
-  /** @param {string} home @param {string} binary */
-  async connectOrStart(home, binary) {
+  /** @param {string} home @param {string} binary @param {{waitForLock?:boolean}} [options] */
+  async connectOrStart(home, binary, { waitForLock = false } = {}) {
     await prepareHostHome(home);
     try {
       return await this.connect(home);
@@ -160,7 +170,7 @@ class HostClient {
       await log.close();
       throw new Error("Host log must be private and owned by this user");
     }
-    const child = spawn(binary, ["host", "run"], {
+    const child = spawn(binary, ["host", "run", ...(waitForLock ? ["--wait-for-lock"] : [])], {
       env: {
         ...Object.fromEntries(
           [
@@ -204,6 +214,11 @@ class HostClient {
   activity() {
     this.requireCapability("activity");
     return this.request("host.activity", {});
+  }
+  /** @param {string} requestId */
+  releaseWhenUnused(requestId) {
+    this.requireCapability("idleReleaseV1");
+    return this.request("host.release", { requestId, expectedGeneration: this.generation });
   }
   /** @param {string} requestId @param {string} generation @param {'ifIdle'|'cancel'} strategy */
   stop(requestId, generation, strategy) {
@@ -294,9 +309,17 @@ class HostClient {
     if (bytes.length > this.maxFrame)
       return Promise.reject(new Error("Host request exceeds 1 MiB"));
     return new Promise((resolve, reject) => {
+      // Cloud 沙箱冷启动或休眠唤醒可能超过 30 秒，避免过早断开 Host 控制连接。
+      const timeoutMs =
+        method === "desktop.command" &&
+        params &&
+        typeof params === "object" &&
+        /** @type {{ command?: unknown }} */ (params).command === "cloudSession"
+          ? 150000
+          : 30000;
       const timeout = setTimeout(
         () => this.fail(new Error("Host request timed out; mutation outcome may be unknown")),
-        30000,
+        timeoutMs,
       );
       this.pending.set(id, {
         resolve: (value) => {
@@ -603,12 +626,15 @@ class HostJournal {
 }
 module.exports = { HostClient, executeHost };
 
-/** 原生外壳只可运行Host自身的安装/离线回执命令，不能借此启动Core。
+/** 原生外壳只可读取版本及运行 Host 安装/离线回执命令，不能借此启动 Core。
  * @param {string} binary @param {string[]} args @param {{env:NodeJS.ProcessEnv,timeout?:number,maxBuffer?:number}} options @returns {Promise<{stdout:string,stderr:string}>} */
 function executeHost(binary, args, options) {
   if (
-    args[0] !== "host" ||
-    !["install", "uninstall", "service-status", "operation"].includes(args[1] ?? "") ||
+    !(
+      (args.length === 1 && args[0] === "--version") ||
+      (args[0] === "host" &&
+        ["install", "uninstall", "service-status", "operation"].includes(args[1] ?? ""))
+    ) ||
     !isAbsolute(binary)
   )
     return Promise.reject(new Error("Unsupported native Host command"));

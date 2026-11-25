@@ -1,4 +1,4 @@
-use crate::{LaunchInputs, ProjectRegistration, ProjectSource, wire::error};
+use crate::{LaunchInputs, ProjectRegistration, ProjectSource};
 use anyhow::{Context, Result, ensure};
 use areal_local_service::{LaunchContext, LaunchSpec, LocalArgs, storage};
 use std::{collections::BTreeMap, os::unix::fs::PermissionsExt, path::Path};
@@ -71,12 +71,13 @@ impl ResolveProject {
     pub fn from_local_args(args: &LocalArgs) -> Result<Self> {
         let spec = LaunchSpec::resolve(args)?;
         let context = spec.context.as_ref().unwrap();
-        let config = areal_config::load_management_config(&areal_config::ConfigInputs {
+        let (config, _) = areal_config::load_service_config(&areal_config::ConfigInputs {
             cwd: context.cwd.clone(),
             homedir: context.homedir.clone(),
             env: context.environment.clone(),
             config_file: spec.args.config.clone(),
             overrides: areal_config::ConfigOverrides {
+                data_dir: args.data_dir.clone(),
                 api_key_env: args.api_key_env.clone(),
                 model: args.model.clone(),
                 model_provider: args.model_provider.clone(),
@@ -260,6 +261,7 @@ pub(super) fn config_inputs(
         env,
         config_file: inputs.config_path.clone(),
         overrides: areal_config::ConfigOverrides {
+            data_dir: args.data_dir.clone(),
             api_key_env: args.api_key_env.clone(),
             model: args.model.clone(),
             model_provider: args.model_provider.clone(),
@@ -270,18 +272,40 @@ pub(super) fn config_inputs(
     }
 }
 
-pub(super) fn selected_credential(home: &Path, inputs: &LaunchInputs) -> Option<String> {
-    // 只依据启动所用的同一规范解析确认依赖；缺省、歧义和解析失败都保守等待。
-    let config =
-        areal_config::load_management_config(&config_inputs(home, inputs, &BTreeMap::new()))
-            .ok()?;
-    if config.model.name.is_empty() || config.model.endpoint.is_empty() {
-        return None;
-    }
-    config
-        .model
-        .api_key_env
-        .filter(|reference| reference.starts_with("AREAL_CREDENTIAL_"))
+fn initial_marker(home: &Path, registration: &ProjectRegistration) -> std::path::PathBuf {
+    home.join("host/launch")
+        .join(storage::digest(registration.project_id.as_bytes()))
+        .join("preparation-only.json")
+}
+
+pub(crate) fn write_initial(
+    home: &Path,
+    registration: &ProjectRegistration,
+    inputs: &LaunchInputs,
+) -> Result<()> {
+    let marker = initial_marker(home, registration);
+    storage::private_dir(marker.parent().unwrap())?;
+    let digest = storage::digest(&serde_json::to_vec(inputs)?);
+    storage::write(
+        &marker,
+        &serde_json::json!({"version":1,"projectId":registration.project_id,"sha256":digest}),
+    )?;
+    storage::write(&marker.parent().unwrap().join("inputs.json"), inputs)
+}
+
+pub(crate) fn preparation_only(home: &Path, registration: &ProjectRegistration) -> Result<bool> {
+    let marker = initial_marker(home, registration);
+    let Some(proof): Option<serde_json::Value> = storage::read_optional(&marker)? else {
+        return Ok(false);
+    };
+    ensure!(
+        proof["version"] == 1
+            && proof["projectId"] == registration.project_id
+            && proof["sha256"].is_string(),
+        "invalid initial launch preparation"
+    );
+    let inputs: LaunchInputs = storage::read(&marker.parent().unwrap().join("inputs.json"))?;
+    Ok(proof["sha256"] == storage::digest(&serde_json::to_vec(&inputs)?))
 }
 
 pub(crate) fn prepare(
@@ -292,59 +316,68 @@ pub(crate) fn prepare(
     credentials: &BTreeMap<String, String>,
 ) -> Result<(LaunchSpec, LaunchInputs)> {
     validate(inputs, registration)?;
+    // 撤销仅准备证明必须先落盘，不能在启动受理后因Host重启重新宣称从未尝试启动。
+    let marker = initial_marker(home, registration);
+    match std::fs::remove_file(&marker) {
+        Ok(()) => std::fs::File::open(marker.parent().unwrap())?.sync_all()?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
     let mut saved = inputs.clone();
     let directory = home
         .join("host/launch")
         .join(storage::digest(registration.project_id.as_bytes()));
     storage::private_dir(&directory)?;
-    if let Some(source) = &inputs.deployment_path {
-        let mut value = snapshot_deployment(source, &directory)?;
-        if matches!(
-            inputs.schedule_preparation,
-            Some(crate::SchedulePreparation::Managed { .. })
-        ) {
-            let previous = storage::read_optional::<LaunchInputs>(&directory.join("inputs.json"))?;
-            let previous_deployment = match previous {
-                Some(previous)
-                    if matches!(
-                        previous.schedule_preparation,
-                        Some(crate::SchedulePreparation::Managed { .. })
-                    ) =>
-                {
-                    let source = previous
-                        .deployment_path
-                        .context("saved managed launch deployment missing")?;
-                    Some(snapshot_deployment(&source, &directory)?)
+    let deployment_ready = (|| -> Result<()> {
+        if let Some(source) = &inputs.deployment_path {
+            let mut value = snapshot_deployment(source, &directory)?;
+            if matches!(
+                inputs.schedule_preparation,
+                Some(crate::SchedulePreparation::Managed { .. })
+            ) {
+                let previous =
+                    storage::read_optional::<LaunchInputs>(&directory.join("inputs.json"))?;
+                let previous_deployment = match previous {
+                    Some(previous)
+                        if matches!(
+                            previous.schedule_preparation,
+                            Some(crate::SchedulePreparation::Managed { .. })
+                        ) =>
+                    {
+                        let source = previous
+                            .deployment_path
+                            .context("saved managed launch deployment missing")?;
+                        Some(snapshot_deployment(&source, &directory)?)
+                    }
+                    _ => None,
+                };
+                let mut retained = BTreeMap::new();
+                for deployment in std::iter::once(&value).chain(previous_deployment.as_ref()) {
+                    for skill in deployment
+                        .get("skills")
+                        .and_then(serde_json::Value::as_array)
+                        .context("managed deployment skills missing")?
+                    {
+                        let id = skill["id"]
+                            .as_str()
+                            .context("deployment skill id missing")?;
+                        let revision = skill["revision"]
+                            .as_str()
+                            .context("deployment skill revision missing")?;
+                        retained.insert((id.to_owned(), revision.to_owned()), skill.clone());
+                    }
                 }
-                _ => None,
-            };
-            let mut retained = BTreeMap::new();
-            for deployment in std::iter::once(&value).chain(previous_deployment.as_ref()) {
-                for skill in deployment
-                    .get("skills")
-                    .and_then(serde_json::Value::as_array)
-                    .context("managed deployment skills missing")?
-                {
-                    let id = skill["id"]
-                        .as_str()
-                        .context("deployment skill id missing")?;
-                    let revision = skill["revision"]
-                        .as_str()
-                        .context("deployment skill revision missing")?;
-                    retained.insert((id.to_owned(), revision.to_owned()), skill.clone());
-                }
+                ensure!(
+                    retained.len() <= 512,
+                    "skill deployment exceeds 512 retained versions"
+                );
+                value["skills"] = serde_json::to_value(retained.into_values().collect::<Vec<_>>())?;
             }
-            ensure!(
-                retained.len() <= 512,
-                "skill deployment exceeds 512 retained versions"
-            );
-            value["skills"] = serde_json::to_value(retained.into_values().collect::<Vec<_>>())?;
+            saved.deployment_path = Some(write_deployment_snapshot(&directory, &value)?);
         }
-        let digest = storage::digest(&serde_json::to_vec(&value)?);
-        let target = directory.join(format!("deployment-{digest}.json"));
-        storage::write(&target, &value)?;
-        saved.deployment_path = Some(target);
-    }
+        Ok(())
+    })()
+    .is_ok();
     let mut args = saved.options.clone();
     args.workspace = Some(registration.workspace.clone());
     args.data_dir = Some(registration.data_dir.clone());
@@ -352,36 +385,40 @@ pub(crate) fn prepare(
     args.desktop_config = saved.deployment_path.clone();
     saved.options = args.clone();
     let config_inputs = config_inputs(home, &saved, credentials);
-    let config = areal_config::load_management_config(&config_inputs)?;
     let context = LaunchContext {
         cwd: saved.cwd.clone(),
         homedir: saved.homedir.clone(),
         home: home.to_path_buf(),
         environment: config_inputs.env,
     };
-    // Core 管理入口用不可用模型保留历史读取；非模型执行凭据仍须完整提供。
-    let model_credentials: std::collections::BTreeSet<_> = config
-        .model
-        .api_key_env
-        .iter()
-        .chain(
-            config
-                .model_catalog
-                .iter()
-                .filter_map(|provider| provider.api_key_env.as_ref()),
-        )
-        .collect();
-    for name in &saved.credential_names {
-        if !credentials.contains_key(name) && !model_credentials.contains(name) {
-            return Err(error(
-                "credentialsRequired",
-                format!("missing credential environment {name}"),
-            ));
-        }
+    // 启动列表是历史投影，不是执行依赖。缺失凭据由实际模型/工具的执行准入检查。
+    if !deployment_ready {
+        args.history_only = true;
     }
     let spec = LaunchSpec::in_context(&args, bin.to_path_buf(), &context)?;
-    storage::write(&directory.join("inputs.json"), &saved)?;
+    if deployment_ready {
+        storage::write(&directory.join("inputs.json"), &saved)?;
+    }
     Ok((spec, saved))
+}
+
+pub(super) fn snapshot_external_deployment(
+    source: &Path,
+    directory: &Path,
+) -> Result<std::path::PathBuf> {
+    storage::private_dir(directory)?;
+    let deployment = snapshot_deployment(source, directory)?;
+    write_deployment_snapshot(directory, &deployment)
+}
+
+fn write_deployment_snapshot(
+    directory: &Path,
+    deployment: &serde_json::Value,
+) -> Result<std::path::PathBuf> {
+    let digest = storage::digest(&serde_json::to_vec(deployment)?);
+    let target = directory.join(format!("deployment-{digest}.json"));
+    storage::write(&target, deployment)?;
+    Ok(target)
 }
 
 fn snapshot_deployment(source: &Path, directory: &Path) -> Result<serde_json::Value> {
@@ -530,7 +567,27 @@ mod tests {
     }
 
     #[test]
-    fn missing_model_credentials_allow_history_service_but_not_unrelated_credentials() {
+    fn missing_execution_deployment_keeps_registered_history_readable() {
+        let mut fixture = managed_launch_fixture();
+        fixture.inputs.deployment_path = Some(fixture.home.join("removed-deployment.json"));
+        let (spec, saved) = prepare(
+            &fixture.home,
+            &fixture.bin,
+            &fixture.registration,
+            &fixture.inputs,
+            &BTreeMap::new(),
+        )
+        .unwrap();
+        assert!(spec.args.history_only);
+        assert_eq!(
+            spec.args.data_dir.as_ref(),
+            Some(&fixture.registration.data_dir)
+        );
+        assert_eq!(saved.deployment_path, fixture.inputs.deployment_path);
+    }
+
+    #[test]
+    fn missing_credentials_do_not_block_history_service() {
         let mut fixture = managed_launch_fixture();
         fixture.inputs.options.model = Some("fixture".into());
         fixture.inputs.options.model_endpoint =
@@ -552,18 +609,24 @@ mod tests {
                 .environment
                 .contains_key(std::ffi::OsStr::new("AREAL_CREDENTIAL_missing"))
         );
+        fixture
+            .inputs
+            .credential_names
+            .push("AREAL_CREDENTIAL_removed_provider".into());
         fixture.inputs.credential_names.push("MCP_SECRET".into());
-        let failure = prepare(
+        let (spec, _) = prepare(
             &fixture.home,
             &fixture.bin,
             &fixture.registration,
             &fixture.inputs,
             &BTreeMap::new(),
         )
-        .err()
         .unwrap();
-        assert!(failure.to_string().contains("credentialsRequired"));
-        assert!(failure.to_string().contains("MCP_SECRET"));
+        let environment = spec.context.unwrap().environment;
+        assert!(!environment.contains_key(std::ffi::OsStr::new("MCP_SECRET")));
+        assert!(
+            !environment.contains_key(std::ffi::OsStr::new("AREAL_CREDENTIAL_removed_provider"))
+        );
     }
 
     #[test]
@@ -685,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    fn managed_launch_rejects_corrupt_saved_inputs_or_deployment() {
+    fn managed_launch_preserves_corrupt_deployment_evidence_and_serves_only_history() {
         let ManagedLaunchFixture {
             temporary,
             home,
@@ -702,7 +765,13 @@ mod tests {
             .join(storage::digest(registration.project_id.as_bytes()))
             .join("inputs.json");
         std::fs::write(&saved_inputs, "invalid json").unwrap();
-        assert!(prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).is_err());
+        assert!(
+            prepare(&home, &bin, &registration, &inputs, &BTreeMap::new())
+                .unwrap()
+                .0
+                .args
+                .history_only
+        );
         assert_eq!(
             std::fs::read_to_string(&saved_inputs).unwrap(),
             "invalid json"
@@ -711,10 +780,26 @@ mod tests {
         let previous_deployment = saved.deployment_path.unwrap();
         for corrupt in ["invalid json", "{}", "{\"skills\":{}}"] {
             std::fs::write(&previous_deployment, corrupt).unwrap();
-            assert!(prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).is_err());
+            assert!(
+                prepare(&home, &bin, &registration, &inputs, &BTreeMap::new())
+                    .unwrap()
+                    .0
+                    .args
+                    .history_only
+            );
+            assert_eq!(
+                std::fs::read_to_string(&previous_deployment).unwrap(),
+                corrupt
+            );
         }
         std::fs::remove_file(previous_deployment).unwrap();
-        assert!(prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).is_err());
+        assert!(
+            prepare(&home, &bin, &registration, &inputs, &BTreeMap::new())
+                .unwrap()
+                .0
+                .args
+                .history_only
+        );
     }
 
     #[test]
@@ -756,10 +841,11 @@ mod tests {
             &first["skills"][0]
         );
         storage::write(&source, &serde_json::json!({"skills": [{"id": "managed", "revision": "v513", "root": "skill"}]})).unwrap();
-        let cause = prepare(&home, &bin, &registration, &inputs, &BTreeMap::new())
-            .err()
-            .unwrap();
-        assert!(cause.to_string().contains("512 retained versions"));
+        let (spec, _) = prepare(&home, &bin, &registration, &inputs, &BTreeMap::new()).unwrap();
+        assert!(spec.args.history_only);
+        let retained: serde_json::Value =
+            storage::read(saved.deployment_path.as_ref().unwrap()).unwrap();
+        assert_eq!(retained, deployment);
     }
 
     #[test]

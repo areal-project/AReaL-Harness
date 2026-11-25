@@ -48,17 +48,18 @@
 }
 .scheduled-item:focus-visible,
 .scheduled-template:focus-visible {
-  outline: 2px solid var(--color-input-border-focused);
+  outline: var(--focus-width) solid var(--color-input-border-focused);
   outline-offset: -2px;
 }
 .scheduled-welcome {
   flex: 1;
   min-width: 0;
   overflow: auto;
-  padding: clamp(2rem, 12vh, 8rem) var(--spacing-section) var(--spacing-section);
+  padding: clamp(calc(var(--spacing-field) * 2), 12vh, calc(var(--spacing-field) * 8))
+    var(--spacing-section) var(--spacing-section);
 }
 .scheduled-intro {
-  max-width: 32rem;
+  max-width: calc(var(--spacing-inline) * 64);
   margin: auto;
   text-align: center;
 }
@@ -81,7 +82,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--spacing-inline);
-  max-width: 36rem;
+  max-width: calc(var(--spacing-inline) * 72);
   margin: var(--spacing-section) auto 0;
 }
 .scheduled-template {
@@ -89,14 +90,22 @@
   align-items: flex-start;
   gap: var(--spacing-inline);
   min-width: 0;
-  padding: var(--spacing-inline);
+  padding: var(--composer-inset);
   text-align: start;
+  border: var(--border-width-default) solid var(--color-border-hairline);
   border-radius: var(--radius-control);
+  background: var(--color-surface-fog);
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+.scheduled-template:hover {
+  border-color: var(--color-border);
 }
 .scheduled-template > span:first-child {
   color: var(--color-foreground-subtle);
   flex-shrink: 0;
-  padding-top: 0.15rem;
+  padding-top: calc(var(--spacing-inline) * 3 / 10);
 }
 .scheduled-template strong {
   font-size: var(--text-ui-base);
@@ -104,7 +113,7 @@
 }
 .scheduled-template small {
   display: block;
-  margin-top: 0.25rem;
+  margin-top: calc(var(--spacing-inline) / 2);
   font-size: var(--text-ui-sm);
   color: var(--color-foreground-subtle);
   line-height: 1.5;
@@ -124,9 +133,16 @@
 }
 .scheduled-row[data-variant="card"] {
   padding: var(--spacing-inline) var(--spacing-inline) var(--spacing-inline) var(--spacing-panel);
-  border: 1px solid var(--color-border);
-  background: var(--color-background);
-  max-width: 40rem;
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  background: var(--color-surface-card);
+  box-shadow: var(--shadow-subtle);
+  max-width: calc(var(--spacing-inline) * 80);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+.scheduled-row[data-variant="card"]:hover {
+  border-color: var(--color-border);
 }
 .scheduled-row[data-variant="compact"] {
   min-height: var(--spacing-control);
@@ -150,7 +166,7 @@
   border-radius: var(--radius-control);
 }
 .scheduled-row-main:focus-visible {
-  outline: 2px solid var(--color-input-border-focused);
+  outline: var(--focus-width) solid var(--color-input-border-focused);
   outline-offset: -2px;
 }
 .scheduled-row-icon {
@@ -188,6 +204,7 @@
 .scheduled-row-actions {
   display: flex;
   align-items: center;
+  gap: calc(var(--spacing-inline) / 4);
   flex-shrink: 0;
 }
 .scheduled-row[data-variant="compact"] .scheduled-row-actions {
@@ -209,9 +226,9 @@
 }
 .scheduled-status::before {
   content: "";
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: var(--radius-status-dot);
+  width: var(--spacing-inline);
+  height: var(--spacing-inline);
+  border-radius: var(--radius-pill);
   background: currentColor;
   opacity: 0.55;
 }

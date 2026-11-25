@@ -99,7 +99,9 @@ export function ReviewFileTree({
             />
           </svg>
           <Input
-            className="review-file-filter-input"
+            variant="bare"
+            size="sm"
+            className="min-w-0 flex-1"
             aria-label="筛选文件"
             placeholder="筛选文件…"
             value={query}
@@ -132,31 +134,11 @@ export function ReviewFileTree({
           <p className="px-2 py-3 text-ui-base text-foreground-subtle">未能加载改动文件</p>
         ) : (
           rows.map(({ node, name, ancestors }) => (
-            <Button
-              unstyled
-              data-slot={undefined}
+            <div
               key={node.path}
-              type="button"
-              role="treeitem"
-              aria-label={node.path}
-              aria-level={ancestors.length + 1}
-              aria-selected={activePath === node.path}
-              aria-expanded={node.file ? undefined : !collapsed.includes(node.path)}
-              title={node.path}
-              className="review-file-tree-row"
+              className={`review-file-tree-row ${activePath === node.path ? "bg-selected" : ""}`}
               style={{
                 paddingLeft: `calc(var(--spacing-inline) / 2 + var(--icon-size-control) * 3 / 4 * ${ancestors.length})`,
-              }}
-              onClick={() => (node.file ? onSelect(node.path) : onToggle(node.path))}
-              onKeyDown={(event) => {
-                if (
-                  !node.file &&
-                  ((event.key === "ArrowRight" && collapsed.includes(node.path)) ||
-                    (event.key === "ArrowLeft" && !collapsed.includes(node.path)))
-                ) {
-                  event.preventDefault();
-                  onToggle(node.path);
-                } else move(event);
               }}
             >
               {ancestors.map((path, index) => (
@@ -170,30 +152,56 @@ export function ReviewFileTree({
                   }}
                 />
               ))}
-              {node.file ? (
-                <FileDisplayIcon
-                  src={resolveFileDisplayDescriptor(node.path).fileIconSrc}
-                  size={16}
-                  className="shrink-0"
-                />
-              ) : (
-                <ChevronRight
-                  aria-hidden
-                  className={`size-4 shrink-0 text-foreground-subtle ${collapsed.includes(node.path) ? "" : "rotate-90"}`}
-                />
-              )}
-              <WorkspaceFileTreeRowName
-                name={name}
-                className="review-file-tree-name min-w-0 flex-1 overflow-hidden whitespace-nowrap text-left"
-                slashClassName="mx-0.5 text-foreground-subtle"
-              />
-              {node.file && (
-                <span className="review-file-tree-stats">
-                  <span className="text-diff-added">+{node.file.added}</span>
-                  <span className="text-diff-removed">-{node.file.removed}</span>
+              <Button
+                unstyled
+                data-slot={undefined}
+                type="button"
+                role="treeitem"
+                aria-label={node.path}
+                aria-level={ancestors.length + 1}
+                aria-selected={activePath === node.path}
+                aria-expanded={node.file ? undefined : !collapsed.includes(node.path)}
+                title={node.path}
+                className="flex h-full min-w-0 flex-1"
+                onClick={() => (node.file ? onSelect(node.path) : onToggle(node.path))}
+                onKeyDown={(event) => {
+                  if (
+                    !node.file &&
+                    ((event.key === "ArrowRight" && collapsed.includes(node.path)) ||
+                      (event.key === "ArrowLeft" && !collapsed.includes(node.path)))
+                  ) {
+                    event.preventDefault();
+                    onToggle(node.path);
+                  } else move(event);
+                }}
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-[calc(var(--spacing-inline)*3/4)]">
+                  {node.file ? (
+                    <FileDisplayIcon
+                      src={resolveFileDisplayDescriptor(node.path).fileIconSrc}
+                      size={16}
+                      className="shrink-0"
+                    />
+                  ) : (
+                    <ChevronRight
+                      aria-hidden
+                      className={`size-4 shrink-0 text-foreground-subtle ${collapsed.includes(node.path) ? "" : "rotate-90"}`}
+                    />
+                  )}
+                  <WorkspaceFileTreeRowName
+                    name={name}
+                    className="review-file-tree-name min-w-0 flex-1 overflow-hidden whitespace-nowrap text-left"
+                    slashClassName="mx-0.5 text-foreground-subtle"
+                  />
+                  {node.file && (
+                    <span className="review-file-tree-stats">
+                      <span className="text-diff-added">+{node.file.added}</span>
+                      <span className="text-diff-removed">-{node.file.removed}</span>
+                    </span>
+                  )}
                 </span>
-              )}
-            </Button>
+              </Button>
+            </div>
           ))
         )}
         {!busy && !error && !visible.length && (

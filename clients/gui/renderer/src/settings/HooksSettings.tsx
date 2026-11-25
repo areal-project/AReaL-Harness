@@ -252,25 +252,33 @@ export function HooksSettings({
           </Button>
         }
       >
-        {value?.projects.length ? (
-          <SettingsGroupCard>
-            {value.projects.map((p) => (
-              <SettingsRow
-                key={p.projectId}
-                label={p.root.split(/[\\/]/).at(-1) || p.root}
-                control={
-                  <span>
-                    {!connected || !p.connected
-                      ? t("settings.hooksSettings.loadOnNextStart")
-                      : p.applied
-                        ? t("settings.hooksSettings.currentConfigurationLoaded")
-                        : t("settings.hooksSettings.restartRequiredToApply")}
-                  </span>
-                }
-              />
-            ))}
-          </SettingsGroupCard>
-        ) : null}
+        {(() => {
+          // 过滤内部临时/无项目 UUID 工作区，避免向用户暴露原始 36 位内部标识。
+          const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          const visibleProjects = (value?.projects ?? []).filter((p) => {
+            const name = p.root.split(/[\\/]/).at(-1) || p.root;
+            return !uuidPattern.test(name);
+          });
+          return visibleProjects.length ? (
+            <SettingsGroupCard>
+              {visibleProjects.map((p) => (
+                <SettingsRow
+                  key={p.projectId}
+                  label={p.root.split(/[\\/]/).at(-1) || p.root}
+                  control={
+                    <span>
+                      {!connected || !p.connected
+                        ? t("settings.hooksSettings.loadOnNextStart")
+                        : p.applied
+                          ? t("settings.hooksSettings.currentConfigurationLoaded")
+                          : t("settings.hooksSettings.restartRequiredToApply")}
+                    </span>
+                  }
+                />
+              ))}
+            </SettingsGroupCard>
+          ) : null;
+        })()}
       </SettingsSection>
       <SettingsDisclosure title={t("settings.hooksSettings.configurationDetails")}>
         <p className="settings-section-desc break-all">
@@ -358,15 +366,17 @@ export function HooksSettings({
             </label>
             <label>
               {t("settings.hooksSettings.commandArgumentsJSONArray")}
-              <Textarea
-                unstyled
-                data-slot={undefined}
-                aria-label={t("settings.hooksSettings.commandArgumentsJSONArray")}
-                className="w-full min-h-32 font-mono"
-                disabled={busy}
-                value={draft.argv}
-                onChange={(e) => update({ ...draft, argv: e.target.value })}
-              />
+              <div className="w-full font-mono">
+                <Textarea
+                  unstyled
+                  data-slot={undefined}
+                  aria-label={t("settings.hooksSettings.commandArgumentsJSONArray")}
+                  className="w-full min-h-32"
+                  disabled={busy}
+                  value={draft.argv}
+                  onChange={(e) => update({ ...draft, argv: e.target.value })}
+                />
+              </div>
             </label>
             <label>
               {t("settings.hooksSettings.timeoutMs")}

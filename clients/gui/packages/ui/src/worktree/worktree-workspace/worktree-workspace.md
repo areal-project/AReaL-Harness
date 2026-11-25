@@ -2,8 +2,8 @@
 id: worktree-workspace
 title: WorktreeWorkspace
 summary: 呈现绑定目录、可执行操作与服务结果。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: worktree
 category: worktree
 aliases: ["Worktree会话工作区详情"]
@@ -26,11 +26,11 @@ heading、directory、actions、busy、error、output插槽/显示字段。主UI
 
 ## 内容
 
-`R-WORKTREEWORKSPACE-002` 名称与路径使用实际绑定记录；不能从可见按钮推断后台执行结束。
+`R-WORKTREEWORKSPACE-002` 名称与路径使用实际绑定记录；不能从可见按钮推断后台执行结束。**检查：**`clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.test.tsx`
 
 ## 可访问性
 
-`R-WORKTREEWORKSPACE-003` 操作必须有清楚名称和真实disabled；忙碌为status。短时错误由宿主ToastHost播报，详情保留原始结果文字。日志使用明确aria-label，长路径换行。
+`R-WORKTREEWORKSPACE-003` 操作必须有清楚名称和真实disabled；忙碌为status。短时错误由宿主ToastHost播报，详情保留原始结果文字。日志使用明确aria-label，长路径换行。**检查：**`clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.test.tsx`
 
 ## 示例
 

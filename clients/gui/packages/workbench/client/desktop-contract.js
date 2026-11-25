@@ -1,13 +1,6 @@
 import contract from "./desktop-contract.cjs";
-export const {
-  commandDefinitions,
-  commandSemantics,
-  desktopError,
-  commandResponseError,
-  validateMcpPageDeclaration,
-  validateMcpPageCall,
-  validateMcpPageReply,
-} = contract;
+export const { commandDefinitions, commandSemantics, desktopError, commandResponseError } =
+  contract;
 /** @typedef {import('./desktop-contract.cjs').CommandName} CommandName */
 /** @typedef {import('./desktop-contract.cjs').DesktopError} DesktopError */
 /** @template T @typedef {import('./desktop-contract.cjs').DesktopResult<T>} DesktopResult */
@@ -23,7 +16,6 @@ export const {
 export const validateCommandResponse = contract.validateCommandResponse;
 
 /** @typedef {import("./desktop-contract.cjs").QuitProgress} QuitProgress */
-/** @typedef {import("./desktop-contract.cjs").McpAppDeepLink} McpAppDeepLink */
 /** @typedef {import("./desktop-contract.cjs").NotificationTarget} NotificationTarget */
 
 /** @typedef {import("./desktop-contract.cjs").DesktopInvokeArguments} DesktopInvokeArguments */

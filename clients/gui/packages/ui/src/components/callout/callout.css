@@ -1,0 +1,57 @@
+.areal-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-inline);
+  min-width: 0;
+  padding: var(--composer-inset) var(--spacing-field);
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-fog);
+  color: var(--color-foreground);
+  font-size: var(--text-ui-caption);
+  line-height: var(--line-height-ui-sm);
+}
+
+.areal-callout-icon {
+  display: inline-flex;
+  flex: none;
+  margin-top: calc(var(--spacing-inline) / 4);
+  color: var(--color-foreground-subtle);
+}
+
+.areal-callout[data-tone="info"] .areal-callout-icon {
+  color: var(--color-brand);
+}
+
+.areal-callout[data-tone="warning"] .areal-callout-icon {
+  color: var(--color-warning);
+}
+
+.areal-callout[data-tone="danger"] .areal-callout-icon {
+  color: var(--color-destructive);
+}
+
+.areal-callout-body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing-inline) / 4);
+  flex: 1;
+  min-width: 0;
+}
+
+.areal-callout-title {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-foreground);
+}
+
+.areal-callout-content {
+  color: var(--color-foreground-subtle);
+  overflow-wrap: anywhere;
+}
+
+.areal-callout-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-inline);
+  flex: none;
+}

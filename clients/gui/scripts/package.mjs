@@ -7,18 +7,17 @@ import {
 } from "./package-build.mjs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { join, resolve } from "node:path";
+import { join, resolve, relative } from "node:path";
 import { cp, lstat, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { stageCoreApp } from "./stage-app.mjs";
-import { stageMacOSService } from "./stage-macos-service.mjs";
 import { buildMacOSDmg } from "./macos-dmg.mjs";
 import { parseArgs } from "node:util";
-import relayResources from "@areal/workbench-service/desktop/core/relay-resources.cjs";
+import relayResources from "./relay-resources.cjs";
 import { signLocalMacOSApp } from "./macos-signing-paths.mjs";
-import { buildWorkbenchResources } from "./workbench-resources.mjs";
+import { checkIcon } from "./macos-icon.mjs";
 const gui = fileURLToPath(new URL("..", import.meta.url));
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
@@ -41,8 +40,8 @@ const { values: options } = parseArgs({
 });
 if (options.help) {
   console.log(
-    "Usage: pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg,zip --signing none|adhoc|developer-id [--output NEW_DIRECTORY] [--identity ID --keychain-profile PROFILE] [--skip-tests]\n" +
-      "dist builds release Core and GUI. Only native macOS arm64 is supported. none preserves input signatures; no launch trust is implied. developer-id requires both formats and performs notarization/acceptance (post-signing tests may be explicitly skipped). Never publishes. Resume pending Apple work with sign:mac --resume --output OUTPUT/signed.",
+    "Usage: pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg,zip --signing adhoc|developer-id|notarized|none [--output NEW_DIRECTORY] [--identity ID --keychain-profile PROFILE] [--skip-tests]\n" +
+      "dist builds release Core and GUI. Only native macOS arm64 is supported. none preserves input signatures; no launch trust is implied. Defaults to adhoc. developer-id signs without notarization; notarized performs Apple acceptance (functional tests may be explicitly skipped). Never publishes. Resume pending Apple work with sign:mac --resume --output OUTPUT/signed.",
   );
   process.exit(0);
 }
@@ -52,7 +51,10 @@ assert.ok(
 );
 const signing =
   options.signing || (process.env.AREAL_GUI_UNSIGNED_LOCAL === "1" ? "none" : "adhoc");
-assert.ok(["none", "adhoc", "developer-id"].includes(signing), "Invalid --signing mode");
+assert.ok(
+  ["none", "adhoc", "developer-id", "notarized"].includes(signing),
+  "Invalid --signing mode",
+);
 assert.ok(!options.formats || !options["dmg-only"], "Choose --formats or --dmg-only");
 const formats = (options.formats || (options["dmg-only"] ? "dmg" : "dmg,zip")).split(",");
 assert.ok(
@@ -61,7 +63,8 @@ assert.ok(
     formats.every((f) => ["dmg", "zip"].includes(f)),
   "--formats must contain dmg, zip or dmg,zip",
 );
-const developerId = signing === "developer-id";
+const notarized = signing === "notarized";
+const developerId = signing === "developer-id" || notarized;
 assert.ok(
   !options["skip-tests"] || developerId,
   "--skip-tests applies only to Developer ID package acceptance",
@@ -70,18 +73,18 @@ const identity = options.identity || process.env.CSC_NAME;
 const profile = options["keychain-profile"] || process.env.APPLE_KEYCHAIN_PROFILE;
 assert.ok(
   developerId || (!options.identity && !options["keychain-profile"]),
-  "Signing credentials require --signing developer-id",
+  "Signing credentials require --signing developer-id or notarized",
 );
 if (developerId) {
   assert.ok(formats.includes("dmg"), "Developer ID acceptance requires a DMG format");
   assert.ok(
-    identity && profile,
-    "Developer ID requires --identity and --keychain-profile (or CSC_NAME/APPLE_KEYCHAIN_PROFILE)",
+    identity && (!notarized || profile),
+    "Developer ID requires --identity; notarized also requires --keychain-profile (or CSC_NAME/APPLE_KEYCHAIN_PROFILE)",
   );
 }
 if (process.platform !== "darwin" || process.arch !== "arm64")
   throw new Error("Local package acceptance currently targets macOS arm64");
-const release = developerId || process.env.AREAL_GUI_RELEASE === "1";
+const release = notarized || process.env.AREAL_GUI_RELEASE === "1";
 const unsignedLocal = signing === "none";
 if (release)
   assert.equal(
@@ -141,13 +144,11 @@ try {
   const guiOutputs = [
     "renderer/dist",
     "packages/ui/dist",
-    "packages/gen-ui/dist",
     "packages/browser-automation/dist",
     "packages/browser-data/dist",
     "app/src/core/snapshots/build",
     "app/src/ipc/generated",
-    "native/computer-helper/build/AReaL Computer Helper.app",
-    "../../services/workbench/src/generated",
+    "app/src/core/generated",
   ].map((path) => join(gui, path));
   // 依赖同步只执行一次；缓存只替代构建，不替代锁文件安装。
   await timings.measure("dependencies", () =>
@@ -170,14 +171,9 @@ try {
       );
       if (process.env.AREAL_GUI_RELAY_CA_CERT) {
         const caPath = resolve(process.env.AREAL_GUI_RELAY_CA_CERT);
-        const {
-          normalizeNetworkSetting,
-        } = require("@areal/workbench-service/desktop/core/desktop-network.cjs");
+        const { normalizeNetworkSetting } = require("@areal/workbench/node/desktop-network");
         normalizeNetworkSetting("httpProxyCaCertPath", caPath);
-        await cp(
-          caPath,
-          join(appStage, "node_modules/@areal/workbench-service/src/assets/relay-ca.pem"),
-        );
+        await cp(caPath, join(appStage, "node_modules/@areal/workbench/assets/relay-ca.pem"));
       }
       const { githubFeedUrl } = require(join(gui, "app/src/update/config.cjs"));
       const updateConfig = join(staged, "areal-update.json");
@@ -227,9 +223,7 @@ try {
           );
         }
       });
-      const { verifyCoreBundle } = require(
-        join(gui, "../../services/workbench/src/desktop/core/bundle.cjs"),
-      );
+      const { verifyCoreBundle } = require(join(gui, "packages/workbench/node/bundle.cjs"));
       const coreBundle = verifyCoreBundle(output, { hashes: true });
       if (release)
         assert.equal(
@@ -237,35 +231,13 @@ try {
           "release",
           "GUI release requires a release Core bundle",
         );
-      const iconset = join(staged, "app.iconset");
-      await mkdir(iconset);
-      for (const size of [16, 32, 128, 256, 512]) {
-        for (const scale of [1, 2]) {
-          execFileSync(
-            "/usr/bin/sips",
-            [
-              "-z",
-              String(size * scale),
-              String(size * scale),
-              join(gui, "app/assets/icon-1024.png"),
-              "--out",
-              join(iconset, `icon_${size}x${size}${scale === 2 ? "@2x" : ""}.png`),
-            ],
-            { stdio: "ignore" },
-          );
-        }
-      }
-      const icon = join(staged, "app.icns");
-      execFileSync("/usr/bin/iconutil", ["-c", "icns", iconset, "-o", icon]);
+      const icon = await checkIcon();
       const { build, Platform, Arch } = require("electron-builder");
       const relayBundle = await relayResources.buildRelayResources({
         source: join(root, "services/remote-relay"),
         site: join(gui, "renderer/dist"),
         destination: join(output, "areal-relay"),
-      });
-      const workbenchBundle = await buildWorkbenchResources({
-        source: join(root, "services/workbench"),
-        destination: join(output, "areal-workbench"),
+        includeAssets: false,
       });
       await timings.measure("electron-package", () =>
         build({
@@ -288,20 +260,15 @@ try {
             files: ["**/*"],
             extraResources: [
               { from: bundle, to: "areal-core" },
-              { from: relayBundle.bundleDir, to: "areal-relay", filter: ["**/*", "!assets{,/**}"] },
+              { from: relayBundle.bundleDir, to: "areal-relay", filter: ["**/*"] },
               {
                 from: join(relayBundle.bundleDir, "node_modules"),
                 to: "areal-relay/node_modules",
               },
-              { from: workbenchBundle.bundleDir, to: "areal-workbench" },
               {
                 from: join(gui, "renderer/dist"),
                 to: "areal-gui",
                 filter: ["**/*", "!bundle-analysis.json"],
-              },
-              {
-                from: join(gui, "native/computer-helper/build/AReaL Computer Helper.app"),
-                to: "computer-helper/AReaL Computer Helper.app",
               },
               ...(release
                 ? [
@@ -321,8 +288,15 @@ try {
         }),
       );
       const app = join(output, "package/mac-arm64/AReaL Harness GUI.app");
-      const backgroundService = await timings.measure("service-bundle", () =>
-        stageMacOSService(app),
+      // 与实际封装的字节绑定，签名前写入；安装路径和后续原生签名不参与内容身份。
+      const resources = join(app, "Contents/Resources");
+      const desktopIdentity = createHash("sha256")
+        .update(await readFile(join(resources, "app.asar")))
+        .update(await treeHash([join(resources, "areal-gui")]))
+        .digest("hex");
+      await writeFile(
+        join(resources, "desktop-build.json"),
+        JSON.stringify({ version: 1, identity: desktopIdentity }) + "\n",
       );
       if (release) {
         const native = require("yaml").parse(
@@ -337,8 +311,12 @@ try {
       // 本机无新增签名模式保留输入签名；不能把拼装后的 bundle 宣称为签名有效。
       let signatureVerification;
       if (!unsignedLocal) {
-        await signLocalMacOSApp(app, (command, args) =>
-          execFileSync(command, args, { stdio: "inherit" }),
+        await timings.measure("sign-adhoc", () =>
+          signLocalMacOSApp(app, (command, args) =>
+            timings.measureSync("sign-adhoc:" + args[0] + ":" + relative(app, args.at(-1)), () =>
+              execFileSync(command, args, { stdio: "inherit" }),
+            ),
+          ),
         );
         signatureVerification = { valid: true };
       } else {
@@ -406,7 +384,6 @@ try {
             archive,
             dmg,
             dependencies,
-            backgroundService,
             builder: {
               node: process.version,
               executable: process.execPath,
@@ -429,7 +406,7 @@ try {
       );
 
       if (developerId) {
-        await timings.measure("notarize", () =>
+        await timings.measure(notarized ? "notarize" : "developer-id-sign", () =>
           execFileSync(
             process.execPath,
             [
@@ -440,10 +417,9 @@ try {
               join(output, "signed"),
               "--identity",
               identity,
-              "--keychain-profile",
-              profile,
+              ...(notarized ? ["--keychain-profile", profile] : ["--no-notarize"]),
               ...(options["skip-tests"] ? ["--skip-tests"] : []),
-              ...(options["dmg-only"] ? ["--dmg-only"] : []),
+              ...(!formats.includes("zip") ? ["--dmg-only"] : []),
             ],
             { cwd: root, stdio: "inherit" },
           ),

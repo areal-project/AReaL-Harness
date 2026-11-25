@@ -41,94 +41,99 @@ export function TurnUsage({
     ? !result || result.sessionUsage.unknownTurns > 0 || result.sessionUsage.partialTurns > 0
     : !usage || !generation || generation.missingUsageRequests > 0;
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        className="turn-usage-trigger"
-        aria-label={t("chat.usage.open")}
-        data-testid="turn-usage"
-      >
-        {tokenCount(usage.inputTokens + usage.outputTokens)} Token
-        {rate !== null &&
-          ` · ${intl.formatNumber(rate, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} tok/s`}
-      </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="start"
-        className="context-usage-popover"
-        data-testid="turn-usage-popover"
-      >
-        <PopoverTitle>{t("chat.usage.title")}</PopoverTitle>
-        {!inherited && (
-          <div className="usage-scope" role="group" aria-label={t("chat.usage.scope")}>
+    <span className="inline-flex">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          render={
             <Button
               type="button"
-              variant="ghost"
+              variant="ghost-subtle"
               size="sm"
-              aria-pressed={scope === "session"}
-              onClick={() => setScope("session")}
-            >
-              {t("chat.usage.session")}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-pressed={scope === "turn"}
-              onClick={() => setScope("turn")}
-            >
-              {t("chat.usage.turn")}
-            </Button>
+              aria-label={t("chat.usage.open")}
+              data-testid="turn-usage"
+            />
+          }
+        >
+          {tokenCount(usage.inputTokens + usage.outputTokens)} Token
+          {rate !== null &&
+            ` · ${intl.formatNumber(rate, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} tok/s`}
+        </PopoverTrigger>
+        <PopoverContent variant="flush" side="top" align="start" data-testid="turn-usage-popover">
+          <div className="context-usage-popover flex flex-col">
+            <PopoverTitle>{t("chat.usage.title")}</PopoverTitle>
+            {!inherited && (
+              <div className="usage-scope" role="group" aria-label={t("chat.usage.scope")}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-pressed={scope === "session"}
+                  onClick={() => setScope("session")}
+                >
+                  {t("chat.usage.session")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-pressed={scope === "turn"}
+                  onClick={() => setScope("turn")}
+                >
+                  {t("chat.usage.turn")}
+                </Button>
+              </div>
+            )}
+            {inherited && <p>{t("chat.usage.inherited")}</p>}
+            <dl className="usage-details">
+              <div>
+                <dt>{incomplete ? t("chat.usage.confirmed") : t("chat.usage.total")}</dt>
+                <dd>
+                  {shownUsage
+                    ? intl.formatNumber(shownUsage.inputTokens + shownUsage.outputTokens)
+                    : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt>{t("chat.usage.input")}</dt>
+                <dd>{shownUsage ? intl.formatNumber(shownUsage.inputTokens) : "—"}</dd>
+              </div>
+              <div>
+                <dt>{t("chat.usage.cachedInput")}</dt>
+                <dd>{shownUsage ? intl.formatNumber(shownUsage.cachedInputTokens) : "—"}</dd>
+              </div>
+              <div>
+                <dt>{t("chat.usage.output")}</dt>
+                <dd>{shownUsage ? intl.formatNumber(shownUsage.outputTokens) : "—"}</dd>
+              </div>
+              <div>
+                <dt>{t("chat.usage.rate")}</dt>
+                <dd>
+                  {shownRate === null
+                    ? "—"
+                    : `${intl.formatNumber(shownRate, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} tok/s`}
+                </dd>
+              </div>
+              {shownGeneration && (
+                <div>
+                  <dt>{t("chat.usage.coverage")}</dt>
+                  <dd>
+                    {t("chat.usage.requests", {
+                      measured: shownGeneration.measuredRequests,
+                      total: shownGeneration.measuredRequests + shownGeneration.unmeasuredRequests,
+                    })}
+                  </dd>
+                </div>
+              )}
+            </dl>
+            {incomplete && (
+              <p className="usage-status">
+                {session && busy ? t("chat.usage.reading") : t("chat.usage.incomplete")}
+              </p>
+            )}
+            {session && error && <p role="alert">{error}</p>}
           </div>
-        )}
-        {inherited && <p>{t("chat.usage.inherited")}</p>}
-        <dl className="usage-details">
-          <div>
-            <dt>{incomplete ? t("chat.usage.confirmed") : t("chat.usage.total")}</dt>
-            <dd>
-              {shownUsage
-                ? intl.formatNumber(shownUsage.inputTokens + shownUsage.outputTokens)
-                : "—"}
-            </dd>
-          </div>
-          <div>
-            <dt>{t("chat.usage.input")}</dt>
-            <dd>{shownUsage ? intl.formatNumber(shownUsage.inputTokens) : "—"}</dd>
-          </div>
-          <div>
-            <dt>{t("chat.usage.cachedInput")}</dt>
-            <dd>{shownUsage ? intl.formatNumber(shownUsage.cachedInputTokens) : "—"}</dd>
-          </div>
-          <div>
-            <dt>{t("chat.usage.output")}</dt>
-            <dd>{shownUsage ? intl.formatNumber(shownUsage.outputTokens) : "—"}</dd>
-          </div>
-          <div>
-            <dt>{t("chat.usage.rate")}</dt>
-            <dd>
-              {shownRate === null
-                ? "—"
-                : `${intl.formatNumber(shownRate, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} tok/s`}
-            </dd>
-          </div>
-          {shownGeneration && (
-            <div>
-              <dt>{t("chat.usage.coverage")}</dt>
-              <dd>
-                {t("chat.usage.requests", {
-                  measured: shownGeneration.measuredRequests,
-                  total: shownGeneration.measuredRequests + shownGeneration.unmeasuredRequests,
-                })}
-              </dd>
-            </div>
-          )}
-        </dl>
-        {incomplete && (
-          <p className="usage-status">
-            {session && busy ? t("chat.usage.reading") : t("chat.usage.incomplete")}
-          </p>
-        )}
-        {session && error && <p role="alert">{error}</p>}
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+    </span>
   );
 }

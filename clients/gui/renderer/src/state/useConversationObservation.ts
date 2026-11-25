@@ -65,7 +65,15 @@ export function useConversationObservation(
             target.phase !== "blocked",
         ),
     ) ?? false;
+  const lastMarkedCompletion = useRef<string | undefined>(undefined);
   const markForegroundCompletionRead = () => {
+    const activeKey =
+      project?.id && threadId && selectedCompletion
+        ? `${project.id}:${threadId}:${selectedCompletion}`
+        : undefined;
+    if (!activeKey || lastMarkedCompletion.current !== activeKey) {
+      lastMarkedCompletion.current = undefined;
+    }
     // A new completion visible in the foreground is read. A manual unread mark
     // does not change completionId, so it survives until the user opens it again.
     if (
@@ -83,13 +91,22 @@ export function useConversationObservation(
       document.visibilityState !== "visible"
     )
       return;
-    void action("library", {
-      operation: "readThread",
-      projectId: project.id,
-      threadId,
-      read: true,
-      completionId: selectedCompletion,
-    }).catch(() => {});
+    if (lastMarkedCompletion.current === activeKey) return;
+    const targetProjectId = project.id;
+    const targetThreadId = threadId;
+    const targetCompletionId = selectedCompletion;
+    const timer = setTimeout(() => {
+      lastMarkedCompletion.current = activeKey;
+      // 静默后台已读上报走 resourceAction，避免网络/队列抖动时弹出操作失败横幅。
+      void resourceAction("library", {
+        operation: "readThread",
+        projectId: targetProjectId,
+        threadId: targetThreadId,
+        read: true,
+        completionId: targetCompletionId,
+      }).catch(() => {});
+    }, 150);
+    return () => clearTimeout(timer);
   };
   return {
     cancelDisabledPredictions,

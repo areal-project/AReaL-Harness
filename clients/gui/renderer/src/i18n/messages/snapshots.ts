@@ -11,7 +11,7 @@ export const snapshotMessages = {
   "snapshots.captureShortcut": { "zh-CN": "捕获快捷键", en: "Capture shortcut" },
   "settings.snapshots.title": { "zh-CN": "SnapShots", en: "SnapShots" },
   "snapshots.localCleanupFailed": {
-    "zh-CN": "消息提交状态已保留，但本地截图草稿保存失败。重新启动后请核对草稿。",
+    "zh-CN": "消息提交状态已保留，但本地截图草稿保存失败。重新启动后请检查草稿。",
     en: "Message submission status is preserved, but the local screenshot draft could not be saved. Check your draft after restarting.",
   },
   "snapshots.cancel": { "zh-CN": "取消", en: "Cancel" },

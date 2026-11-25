@@ -2,8 +2,8 @@
 id: activity-group
 title: ActivityGroup
 summary: 默认收起连续活动，纵向阅读原记录，关键状态始终可见。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: activity
 aliases: ["活动组"]

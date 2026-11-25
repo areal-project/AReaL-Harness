@@ -146,7 +146,7 @@
       "id": "SettingsDialog",
       "source": "packages/ui/src/settings/settings-dialog/settings-dialog.tsx",
       "purpose": "设置编辑与确认详情",
-      "importFrom": "@areal/ui/experimental"
+      "importFrom": "@areal/ui/compositions"
     },
     {
       "id": "Feedback",
@@ -157,7 +157,7 @@
       "id": "EmptySettings",
       "source": "packages/ui/src/settings/settings-dialog/settings-dialog.tsx",
       "purpose": "设置空态",
-      "importFrom": "@areal/ui/experimental"
+      "importFrom": "@areal/ui/compositions"
     },
     {
       "id": "ConversationComposer",
@@ -168,7 +168,7 @@
       "id": "ComposerSurface",
       "source": "packages/ui/src/conversation/composer-surface/composer-surface.tsx",
       "purpose": "输入区布局插槽",
-      "importFrom": "@areal/ui/experimental"
+      "importFrom": "@areal/ui/compositions"
     },
     {
       "id": "DecisionCard",
@@ -216,7 +216,7 @@
       "id": "CommandDetails",
       "source": "packages/ui/src/conversation/command-details/command-details.tsx",
       "purpose": "同一进程的输入、连续输出、状态与原始记录",
-      "importFrom": "@areal/ui/experimental"
+      "importFrom": "@areal/ui/compositions"
     },
     {
       "id": "AgentConversationPane",
@@ -232,7 +232,7 @@
       "id": "SettingsNavigation",
       "source": "packages/ui/src/workbench/settings-navigation/settings-navigation.tsx",
       "purpose": "定位、筛选设置分类并沿原导航守卫返回",
-      "importFrom": "@areal/ui/experimental"
+      "importFrom": "@areal/ui/compositions"
     },
     {
       "id": "SidePane",
@@ -248,8 +248,302 @@
     {
       "id": "TaskContext",
       "source": "packages/ui/src/conversation/task-context/task-context.tsx",
-      "importFrom": "@areal/ui/experimental",
+      "importFrom": "@areal/ui/compositions",
       "purpose": "顶部任务上下文：紧凑分区、资源预览与深入查看入口，数据和导航由宿主拥有"
+    },
+    {
+      "id": "ActivityGroup",
+      "source": "packages/ui/src/conversation/activity-group/activity-group.tsx",
+      "purpose": "过程活动分组折叠容器",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "ActivityRow",
+      "source": "packages/ui/src/conversation/activity-row/activity-row.tsx",
+      "purpose": "单条工具或推理活动行",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "ImageDisclosure",
+      "source": "packages/ui/src/conversation/image-disclosure/image-disclosure.tsx",
+      "purpose": "工具图片结果的渐进展开",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "SubagentPanel",
+      "source": "packages/ui/src/conversation/subagent-panel/subagent-panel.tsx",
+      "purpose": "子代理任务列表与状态面板",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "ThinkingStatus",
+      "source": "packages/ui/src/conversation/thinking-status/thinking-status.tsx",
+      "purpose": "模型思考中状态提示",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "ComposerToolbar",
+      "source": "packages/ui/src/conversation/composer-toolbar/composer-toolbar.tsx",
+      "purpose": "输入区底部工具栏与主动作按钮",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "AttachmentCard",
+      "source": "packages/ui/src/conversation/attachment-card/attachment-card.tsx",
+      "purpose": "输入区附件卡片",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownBlockquote",
+      "source": "packages/ui/src/conversation/markdown-blockquote/markdown-blockquote.tsx",
+      "purpose": "消息引用块样式容器",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownUnorderedList",
+      "source": "packages/ui/src/conversation/markdown-list/markdown-list.tsx",
+      "purpose": "消息有序与无序列表",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MessageCodeBlock",
+      "source": "packages/ui/src/conversation/message-code-block/message-code-block.tsx",
+      "purpose": "消息内代码块与复制操作",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownSurface",
+      "source": "packages/ui/src/conversation/markdown-surface/markdown-surface.tsx",
+      "purpose": "消息 Markdown 排版表面",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "NativeContent",
+      "source": "packages/ui/src/conversation/native-content/native-content.tsx",
+      "purpose": "原生内容视图容器",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "QuestionCard",
+      "source": "packages/ui/src/conversation/question-card/question-card.tsx",
+      "purpose": "结构化提问与选项卡片",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "ThreadSummaryPanel",
+      "source": "packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.tsx",
+      "purpose": "会话顶部置顶摘要面板（卡片与紧凑浮条双态）",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "WorkbenchShell",
+      "source": "packages/ui/src/workbench/workbench-shell/workbench-shell.tsx",
+      "purpose": "工作台主框架、顶栏、侧栏与工作表面",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "SidePaneFrame",
+      "source": "packages/ui/src/workbench/side-pane-frame/side-pane-frame.tsx",
+      "purpose": "侧边面板外框与宽度控制",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "SidePaneLauncher",
+      "source": "packages/ui/src/workbench/side-pane-launcher/side-pane-launcher.tsx",
+      "purpose": "侧边面板启动入口",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "TaskTitleOverflowText",
+      "source": "packages/ui/src/workbench/task-title-overflow/task-title-overflow.tsx",
+      "purpose": "侧栏任务标题溢出提示",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MemoTaskItem",
+      "source": "packages/ui/src/workbench/task-list-item/task-list-item.tsx",
+      "purpose": "导航栏任务列表项",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "ResourceScope",
+      "source": "packages/ui/src/workbench/resource-controls/resource-controls.tsx",
+      "purpose": "资源作用域筛选与空态",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "ScheduledWorkspace",
+      "source": "packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.tsx",
+      "purpose": "定时任务与任务中心工作区外壳",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "WorktreePicker",
+      "source": "packages/ui/src/worktree/worktree-picker/worktree-picker.tsx",
+      "purpose": "Worktree 分支与目录选择器",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "WorktreeStatus",
+      "source": "packages/ui/src/worktree/worktree-status/worktree-status.tsx",
+      "purpose": "Worktree 状态摘要",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "WorktreeDirectory",
+      "source": "packages/ui/src/worktree/worktree-directory/worktree-directory.tsx",
+      "purpose": "Worktree 目录配置行",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "WorktreeSettings",
+      "source": "packages/ui/src/worktree/worktree-settings/worktree-settings.tsx",
+      "purpose": "Worktree 设置表单视图",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "WorktreeWorkspace",
+      "source": "packages/ui/src/worktree/worktree-workspace/worktree-workspace.tsx",
+      "purpose": "Worktree 工作区详情视图",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "Kbd",
+      "source": "packages/ui/src/components/kbd/kbd.tsx",
+      "purpose": "统一快捷键提示原语（primary/secondary/keycap）",
+      "importFrom": "@areal/ui"
+    },
+    {
+      "id": "Badge",
+      "source": "packages/ui/src/components/badge/badge.tsx",
+      "purpose": "通用语义状态徽标",
+      "importFrom": "@areal/ui"
+    },
+    {
+      "id": "Callout",
+      "source": "packages/ui/src/components/callout/callout.tsx",
+      "purpose": "轻量内联提示块",
+      "importFrom": "@areal/ui"
+    },
+    {
+      "id": "EmptyState",
+      "source": "packages/ui/src/components/empty-state/empty-state.tsx",
+      "purpose": "居中克制的空状态与首次行动引导",
+      "importFrom": "@areal/ui"
+    },
+    {
+      "id": "ConfirmDialog",
+      "source": "packages/ui/src/components/confirm-dialog/confirm-dialog.tsx",
+      "purpose": "不可逆高危操作的阻断确认弹窗",
+      "importFrom": "@areal/ui"
+    },
+    {
+      "id": "Sheet",
+      "source": "packages/ui/src/components/sheet/sheet.tsx",
+      "purpose": "保留主任务上下文的边缘抽屉容器",
+      "importFrom": "@areal/ui"
+    },
+    {
+      "id": "ComposerRequestStack",
+      "source": "packages/ui/src/conversation/composer-request-stack/composer-request-stack.tsx",
+      "purpose": "底部待处理请求导航栈（1/N 切换）",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "WorkedForDivider",
+      "source": "packages/ui/src/conversation/worked-for-divider/worked-for-divider.tsx",
+      "purpose": "对话流过程耗时分隔条",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "ThreadFindBar",
+      "source": "packages/ui/src/conversation/thread-find-bar/thread-find-bar.tsx",
+      "purpose": "会话内紧凑查找浮条",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "PopoverSidebar",
+      "source": "packages/ui/src/workbench/popover-sidebar/popover-sidebar.tsx",
+      "purpose": "折叠侧栏左缘悬停浮出容器",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "AutomationTemplateDialog",
+      "source": "packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.tsx",
+      "purpose": "定时任务模板预览与重置确认弹窗",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "ShortcutCapture",
+      "source": "packages/ui/src/settings/shortcut-capture/shortcut-capture.tsx",
+      "purpose": "设置页快捷键录制控件",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "Attachments",
+      "source": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",
+      "purpose": "消息媒体、文件与来源附件容器",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "Attachment",
+      "source": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",
+      "purpose": "单条消息附件项",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "AttachmentPreview",
+      "source": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",
+      "purpose": "消息附件缩略预览",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "AttachmentInfo",
+      "source": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",
+      "purpose": "消息附件元信息",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "AttachmentRemove",
+      "source": "packages/ui/src/conversation/message-attachments/message-attachments.tsx",
+      "purpose": "消息附件移除按钮",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownTable",
+      "source": "packages/ui/src/conversation/markdown-table/markdown-table.tsx",
+      "purpose": "Markdown 表格、虚拟横向阅读与复制导出",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownTableHeader",
+      "source": "packages/ui/src/conversation/markdown-table/markdown-table.tsx",
+      "purpose": "Markdown 表格表头容器",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownTableBody",
+      "source": "packages/ui/src/conversation/markdown-table/markdown-table.tsx",
+      "purpose": "Markdown 表格表体容器",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownTableRow",
+      "source": "packages/ui/src/conversation/markdown-table/markdown-table.tsx",
+      "purpose": "Markdown 表格行",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownTableHead",
+      "source": "packages/ui/src/conversation/markdown-table/markdown-table.tsx",
+      "purpose": "Markdown 表格表头单元格",
+      "importFrom": "@areal/ui/compositions"
+    },
+    {
+      "id": "MarkdownTableCell",
+      "source": "packages/ui/src/conversation/markdown-table/markdown-table.tsx",
+      "purpose": "Markdown 表格数据单元格",
+      "importFrom": "@areal/ui/compositions"
     }
   ],
   "patterns": [
@@ -364,7 +658,19 @@
     "id": "desktop-core",
     "version": "0.4.1",
     "foundations": ["文字", "表面与反馈", "尺寸与间距", "形状与动效"],
-    "primitives": ["Button", "ActionButton", "Switch", "Select", "Feedback"],
+    "primitives": [
+      "Button",
+      "ActionButton",
+      "Switch",
+      "Select",
+      "Feedback",
+      "Kbd",
+      "Badge",
+      "Callout",
+      "EmptyState",
+      "ConfirmDialog",
+      "Sheet"
+    ],
     "compositions": [
       "SettingsPage",
       "SettingsSection",
@@ -380,7 +686,56 @@
       "TurnProgress",
       "TurnExecution",
       "ToolEvent",
-      "SettingsSearchInput"
+      "SettingsSearchInput",
+      "SettingsDialog",
+      "EmptySettings",
+      "SettingsNavigation",
+      "ComposerSurface",
+      "CommandDetails",
+      "TaskContext",
+      "ActivityGroup",
+      "ActivityRow",
+      "ImageDisclosure",
+      "SubagentPanel",
+      "ThinkingStatus",
+      "ComposerToolbar",
+      "AttachmentCard",
+      "MarkdownBlockquote",
+      "MarkdownUnorderedList",
+      "MessageCodeBlock",
+      "MarkdownSurface",
+      "NativeContent",
+      "QuestionCard",
+      "ThreadSummaryPanel",
+      "WorkbenchShell",
+      "SidePaneFrame",
+      "SidePaneLauncher",
+      "TaskTitleOverflowText",
+      "MemoTaskItem",
+      "ResourceScope",
+      "ScheduledWorkspace",
+      "WorktreePicker",
+      "WorktreeStatus",
+      "WorktreeDirectory",
+      "WorktreeSettings",
+      "WorktreeWorkspace",
+      "ComposerRequestStack",
+      "WorkedForDivider",
+      "ThreadFindBar",
+      "PopoverSidebar",
+      "AutomationTemplateDialog",
+      "ShortcutCapture",
+      "Attachments",
+      "MarkdownTable",
+      "Attachment",
+      "AttachmentPreview",
+      "AttachmentInfo",
+      "AttachmentRemove",
+      "MarkdownTableHeader",
+      "MarkdownTableBody",
+      "MarkdownTableRow",
+      "MarkdownTableHead",
+      "MarkdownTableCell"
     ],
     "patterns": ["P-SETTINGS", "P-DECISION", "P-RESOURCES"],
     "acceptance": [
@@ -401,9 +756,9 @@
       "成员状态与变体是有限准入声明，不表示每项笛卡尔组合均已运行；已完成证据以索引记录为准",
       "完整P-CONVERSATION、SidePane、原生资源宿主、列明同窗口Renderer恢复以外的恢复生命周期和完整插件安装/认证/连接生命周期未准入；P-RESOURCES仅限列明插件路径"
     ],
-    "status": "candidate",
+    "status": "frozen-beta",
     "snapshot": {
-      "revision": null,
+      "revision": "88980224fd5154c495a776c2aea36213742a1c53",
       "owner": "design-system/base.md"
     },
     "admissions": [
@@ -489,7 +844,14 @@
         "consumers": ["renderer/src/settings/DisplaySettings.tsx"],
         "variants": ["two-value-segmented", "multi-value-secondary-sm"],
         "states": ["selected", "disabled"],
-        "evidence": ["E-SETTINGS"]
+        "evidence": ["E-SETTINGS"],
+        "exports": [
+          "SettingsSelect",
+          "SettingsLockedValue",
+          "SettingsBadge",
+          "SettingsSwitch",
+          "SettingsValueAction"
+        ]
       },
       {
         "id": "SettingsSegmentedTabs",
@@ -584,6 +946,499 @@
         "variants": ["search-lg"],
         "states": ["empty", "query", "clear", "keyboard-focus"],
         "evidence": ["E-PLUGINS"]
+      },
+      {
+        "id": "SettingsDialog",
+        "contract": "packages/ui/src/settings/settings-dialog/settings-dialog.md",
+        "consumers": ["renderer/src/settings/common.tsx"],
+        "variants": ["default"],
+        "states": ["open", "closed"],
+        "evidence": ["E-SETTINGS"],
+        "exports": ["SettingsDialog", "SettingsToolbar"]
+      },
+      {
+        "id": "EmptySettings",
+        "contract": "packages/ui/src/settings/settings-dialog/settings-dialog.md",
+        "consumers": ["renderer/src/settings/common.tsx"],
+        "variants": ["default"],
+        "states": ["empty"],
+        "evidence": ["E-SETTINGS"]
+      },
+      {
+        "id": "SettingsNavigation",
+        "contract": "packages/ui/src/workbench/settings-navigation/settings-navigation.md",
+        "consumers": ["renderer/src/settings/SettingsWorkspace.tsx"],
+        "variants": ["default"],
+        "states": ["selected", "keyboard-focus"],
+        "evidence": ["E-SETTINGS"]
+      },
+      {
+        "id": "ComposerSurface",
+        "contract": "packages/ui/src/conversation/composer-surface/composer-surface.md",
+        "consumers": ["renderer/src/prompt-editor/ComposerSurface.tsx"],
+        "variants": ["default"],
+        "states": ["ready", "busy"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "CommandDetails",
+        "contract": "packages/ui/src/conversation/command-details/command-details.md",
+        "consumers": ["renderer/src/CommandDetails.tsx"],
+        "variants": ["default"],
+        "states": ["running", "completed", "failed"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "TaskContext",
+        "contract": "packages/ui/src/conversation/task-context/task-context.md",
+        "consumers": ["renderer/src/ConversationStatusCard.tsx", "renderer/src/AgentsPane.tsx"],
+        "variants": ["default"],
+        "states": ["ready", "busy"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "ActivityGroup",
+        "contract": "packages/ui/src/conversation/activity-group/activity-group.md",
+        "consumers": ["renderer/src/TurnExecution.tsx"],
+        "variants": ["default"],
+        "states": ["collapsed", "expanded"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "ActivityRow",
+        "contract": "packages/ui/src/conversation/activity-row/activity-row.md",
+        "consumers": ["renderer/src/ToolEvent.tsx", "renderer/src/ReasoningGroup.tsx"],
+        "variants": ["default", "image", "file", "reasoning"],
+        "states": ["running", "completed", "failed"],
+        "evidence": ["E-CONVERSATION"],
+        "exports": [
+          "ActivityRow",
+          "ActivityRowButton",
+          "ActivityRowText",
+          "ActivityRowStatus",
+          "ActivityRowChevron",
+          "ActivityRowHint"
+        ]
+      },
+      {
+        "id": "ImageDisclosure",
+        "contract": "packages/ui/src/conversation/image-disclosure/image-disclosure.md",
+        "consumers": ["renderer/src/ToolEvent.tsx"],
+        "variants": ["default"],
+        "states": ["collapsed", "expanded"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "SubagentPanel",
+        "contract": "packages/ui/src/conversation/subagent-panel/subagent-panel.md",
+        "consumers": ["renderer/src/AgentsPane.tsx"],
+        "variants": ["default"],
+        "states": ["running", "completed"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "ThinkingStatus",
+        "contract": "packages/ui/src/conversation/thinking-status/thinking-status.md",
+        "consumers": ["renderer/src/TurnExecution.tsx"],
+        "variants": ["default"],
+        "states": ["working"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "ComposerToolbar",
+        "contract": "packages/ui/src/conversation/composer-toolbar/composer-toolbar.md",
+        "consumers": [
+          "renderer/src/prompt-editor/ComposerSurface.tsx",
+          "renderer/src/Composer.tsx"
+        ],
+        "variants": ["default"],
+        "states": ["ready", "busy"],
+        "evidence": ["E-CONVERSATION"],
+        "exports": ["ComposerToolbar", "ComposerActionButton"]
+      },
+      {
+        "id": "AttachmentCard",
+        "contract": "packages/ui/src/conversation/attachment-card/attachment-card.md",
+        "consumers": [
+          "renderer/src/ComposerAttachments.tsx",
+          "renderer/src/ComposerQueueAttachment.tsx"
+        ],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownBlockquote",
+        "contract": "packages/ui/src/conversation/markdown-blockquote/markdown-blockquote.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-blockquote.tsx"],
+        "variants": ["default"],
+        "states": ["default"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownUnorderedList",
+        "contract": "packages/ui/src/conversation/markdown-list/markdown-list.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-list.tsx"],
+        "variants": ["default"],
+        "states": ["default"],
+        "evidence": ["E-CONVERSATION"],
+        "exports": ["MarkdownUnorderedList", "MarkdownOrderedList", "MarkdownListItem"]
+      },
+      {
+        "id": "MessageCodeBlock",
+        "contract": "packages/ui/src/conversation/message-code-block/message-code-block.md",
+        "consumers": ["renderer/src/components/ai-elements/message-code-block.tsx"],
+        "variants": ["default"],
+        "states": ["default"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownSurface",
+        "contract": "packages/ui/src/conversation/markdown-surface/markdown-surface.md",
+        "consumers": ["renderer/src/components/ai-elements/message-response-renderer.tsx"],
+        "variants": ["default"],
+        "states": ["default"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "NativeContent",
+        "contract": "packages/ui/src/conversation/native-content/native-content.md",
+        "consumers": ["renderer/src/ConversationContentView.tsx"],
+        "variants": ["default"],
+        "states": ["default"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "QuestionCard",
+        "contract": "packages/ui/src/conversation/question-card/question-card.md",
+        "consumers": ["renderer/src/AskUserQuestion.tsx"],
+        "variants": ["default"],
+        "states": ["ready", "busy"],
+        "evidence": ["E-DECISION"],
+        "exports": ["QuestionCard", "QuestionSummary"]
+      },
+      {
+        "id": "ThreadSummaryPanel",
+        "contract": "packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.md",
+        "consumers": ["renderer/src/views/ConversationWorkspace.tsx"],
+        "variants": ["card", "compact"],
+        "states": ["open", "closed", "pinned"],
+        "evidence": ["E-CONVERSATION"],
+        "exports": ["ThreadSummaryPanel", "ThreadSummaryItem"]
+      },
+      {
+        "id": "WorkbenchShell",
+        "contract": "packages/ui/src/workbench/workbench-shell/workbench-shell.md",
+        "consumers": ["renderer/src/app-shell/WorkbenchShell.tsx"],
+        "variants": ["default"],
+        "states": ["wide", "narrow"],
+        "evidence": ["E-SETTINGS"],
+        "exports": ["WorkbenchShell", "WorkspaceHeader", "WorkSurface", "NavigationSidebar"]
+      },
+      {
+        "id": "SidePaneFrame",
+        "contract": "packages/ui/src/workbench/side-pane-frame/side-pane-frame.md",
+        "consumers": ["renderer/src/app-shell/SidePane.tsx"],
+        "variants": ["default"],
+        "states": ["open", "closed"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "SidePaneLauncher",
+        "contract": "packages/ui/src/workbench/side-pane-launcher/side-pane-launcher.md",
+        "consumers": ["renderer/src/app-shell/SidePaneLauncher.tsx"],
+        "variants": ["default"],
+        "states": ["default"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "TaskTitleOverflowText",
+        "contract": "packages/ui/src/workbench/task-title-overflow/task-title-overflow.md",
+        "consumers": ["renderer/src/components/TaskTitleOverflowText.tsx"],
+        "variants": ["default"],
+        "states": ["default"],
+        "evidence": ["E-SETTINGS"]
+      },
+      {
+        "id": "MemoTaskItem",
+        "contract": "packages/ui/src/workbench/task-list-item/task-list-item.md",
+        "consumers": ["renderer/src/TaskListItem.tsx"],
+        "variants": ["default"],
+        "states": ["default", "selected"],
+        "evidence": ["E-SETTINGS"]
+      },
+      {
+        "id": "ResourceScope",
+        "contract": "packages/ui/src/workbench/resource-controls/resource-controls.md",
+        "consumers": ["renderer/src/settings/ScopedSkillsSettings.tsx"],
+        "variants": ["default"],
+        "states": ["ready", "empty"],
+        "evidence": ["E-RESOURCES"],
+        "exports": ["ResourceScope", "CatalogEmpty"]
+      },
+      {
+        "id": "ScheduledWorkspace",
+        "contract": "packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.md",
+        "consumers": ["renderer/src/ScheduledTasks.tsx"],
+        "variants": ["default"],
+        "states": ["ready", "empty"],
+        "evidence": ["E-SETTINGS"]
+      },
+      {
+        "id": "WorktreePicker",
+        "contract": "packages/ui/src/worktree/worktree-picker/worktree-picker.md",
+        "consumers": ["renderer/src/WorktreeStarter.tsx"],
+        "variants": ["default"],
+        "states": ["closed", "open", "selected"],
+        "evidence": ["E-SETTINGS"]
+      },
+      {
+        "id": "WorktreeStatus",
+        "contract": "packages/ui/src/worktree/worktree-status/worktree-status.md",
+        "consumers": ["renderer/src/WorktreeStatus.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-SETTINGS"]
+      },
+      {
+        "id": "WorktreeDirectory",
+        "contract": "packages/ui/src/worktree/worktree-directory/worktree-directory.md",
+        "consumers": ["renderer/src/settings/WorktreesSettings.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-SETTINGS"]
+      },
+      {
+        "id": "WorktreeSettings",
+        "contract": "packages/ui/src/worktree/worktree-settings/worktree-settings.md",
+        "consumers": ["renderer/src/settings/WorktreesSettings.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-SETTINGS"]
+      },
+      {
+        "id": "WorktreeWorkspace",
+        "contract": "packages/ui/src/worktree/worktree-workspace/worktree-workspace.md",
+        "consumers": ["renderer/src/WorktreeStatus.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-SETTINGS"]
+      },
+      {
+        "id": "Kbd",
+        "contract": "packages/ui/src/components/kbd/kbd.md",
+        "consumers": ["packages/ui/src/settings/shortcut-capture/shortcut-capture.tsx"],
+        "variants": ["secondary", "primary", "keycap"],
+        "states": ["default"],
+        "evidence": ["E-DECISION"],
+        "exports": ["Kbd"]
+      },
+      {
+        "id": "Badge",
+        "contract": "packages/ui/src/components/badge/badge.md",
+        "consumers": [
+          "packages/ui/src/conversation/composer-request-stack/composer-request-stack.tsx"
+        ],
+        "variants": ["neutral", "info", "success", "warning", "danger"],
+        "states": ["default"],
+        "evidence": ["E-CONVERSATION"],
+        "exports": ["Badge"]
+      },
+      {
+        "id": "Callout",
+        "contract": "packages/ui/src/components/callout/callout.md",
+        "consumers": [
+          "packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.tsx"
+        ],
+        "variants": ["info", "warning", "danger", "neutral"],
+        "states": ["default"],
+        "evidence": ["E-SETTINGS"],
+        "exports": ["Callout"]
+      },
+      {
+        "id": "EmptyState",
+        "contract": "packages/ui/src/components/empty-state/empty-state.md",
+        "consumers": ["renderer/src/ProcessesPane.tsx", "renderer/src/WorkgroupsPane.tsx"],
+        "variants": ["default", "compact"],
+        "states": ["default"],
+        "evidence": ["E-SETTINGS"],
+        "exports": ["EmptyState"]
+      },
+      {
+        "id": "ConfirmDialog",
+        "contract": "packages/ui/src/components/confirm-dialog/confirm-dialog.md",
+        "consumers": ["renderer/src/ProcessesPane.tsx"],
+        "variants": ["default", "destructive", "warning"],
+        "states": ["default", "pending"],
+        "evidence": ["E-DECISION"],
+        "exports": ["ConfirmDialog"]
+      },
+      {
+        "id": "Sheet",
+        "contract": "packages/ui/src/components/sheet/sheet.md",
+        "consumers": ["renderer/src/TurnHookStats.tsx"],
+        "variants": ["right", "left", "bottom"],
+        "states": ["default"],
+        "evidence": ["E-SETTINGS"],
+        "exports": [
+          "Sheet",
+          "SheetBody",
+          "SheetClose",
+          "SheetContent",
+          "SheetDescription",
+          "SheetFooter",
+          "SheetHeader",
+          "SheetTitle",
+          "SheetTrigger"
+        ]
+      },
+      {
+        "id": "ComposerRequestStack",
+        "contract": "packages/ui/src/conversation/composer-request-stack/composer-request-stack.md",
+        "consumers": [
+          "packages/ui/src/conversation/composer-request-stack/composer-request-stack.test.tsx"
+        ],
+        "variants": ["default"],
+        "states": ["single", "paginated"],
+        "evidence": ["E-DECISION"],
+        "exports": ["ComposerRequestStack"]
+      },
+      {
+        "id": "WorkedForDivider",
+        "contract": "packages/ui/src/conversation/worked-for-divider/worked-for-divider.md",
+        "consumers": [
+          "packages/ui/src/conversation/worked-for-divider/worked-for-divider.test.tsx"
+        ],
+        "variants": ["default"],
+        "states": ["static", "interactive"],
+        "evidence": ["E-CONVERSATION"],
+        "exports": ["WorkedForDivider"]
+      },
+      {
+        "id": "ThreadFindBar",
+        "contract": "packages/ui/src/conversation/thread-find-bar/thread-find-bar.md",
+        "consumers": ["packages/ui/src/conversation/thread-find-bar/thread-find-bar.test.tsx"],
+        "variants": ["default"],
+        "states": ["empty", "matched"],
+        "evidence": ["E-CONVERSATION"],
+        "exports": ["ThreadFindBar"]
+      },
+      {
+        "id": "PopoverSidebar",
+        "contract": "packages/ui/src/workbench/popover-sidebar/popover-sidebar.md",
+        "consumers": ["packages/ui/src/workbench/popover-sidebar/popover-sidebar.test.tsx"],
+        "variants": ["default"],
+        "states": ["closed", "open"],
+        "evidence": ["E-SETTINGS"],
+        "exports": ["PopoverSidebar"]
+      },
+      {
+        "id": "AutomationTemplateDialog",
+        "contract": "packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.md",
+        "consumers": [
+          "packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.test.tsx"
+        ],
+        "variants": ["default"],
+        "states": ["closed", "open"],
+        "evidence": ["E-SETTINGS"],
+        "exports": ["AutomationTemplateDialog"]
+      },
+      {
+        "id": "ShortcutCapture",
+        "contract": "packages/ui/src/settings/shortcut-capture/shortcut-capture.md",
+        "consumers": ["packages/ui/src/settings/shortcut-capture/shortcut-capture.test.tsx"],
+        "variants": ["default"],
+        "states": ["idle", "recording", "disabled"],
+        "evidence": ["E-SETTINGS"],
+        "exports": ["ShortcutCapture"]
+      },
+      {
+        "id": "Attachments",
+        "contract": "packages/ui/src/conversation/message-attachments/message-attachments.md",
+        "consumers": ["renderer/src/components/ai-elements/attachments.tsx"],
+        "variants": ["grid", "inline", "list"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownTable",
+        "contract": "packages/ui/src/conversation/markdown-table/markdown-table.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-table.tsx"],
+        "variants": ["default"],
+        "states": ["ready", "scrolling"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "Attachment",
+        "contract": "packages/ui/src/conversation/message-attachments/message-attachments.md",
+        "consumers": ["renderer/src/components/ai-elements/attachments.tsx"],
+        "variants": ["grid", "inline", "list"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "AttachmentPreview",
+        "contract": "packages/ui/src/conversation/message-attachments/message-attachments.md",
+        "consumers": ["renderer/src/components/ai-elements/attachments.tsx"],
+        "variants": ["grid", "inline", "list"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "AttachmentInfo",
+        "contract": "packages/ui/src/conversation/message-attachments/message-attachments.md",
+        "consumers": ["renderer/src/components/ai-elements/attachments.tsx"],
+        "variants": ["grid", "inline", "list"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "AttachmentRemove",
+        "contract": "packages/ui/src/conversation/message-attachments/message-attachments.md",
+        "consumers": ["renderer/src/components/ai-elements/attachments.tsx"],
+        "variants": ["grid", "inline", "list"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownTableHeader",
+        "contract": "packages/ui/src/conversation/markdown-table/markdown-table.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-table.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownTableBody",
+        "contract": "packages/ui/src/conversation/markdown-table/markdown-table.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-table.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownTableRow",
+        "contract": "packages/ui/src/conversation/markdown-table/markdown-table.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-table.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownTableHead",
+        "contract": "packages/ui/src/conversation/markdown-table/markdown-table.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-table.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
+      },
+      {
+        "id": "MarkdownTableCell",
+        "contract": "packages/ui/src/conversation/markdown-table/markdown-table.md",
+        "consumers": ["renderer/src/components/ai-elements/markdown-table.tsx"],
+        "variants": ["default"],
+        "states": ["ready"],
+        "evidence": ["E-CONVERSATION"]
       }
     ],
     "evidence": [

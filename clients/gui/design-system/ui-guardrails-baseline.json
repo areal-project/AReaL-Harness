@@ -1,0 +1,23 @@
+{
+  "$description": "上层 UI 硬护栏存量棘轮（只减不增），由 scripts/ui-guardrails-lint.mjs --write 生成。涵盖 spacing-literal / host-ui-class / native-control。",
+  "rules": [
+    {
+      "id": "spacing-literal",
+      "title": "间距魔法值禁令（padding / margin / gap）"
+    },
+    {
+      "id": "host-ui-class",
+      "title": "宿主禁穿透 @areal/ui 内部类名（.areal-*）"
+    },
+    {
+      "id": "native-control",
+      "title": "上层业务禁写裸原生控件（button / input / select / textarea）"
+    }
+  ],
+  "total": {
+    "spacing-literal": 0,
+    "host-ui-class": 0,
+    "native-control": 0
+  },
+  "files": {}
+}

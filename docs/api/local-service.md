@@ -10,6 +10,8 @@ TUI 与 Web 启动入口通过共享 Host 激活项目。普通 `areal service e
 
 ## 公共入口
 
+已登记项目的历史读取使用固定的数据目录，不以供应商配置、密钥或执行部署完整为启动条件。`areal/server/status` 分别返回 `readReady` 与 `executionReady`；执行装配失败时，`configuration.error` 提供诊断，历史与回执仍通过原鉴权入口读取。这类发送返回 `EXECUTION_CONFIGURATION_UNAVAILABLE`，不发起模型请求。单个模型或凭据不可用由具体请求准入拒绝，不关闭配置控制器；`executionReady` 表示执行部署已装配，不保证所选模型可执行。已声明配置管理能力的服务沿原修订和回执热应用修复；只有执行部署未装配的基础读取服务需要沿已有安全重启流程恢复。读取成功不结算 UNKNOWN 回执，也不自动重发旧提交。Store 损坏、项目身份或权限错误仍正常失败。
+
 ```sh
 target/debug/areal service ensure --workspace /absolute/workspace --json
 target/debug/areal service list --json
@@ -71,6 +73,8 @@ areal service task-catalog --workspace /absolute/workspace \
 已发布目录不证明执行活性、完整存储可恢复或某个未知提交已成功。它不运行恢复逻辑，保存的运行状态和修订可能与随后启动的 Core 不同。GUI 的共享 owner 缓存保留已发布来源与执行状态未观察标记。任务中心和侧栏的读取不启动冷 Core；独立激活协调器在 App 运行期间为启用安排连接其执行 owner。预览不写入完整 Task 模型、不提供管理操作的修订。实时结果覆盖预览，迟到预览不能覆盖实时结果；实时读取失败保留未确认提示和重试入口。
 
 实时有界目录和 owner watch 的参数、分页、断流恢复及通知基线见 [Task API](tasks.md#轻量目录与-owner-更新)。摘要包与 Task、收据和归属引用由同一个根提交，发布失败不能转成空目录或推翻已经确认的原操作。
+
+可信本机 GUI 可以用 `tasks.read` 的 `receipt` 操作，带原 `projectId` 和 `requestId` 查询同一调用身份的任务回执。Host 只读取原提交，结果尚不明确时返回 `submissionUnknown: true`。
 
 ## 可核查的停止操作
 

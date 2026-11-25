@@ -12,7 +12,8 @@ mod enrollment;
 mod push;
 #[path = "session.rs"]
 mod session;
-pub(crate) use session::{error_code, write_limits};
+pub(crate) use session::models::projectless_models;
+pub(crate) use session::{error_code, rich_message_input_with_command, write_limits};
 
 /// 执行方明确报出的失败：结果已知，不记成“结果未知”，也不需要事后核对。
 /// 后台中途退出时未完成的请求也是 CAPABILITY_UNAVAILABLE，所以它和兜底的 CORE_UNAVAILABLE 不算。
@@ -27,11 +28,30 @@ pub(crate) fn settled_failure(code: &str) -> bool {
 /// 本机桌面写入口，包装 Gateway 会话的本机主体。
 pub(crate) struct LocalSession(session::Session);
 impl LocalSession {
+    pub(crate) fn random_token_key() -> Result<[u8; 32]> {
+        session::Session::random_token_key()
+    }
     pub(crate) fn new(host: Rc<Host>, connection: String) -> Result<Self> {
         Ok(Self(session::Session::local(host, connection)?))
     }
-    pub(crate) fn browser(host: Rc<Host>, connection: String, device: String) -> Result<Self> {
-        Ok(Self(session::Session::browser(host, connection, device)?))
+    pub(crate) fn new_with_key(
+        host: Rc<Host>,
+        connection: String,
+        token_key: [u8; 32],
+    ) -> Result<Self> {
+        Ok(Self(session::Session::local_with_key(
+            host, connection, token_key,
+        )?))
+    }
+    pub(crate) fn browser_with_key(
+        host: Rc<Host>,
+        connection: String,
+        device: String,
+        token_key: [u8; 32],
+    ) -> Result<Self> {
+        Ok(Self(session::Session::browser_with_key(
+            host, connection, device, token_key,
+        )?))
     }
     pub(crate) async fn request(&mut self, request: &Value) -> Result<Value> {
         self.0.local_request(request).await
@@ -198,6 +218,11 @@ impl Gateway {
         }
     }
 }
+pub(crate) fn grant_allows_project(grant: &Value, alias: &str) -> bool {
+    grant["projectIds"]
+        .as_array()
+        .is_some_and(|ids| ids.iter().any(|id| id == "*" || id == alias))
+}
 pub(super) fn grant(config: &Value, peer: &str) -> Option<Value> {
     config["deviceGrants"]
         .as_array()?
@@ -233,7 +258,10 @@ fn relay(config: &Value, local: &Value) -> Result<Option<RelayConfig>> {
             && origin.path() == "/",
         "invalid Relay origin"
     );
-    let local_host = if origin.scheme() == "http" {
+    let is_local_tls = origin.scheme() == "https"
+        && config["relayLocal"]["origin"].as_str()
+            == Some(origin.origin().ascii_serialization().as_str());
+    let local_host = if origin.scheme() == "http" || is_local_tls {
         let expected = crate::local_relay::local_origin(config)?;
         ensure!(
             config["relayLocal"]["enabled"] == true
@@ -243,12 +271,24 @@ fn relay(config: &Value, local: &Value) -> Result<Option<RelayConfig>> {
             "local Relay is not owned"
         );
         let authority = origin[url::Position::BeforeHost..url::Position::AfterPort].to_owned();
-        let loopback = if origin.host_str().unwrap().contains(':') {
-            "::1"
-        } else {
-            "127.0.0.1"
+        let loopback = match origin.host() {
+            _ if is_local_tls => std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            Some(url::Host::Ipv6(_)) => std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
+            _ => std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
         };
-        origin.set_host(Some(loopback))?;
+        origin
+            .set_ip_host(loopback)
+            .map_err(|_| anyhow::anyhow!("invalid local Relay loopback address"))?;
+        if is_local_tls {
+            let port = local["loopbackPort"]
+                .as_u64()
+                .and_then(|port| u16::try_from(port).ok())
+                .filter(|port| *port >= 1024)
+                .context("local Relay loopback port missing")?;
+            origin
+                .set_port(Some(port))
+                .map_err(|_| anyhow::anyhow!("invalid local Relay loopback port"))?;
+        }
         Some(authority)
     } else {
         ensure!(origin.scheme() == "https", "Relay requires HTTPS");
@@ -292,22 +332,53 @@ async fn run_relay(host: Rc<Host>) {
     let mut running: Option<Running> = None;
     let mut terminal_transport = None;
     let mut observed_revision = None;
+    let mut next_snapshot_retry: Option<std::time::Instant> = None;
+    let mut last_snapshot_error: Option<String> = None;
     loop {
         let previous_status = host.gateway.status();
-        if host.gateway.relay_reconnect.replace(false) {
+        let reconnect_requested = host.gateway.relay_reconnect.replace(false);
+        if reconnect_requested {
             running = None;
             terminal_transport = None;
             host.gateway.push_supported.set(false);
+            next_snapshot_retry = None;
         }
-        let snapshot = if host.remote.native_owner().ok().flatten().is_some() {
-            host.remote.snapshot_async(&host.migration).await
+        let native_owned = host.remote.native_owner().ok().flatten().is_some();
+        let snapshot = if native_owned {
+            if let Ok(cached) = host.remote.snapshot(&host.migration) {
+                next_snapshot_retry = None;
+                last_snapshot_error = None;
+                Ok(cached)
+            } else if next_snapshot_retry.is_some_and(|until| std::time::Instant::now() < until) {
+                Err(anyhow::anyhow!(last_snapshot_error.clone().unwrap_or_else(
+                    || "Remote configuration is temporarily unavailable".into()
+                )))
+            } else {
+                match host.remote.snapshot_async(&host.migration).await {
+                    Ok(loaded) => {
+                        next_snapshot_retry = None;
+                        last_snapshot_error = None;
+                        Ok(loaded)
+                    }
+                    Err(error) => {
+                        let message = format!("{error:#}");
+                        if last_snapshot_error.as_deref() != Some(&message) {
+                            eprintln!("Host remote state unavailable: {message}");
+                            last_snapshot_error = Some(message);
+                        }
+                        // 冷加载失败（如钥匙串未授权或凭据缺失）时退避重试，避免 250ms 轮询反复触发 helper 与写盘。
+                        next_snapshot_retry =
+                            Some(std::time::Instant::now() + Duration::from_secs(5));
+                        Err(error)
+                    }
+                }
+            }
         } else {
+            next_snapshot_retry = None;
+            last_snapshot_error = None;
             Ok(Value::Null)
         };
-        let desired = snapshot
-            .as_ref()
-            .ok()
-            .filter(|_| host.remote.native_owner().ok().flatten().is_some());
+        let desired = snapshot.as_ref().ok().filter(|_| native_owned);
         let transport =
             desired.map(|snapshot| transport_key(&snapshot["config"], TransportKind::Relay));
         if let Some(snapshot) = desired {
@@ -336,7 +407,8 @@ async fn run_relay(host: Rc<Host>) {
         {
             let config = &snapshot["config"];
             let startup = (|| -> Result<_> {
-                let Some(configured) = relay(config, &host.gateway.local_relay.state())? else {
+                let Some(configured) = relay(config, &host.gateway.local_relay.routing_state())?
+                else {
                     return Ok(None);
                 };
                 let identity = Rc::new(wire::Identity::from_base64(
@@ -597,7 +669,7 @@ pub(super) async fn run(host: Rc<Host>) {
 }
 async fn run_local_relay(host: Rc<Host>) {
     loop {
-        let previous = host.gateway.local_relay.state();
+        let previous = host.gateway.local_relay.routing_state();
         let _ = host.gateway.local_relay.poll().await;
         if host.admission().is_ok()
             && host.remote.native_owner().ok().flatten().is_some()
@@ -623,7 +695,11 @@ async fn run_local_relay(host: Rc<Host>) {
                 let _ = host.gateway.local_relay.stop().await;
             }
         }
-        if previous != host.gateway.local_relay.state() {
+        let current = host.gateway.local_relay.routing_state();
+        if previous["loopbackPort"] != current["loopbackPort"] {
+            host.gateway.relay_reconnect.set(true);
+        }
+        if previous != current {
             host.changed();
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -638,6 +714,74 @@ impl Host {
 #[cfg(test)]
 mod local_relay_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn ipv6_local_relay_registers_over_loopback_with_public_authority() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                use futures_util::{SinkExt, StreamExt};
+                use tokio_tungstenite::tungstenite::{
+                    Message,
+                    handshake::server::{Request, Response},
+                };
+
+                let listener = tokio::net::TcpListener::bind("[::1]:0").await.unwrap();
+                let port = listener.local_addr().unwrap().port();
+                let authority = format!("[fd00::1]:{port}");
+                let origin = format!("http://{authority}");
+                let config = json!({
+                    "enabled": true,
+                    "relay": origin,
+                    "relayProtocol": "areal.remote.v2",
+                    "room": "room",
+                    "capability": "capability",
+                    "relayLocal": {"enabled": true, "origin": origin, "port": port}
+                });
+                let local = json!({"phase":"running","address":origin});
+                let connected = relay(&config, &local).unwrap().unwrap();
+                let peer = tokio::task::spawn_local(async move {
+                    let (stream, source) = listener.accept().await.unwrap();
+                    assert_eq!(source.ip(), std::net::Ipv6Addr::LOCALHOST);
+                    #[allow(clippy::result_large_err)]
+                    let mut socket = tokio_tungstenite::accept_hdr_async(
+                        stream,
+                        |request: &Request, response: Response| {
+                            assert_eq!(request.headers()["Host"], authority);
+                            assert_eq!(request.uri().path(), "/remote/socket");
+                            Ok(response)
+                        },
+                    )
+                    .await
+                    .unwrap();
+                    let registration = socket.next().await.unwrap().unwrap();
+                    assert_eq!(
+                        serde_json::from_str::<Value>(registration.to_text().unwrap()).unwrap(),
+                        json!({"protocol":"areal.relay.v1","role":"host","room":"room","capability":"capability"})
+                    );
+                    let ready = json!({
+                        "type": "ready",
+                        "limits": {
+                            "framesPerSecond": 12,
+                            "bytesPerSecond": 65536,
+                            "maxFrameBytes": 16384,
+                            "heartbeatIntervalMs": 500
+                        }
+                    });
+                    socket.send(Message::Text(ready.to_string().into())).await.unwrap();
+                });
+                let (owner, handle, mut events) = RelayOwner::new(connected);
+                let owner = tokio::task::spawn_local(owner.run());
+                match tokio::time::timeout(Duration::from_secs(5), events.recv()).await.unwrap() {
+                    Some(RelayEvent::Ready { .. }) => {}
+                    Some(RelayEvent::Disconnected { reason, .. }) => panic!("{reason}"),
+                    _ => panic!("missing Relay ready event"),
+                }
+                handle.stop();
+                owner.await.unwrap();
+                peer.await.unwrap();
+            })
+            .await;
+    }
 
     #[test]
     fn http_requires_the_exact_supervised_local_origin() {

@@ -8,11 +8,14 @@ import { fileURLToPath } from "node:url";
 const repository = fileURLToPath(new URL("../../../", import.meta.url));
 const stripComments = (css) =>
   css.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));
+// CSS 规范不允许在 @media / @container 查询条件里使用 var(--*)，剥离查询头同时保留行号。
+const stripAtQueryPreludes = (css) =>
+  css.replace(/@(?:media|container)\b[^{]*/g, (query) => query.replace(/[^\n]/g, " "));
 const lineOf = (text, index) => text.slice(0, index).split("\n").length;
 
 /** 组件 CSS 中绕过 Token 的字面量：长度（0 和 1px 发丝线除外）、颜色、时长与缓动曲线。 */
 export function literalFindings(css) {
-  const source = stripComments(css);
+  const source = stripAtQueryPreludes(stripComments(css));
   const findings = [];
   const patterns = [
     [

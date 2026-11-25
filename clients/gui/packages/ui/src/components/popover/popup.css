@@ -11,7 +11,7 @@
 }
 /* 提示在分组内切换到相邻触发器时立即出现，不重播入场。 */
 .ui-popup[data-instant] {
-  transition-duration: 0ms;
+  transition: none;
 }
 :root[data-reduced-motion="true"] .ui-popup {
   transition: none;

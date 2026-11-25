@@ -197,12 +197,16 @@ pub(super) async fn run(host: Rc<Host>) {
         scan(&host).await;
         host.changed();
         if host.schedules.retry_needed() {
-            let delay = Duration::from_secs((5u64 << attempt.min(6)).min(300));
+            let delay = Duration::from_secs((5u64 << attempt.min(6)).min(30));
             attempt = attempt.saturating_add(1);
             tokio::select! { _ = host.schedules.wake.notified() => {attempt = 0;}, _ = tokio::time::sleep(delay) => {} }
         } else {
             attempt = 0;
-            host.schedules.wake.notified().await;
+            // 休眠项目没有 Core 定时器通知；Host 只按 published 的下一次时间提前唤醒。
+            tokio::select! {
+                _ = host.schedules.wake.notified() => {},
+                _ = tokio::time::sleep(Duration::from_secs(30)) => {},
+            }
         }
     }
 }
@@ -287,7 +291,7 @@ async fn activate(host: &Host, id: &str) -> Result<()> {
     if status.state == "ready" && status.service.is_some() {
         return Ok(());
     }
-    if !enabled_catalog(&host.bin, &registration).await? {
+    if !activation_due(&host.bin, &registration).await? {
         return Ok(());
     }
     let inputs = host
@@ -333,7 +337,25 @@ async fn activate(host: &Host, id: &str) -> Result<()> {
     result?;
     Ok(())
 }
-async fn enabled_catalog(bin: &Path, registration: &ProjectRegistration) -> Result<bool> {
+pub(super) async fn enabled_catalog(
+    bin: &Path,
+    registration: &ProjectRegistration,
+) -> Result<bool> {
+    catalog_enabled(read_catalog(bin, registration).await?, registration)
+}
+
+pub(super) async fn activation_due(bin: &Path, registration: &ProjectRegistration) -> Result<bool> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs() as i64;
+    catalog_due(
+        read_catalog(bin, registration).await?,
+        registration,
+        now + 60,
+    )
+}
+
+async fn read_catalog(bin: &Path, registration: &ProjectRegistration) -> Result<Value> {
     let mut command = TrustedCommand::supervised(&bin.join("areal"), &[])?;
     command
         .env_clear()
@@ -355,8 +377,21 @@ async fn enabled_catalog(bin: &Path, registration: &ProjectRegistration) -> Resu
             "published catalog command failed"
         )
     );
-    let value: Value = serde_json::from_slice(&output.stdout)?;
-    catalog_enabled(value, registration)
+    Ok(serde_json::from_slice(&output.stdout)?)
+}
+
+fn catalog_due(value: Value, registration: &ProjectRegistration, wake_before: i64) -> Result<bool> {
+    // 不把快照当成执行准入；缺页或旧目录缺少时间时保守唤醒，由 Core 核对原触发与 Run。
+    catalog_enabled(value.clone(), registration)?;
+    let catalog = &value["catalog"];
+    Ok(catalog["hasMore"] == true
+        || catalog["data"].as_array().is_some_and(|rows| {
+            rows.iter().any(|row| {
+                row["hasUnsettledWork"] == true
+                    || (row["enabled"] == true
+                        && row["nextRunAt"].as_i64().is_none_or(|at| at <= wake_before))
+            })
+        }))
 }
 fn catalog_enabled(value: Value, registration: &ProjectRegistration) -> Result<bool> {
     let (target, _) =
@@ -446,6 +481,7 @@ pub(super) mod tests {
                 auth_file: home.join("auth"),
                 pid: std::process::id(),
                 executable_version: "fixture".into(),
+                executable_digest: None,
             },
             token: "fixture".into(),
             slots: RefCell::new(BTreeMap::from([(
@@ -454,6 +490,7 @@ pub(super) mod tests {
             )])),
             stop: RefCell::new(None),
             host_stop_gate: Mutex::new(()),
+            clients: Default::default(),
             changes,
             exit: Notify::new(),
             migration: crate::migration::Migration::new(&home).unwrap().into(),
@@ -465,6 +502,7 @@ pub(super) mod tests {
             journal: crate::journal::Journal::new(&home).unwrap(),
             remote: crate::remote_state::RemoteState::new(&home),
             schedules: Schedules::load(&home).unwrap(),
+            bots: super::bots::Bots::load(&home).unwrap(),
         }
     }
     fn input(host: &Host, resume: bool) -> Ensure {
@@ -485,6 +523,31 @@ pub(super) mod tests {
                 .unwrap();
         json!({"version":2,"source":"published","executionState":"unobserved","target":target,"catalog":catalog})
     }
+    #[test]
+    fn future_schedules_keep_the_host_but_only_due_or_unsettled_work_needs_core() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = fixture(directory.path());
+        let registration = &host.slots.borrow()["project"].registration;
+        let future = catalog(
+            &host,
+            json!({"kind":"snapshot","rootDigest":"a".repeat(64),"hasMore":false,
+            "data":[{"mode":"scheduled","enabled":true,"nextRunAt":2000,"hasUnsettledWork":false}]}),
+        );
+        assert!(catalog_enabled(future.clone(), registration).unwrap());
+        assert!(!catalog_due(future.clone(), registration, 1999).unwrap());
+        assert!(catalog_due(future.clone(), registration, 2000).unwrap());
+        let mut unsettled = future.clone();
+        unsettled["catalog"]["data"][0]["enabled"] = json!(false);
+        unsettled["catalog"]["data"][0]["hasUnsettledWork"] = json!(true);
+        assert!(catalog_due(unsettled, registration, 1000).unwrap());
+        let mut incomplete = future.clone();
+        incomplete["catalog"]["hasMore"] = json!(true);
+        assert!(catalog_due(incomplete, registration, 1000).unwrap());
+        let mut unknown_time = future;
+        unknown_time["catalog"]["data"][0]["nextRunAt"] = Value::Null;
+        assert!(catalog_due(unknown_time, registration, 1000).unwrap());
+    }
+
     #[test]
     fn catalog_requires_positive_published_evidence_and_keeps_incomplete_distinct() {
         let directory = tempfile::tempdir().unwrap();

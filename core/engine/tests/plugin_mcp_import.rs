@@ -227,37 +227,32 @@ async fn portable_and_legacy_imports_preserve_observed_stdio_and_http_behavior()
         assert_eq!(*seen.lock().unwrap(), vec![HEADER_SECRET.to_owned()]);
         let components = store.installed_components().unwrap();
         let component = &components[0];
-        let apps = engine.mcp_apps_list(None).await.unwrap();
-        assert_eq!(apps["data"].as_array().unwrap().len(), 2);
-        let app = apps["data"]
+        let server = &connected["data"][0]["servers"]
             .as_array()
             .unwrap()
             .iter()
-            .find(|server| !server["tools"].as_array().unwrap().is_empty())
+            .find(|server| server["config"]["transport"] == "stdio")
             .unwrap();
-        let generation = app["generation"].as_u64().unwrap();
         let thread = engine
             .create(root.path().to_str().unwrap().into())
             .await
             .unwrap();
-        let opened = engine
-            .mcp_app_open(
+        let result = engine
+            .mcp_extension_call(
                 "owner".into(),
-                None,
-                thread.id.clone(),
-                app["serverId"].as_str().unwrap().into(),
-                generation,
-                "observe".into(),
-                None,
-                "import-open".into(),
-                None,
-                None,
+                thread.id,
+                (
+                    server["serverId"].as_str().unwrap().into(),
+                    server["generation"].as_u64().unwrap(),
+                ),
+                "mentionsSearch".into(),
+                json!({}),
+                "import-observe".into(),
             )
             .await
             .unwrap();
-        let result = engine.mcp_app_request("owner".into(), thread.id, opened["instanceId"].as_str().unwrap().into(), generation, json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"observe","arguments":{}}}), Some("import-observe".into())).await.unwrap();
         let observed: Value =
-            serde_json::from_str(result["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+            serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
         assert_eq!(observed["argument"], "fixture-argument");
         assert_eq!(observed["literal"], ENV_SECRET);
         assert_eq!(

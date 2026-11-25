@@ -16,6 +16,18 @@ fn hello() -> Value {
     })
 }
 
+#[test]
+fn provider_key_reply_redacts_debug_without_changing_the_local_wire() {
+    let value = json!({"apiKey":"synthetic-private-key"});
+    let reply: generated::LocalProviderRevealKeyResult =
+        serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(
+        format!("{reply:?}"),
+        "LocalProviderRevealKeyResult([REDACTED])"
+    );
+    assert_eq!(serde_json::to_value(reply).unwrap(), value);
+}
+
 #[tokio::test]
 async fn generated_hello_crosses_the_actual_local_wire_and_request_owner() {
     let value = hello();

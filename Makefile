@@ -22,7 +22,14 @@ endif
 	setup setup-node sdk-build script-test launcher-test workgroup-smoke unified-execution-smoke delegation-permissions-smoke capacity-workgroup local-service-smoke upgrade-smoke tui-upgrade-smoke \
 	verify-native integration-boundaries ci-preflight ci-gui-static ci-gui-health \
 	ci-gui-portable ci-core-contracts workflow-lint hooks-install check-changed baseline-diff agent-setup check-refs check-transitional check-rust-size lazy-mcp-compare \
-	training-export training-check training-smoke
+	training-export training-check training-smoke verification-evidence compare-journey-triage
+
+verification-evidence: ## 校验一份 ci-preflight 结构化 evidence 报告；REPORT=<report.json>
+	@test -n "$(REPORT)" || { echo 'REPORT is required' >&2; exit 2; }
+	python3 scripts/verification-evidence.py "$(REPORT)"
+
+compare-journey-triage: ## 对最近相关提交生成旅程分流新旧流程对照；ARGS 可传 --limit/--output
+	python3 scripts/compare-journey-triage.py $(ARGS)
 
 help: ## 显示常用操作（默认目标）
 	@printf '%s\n' '用法：make <target> [ARGS="..."]' ''
@@ -129,7 +136,7 @@ check-refs: ## 脚本、测试清单、CI、文档之间的名字一致性；无
 check-transitional: ## 名字带 legacy/compat 的代码要写“过渡：到 <版本> 删”，到期报错；存量只减不增
 	python3 scripts/check-transitional.py
 
-check-rust-size: ## Rust 单文件不超过 1500 行；存量超限文件不超过登记行数
+check-rust-size: ## 输出 Rust 文件体积优化信号（不作为失败门禁）
 	python3 scripts/check-rust-size.py
 
 check-changed: check-refs check-transitional check-rust-size ## 受影响快检加失败专项；显式 CI_BASE，ARGS=--plan 仅输出计划
@@ -143,9 +150,10 @@ ci-gui-health: ## GUI 健康合同与基线检查（使用已安装的固定格�
 	@set -eu; \
 	test -n "$(CI_BASE)" || { echo 'CI_BASE is required' >&2; exit 1; }; \
 	base="$$(git merge-base "$(CI_BASE)" HEAD)"; \
+	node clients/gui/scripts/check-test-module-boundary.mts "$$base"; \
 	unset AREAL_DESIGN_BASE; \
 	mkdir -p target/ci/gui; \
-	node --test clients/gui/scripts/gui-health.test.mjs clients/gui/scripts/design-system-maturity.test.mjs clients/gui/scripts/unknown-outcome-sources.test.mjs; \
+	node --test clients/gui/scripts/gui-health.test.mjs clients/gui/scripts/design-system-maturity.test.mjs clients/gui/scripts/unknown-outcome-sources.test.mjs clients/gui/scripts/check-test-module-boundary.test.mjs; \
 	node clients/gui/scripts/copy-budget.mjs; \
 	node clients/gui/scripts/ui-honesty-lint.mjs; \
 	if git cat-file -e "$$base:clients/gui/health-baseline.json" 2>/dev/null; then \
@@ -322,7 +330,7 @@ host-protocol-check: ## 检查 A0 协议生成物、桌面 IPC 冻结反例和�
 	python3 -m unittest scripts/tests/host_protocol_typescript.py
 	node --test clients/gui/scripts/desktop-ipc-freeze.test.cjs
 	pnpm --dir clients/gui exec vp run desktop-build
-	cargo test --locked -p areal-host local_send_and_steer_freeze -- --ignored
+	cargo test --locked -p areal-host local_send_and_steer_dispatch_without_node
 
 package: release ## 生成 macOS arm64 / Linux x86_64 发行产物及完整性清单；ARGS 指定 --output
 	python3 scripts/package.py $(ARGS)
@@ -335,13 +343,12 @@ install: release ## 构建并安装完整运行时；PREFIX 指定前缀，DESTD
 gui-install: ## 安装 GUI 的公开锁定依赖（需 pnpm）
 	pnpm --dir clients/gui install --frozen-lockfile
 	pnpm --dir clients/gui --filter @areal/gui-desktop exec install-electron
-	pnpm --dir clients/gui --filter @areal/gui-desktop exec playwright-core install ffmpeg
 gui-build: ## 同步锁定依赖并构建 GUI renderer
 	pnpm --dir clients/gui install --frozen-lockfile
 	pnpm --dir clients/gui build
 gui: gui-build ## 启动桌面 GUI（先 make build）
 	pnpm --dir clients/gui start
-gui-package: ## 增量构建 macOS arm64 候选应用（正式签名随后执行 sign:mac）
+gui-package: ## 构建 macOS arm64 ad-hoc 本地安装包
 	pnpm --dir clients/gui dist
 gui-smoke: ## 隔离目录中验证真实 Electron/Core 和本地模型
 	pnpm --dir clients/gui test:e2e

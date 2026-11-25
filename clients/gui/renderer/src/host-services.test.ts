@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { HostClientOptions, ShellProject, SourceNavigation } from "@areal/client";
-import { createHostReadServices } from "./host-services.js";
+import type { HostClientOptions, JsonObject, ShellProject, SourceNavigation } from "@areal/client";
+import { createHostReadServices, disposeHostReadServices } from "./host-services.js";
 import {
   configurationIdentity,
   createHostSnapshotProjector,
   settleHostCommand,
 } from "./host-snapshot.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
-import type { Action, PlatformServices, Snapshot } from "./services.js";
+import { call, type Action, type PlatformServices, type Snapshot } from "./services.js";
 import { PlatformReadProvider } from "./PlatformReadContext.js";
 import { useConversationHistory } from "./ConversationHistory.js";
 import { draftModelOptions, draftModelSelection } from "./lib/draftModelSelection.js";
@@ -203,7 +203,826 @@ function options(factory: NonNullable<HostClientOptions["transport"]>): HostClie
     transport: factory,
   };
 }
+
+it("keeps the first shell baseline and automatic transport retry in loading", async () => {
+  const wire = transport();
+  let release!: () => void;
+  const baseline = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const states: string[] = [];
+  const services = createHostReadServices(
+    undefined,
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        transport: {
+          ...base.transport,
+          async request(method, params, context) {
+            if (method === "shell.subscribe") await baseline;
+            return base.transport.request(method, params, context);
+          },
+        },
+      };
+    }),
+  );
+  const unsubscribe = services.onState((value) => states.push(value.connection!.state));
+  try {
+    await vi.waitFor(() => expect(services.reads!.status().connection).toBe("ready"));
+    expect((await services.snapshot()).connection?.state).toBe("connecting");
+    release();
+    await until(services);
+    expect(states).not.toContain("unavailable");
+  } finally {
+    release();
+    unsubscribe();
+    disposeHostReadServices(services);
+  }
+  const retrying = createHostReadServices(
+    undefined,
+    options(async () => {
+      throw new Error("temporary transport failure");
+    }),
+  );
+  try {
+    await vi.waitFor(() => expect(retrying.reads!.status().connection).toBe("offline"));
+    expect((await retrying.snapshot()).connection?.state).toBe("connecting");
+  } finally {
+    disposeHostReadServices(retrying);
+  }
+});
+
+it("preserves confirmed desktop failure and its recovery while the shell is unavailable", async () => {
+  const failure: NonNullable<Snapshot["connection"]> = {
+    state: "unavailable",
+    recovery: "check",
+    message: "Original operation needs attention",
+  };
+  const desktop = {
+    snapshot: async () => ({ projects: [], connection: failure }),
+    onState: () => () => {},
+  } as unknown as PlatformServices;
+  const services = createHostReadServices(
+    desktop,
+    options(async () => {
+      throw new Error("transport unavailable");
+    }),
+  );
+  try {
+    await vi.waitFor(async () => expect((await services.snapshot()).connection).toEqual(failure));
+  } finally {
+    disposeHostReadServices(services);
+  }
+});
+
+it("writes the file-opening preference once through Host and returns the selected application", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  const wire = transport();
+  const fileOpen = vi.fn(async () => ({
+    targets: [{ id: "finder", label: "Finder" }],
+    preferred: "system",
+    preferredLabel: "System",
+  }));
+  const write = vi.fn(async (method, _params, _context, commandId) => ({
+    method,
+    commandId,
+    admissionState: "accepted",
+    submissionUnknown: false,
+    receipt: { ...navigation, settings: { fileOpenTarget: "finder" } },
+  }));
+  const services = createHostReadServices(
+    {
+      snapshot: async () => ({ projects: [] }),
+      onState: () => () => {},
+      chooseProject: async () => null,
+      command: async () => {
+        throw new Error("Unexpected desktop mutation");
+      },
+      theme: async () => ({ dark: false, id: "light" }),
+      onTheme: () => () => {},
+      preview: async () => {
+        throw new Error("Unexpected preview");
+      },
+      fileOpen,
+    },
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["library.command"] },
+        transport: { ...base.transport, write },
+      };
+    }),
+  );
+  try {
+    await until(services);
+    await expect(
+      services.fileOpen!({ operation: "setDefault", target: "finder" }),
+    ).resolves.toMatchObject({ preferred: "finder", preferredLabel: "Finder" });
+    expect(fileOpen.mock.calls).toEqual([[{ operation: "targets" }]]);
+    expect(write.mock.calls).toEqual([
+      [
+        "library.command",
+        { operation: "settings", key: "fileOpenTarget", value: "finder" },
+        null,
+        expect.any(String),
+      ],
+    ]);
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
+});
+
+it("reads queued attachment bytes from the original Host project in bounded chunks", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  const wire = transport();
+  const uri = `areal://blob/${"a".repeat(64)}`;
+  const limit = 256 * 1024;
+  const offsets: number[] = [];
+  const services = createHostReadServices(
+    undefined,
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["attachment.read"] },
+        transport: {
+          ...base.transport,
+          async write(method, params, context) {
+            expect(method).toBe("attachment.read");
+            expect(context).toEqual({ projectId: "canonical", serviceGeneration: "core-gen" });
+            expect(params).toMatchObject({ threadId: "thread", uri });
+            const offset = Number(params.offset);
+            offsets.push(offset);
+            return {
+              ...context,
+              threadId: "thread",
+              uri,
+              mimeType: "application/octet-stream",
+              offset,
+              totalBytes: limit + 1,
+              nextOffset: offset === 0 ? limit : null,
+              base64: btoa(offset === 0 ? "A".repeat(limit) : "Z"),
+            };
+          },
+        },
+      };
+    }),
+  );
+  try {
+    await until(services);
+    const result = await call(services, "media", {
+      projectId: "alias",
+      threadId: "thread",
+      operation: "read",
+      uri,
+    });
+    expect(offsets).toEqual([0, limit]);
+    expect(result.mime).toBe("application/octet-stream");
+    expect(result.bytes).toHaveLength(limit + 1);
+    expect(result.bytes[limit - 1]).toBe(65);
+    expect(result.bytes[limit]).toBe(90);
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
+});
+
+it("registers a browser-selected project through Host and refreshes the Shell", async () => {
+  vi.stubGlobal("prompt", () => " /fixture/workspace ");
+  const wire = transport();
+  const register = vi.fn().mockResolvedValue({ projectId: "browser-project" });
+  const services = createHostReadServices(
+    undefined,
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["worktree.project.add"] },
+        transport: { ...base.transport, write: register },
+      };
+    }),
+  );
+  try {
+    await until(services);
+    const previous = wire.requests.filter((call) => call.method === "shell.subscribe").length;
+    expect(await services.chooseProject()).toBe("browser-project");
+    expect(register).toHaveBeenCalledWith(
+      "worktree.project.add",
+      { root: "/fixture/workspace" },
+      null,
+      undefined,
+    );
+    expect(wire.requests.filter((call) => call.method === "shell.subscribe")).toHaveLength(
+      previous + 1,
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it("projects a failed initial read with its owner and clears it on a successful retry", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  let fail = true;
+  let readGate: Promise<void> | undefined;
+  const wire = transport();
+  const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+    const base = await wire.factory(lifecycle);
+    return {
+      ...base,
+      transport: {
+        ...base.transport,
+        async request(method, params, context) {
+          if (method === "session.open" && fail) throw Error("history read failed");
+          if (method === "session.open") await readGate;
+          return base.transport.request(method, params, context);
+        },
+      },
+    };
+  };
+  const services = createHostReadServices(undefined, options(factory));
+  try {
+    await until(services);
+    await expect(
+      services.reads!.selectSession({ projectId: "alias", threadId: "thread" }),
+    ).rejects.toThrow("history read failed");
+    const failed = (await services.snapshot()).projects[0];
+    expect(failed.observationErrors.thread).toMatchObject({
+      message: "history read failed",
+      connectionGeneration: "core-gen",
+    });
+    expect(failed.conversationReads.thread.state).toBe("unavailable");
+    fail = false;
+    let release!: () => void;
+    readGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const retry = services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    try {
+      const loading = (await services.snapshot()).projects[0];
+      expect(loading.observationErrors).toEqual({});
+      expect(loading.conversationReads.thread.state).toBe("loading");
+    } finally {
+      release();
+      await retry;
+    }
+    const recovered = (await services.snapshot()).projects[0];
+    expect(recovered.observationErrors).toEqual({});
+    expect(recovered.conversationReads.thread.state).toBe("fresh");
+    expect(recovered.state.threads.thread.id).toBe("thread");
+    fail = true;
+    wire.send({ ...identity, event: "session.invalidated", sequence: 1 });
+    await vi.waitFor(async () =>
+      expect((await services.snapshot()).projects[0].observationErrors.thread).toMatchObject({
+        message: "history read failed",
+        connectionGeneration: "core-gen",
+      }),
+    );
+    expect((await services.snapshot()).projects[0].state.threads.thread.id).toBe("thread");
+    wire.send({
+      ...identity,
+      subscriptionId: "shell",
+      event: "shell.updated",
+      sequence: 1,
+      delta: {
+        projects: { upsert: [{ ...project, serviceGeneration: "new-gen" }], remove: [] },
+        navigation: { upsert: [], remove: [] },
+      },
+    });
+    await vi.waitFor(async () =>
+      expect((await services.snapshot()).projects[0].observationErrors.thread).toMatchObject({
+        connectionGeneration: "new-gen",
+      }),
+    );
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
+});
+
+it("projects execution read failures onto the logical project without changing their generation", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  const execution = {
+    ...project,
+    projectId: "execution",
+    alias: undefined,
+    logicalProjectId: project.projectId,
+    workspace: "/worktree",
+    serviceGeneration: "execution-gen",
+    summaries: {
+      ...project.summaries,
+      items: [{ ...project.summaries.items[0], id: "worktree-thread" }],
+    },
+  };
+  const wire = transport(observation, undefined, {
+    projects: [project, execution],
+    navigation: [navigation],
+  });
+  const services = createHostReadServices(
+    undefined,
+    options(async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        transport: {
+          ...base.transport,
+          async request(method, params, context) {
+            if (method === "session.open") throw Error("execution history unavailable");
+            return base.transport.request(method, params, context);
+          },
+        },
+      };
+    }),
+  );
+  try {
+    await until(services);
+    await expect(
+      services.reads!.selectSession({ projectId: "alias", threadId: "worktree-thread" }),
+    ).rejects.toThrow("execution history unavailable");
+    const snapshot = await services.snapshot();
+    expect(snapshot.projects).toHaveLength(1);
+    expect(snapshot.projects[0].observationErrors["worktree-thread"]).toMatchObject({
+      message: "execution history unavailable",
+      connectionGeneration: "execution-gen",
+    });
+    expect(snapshot.projects[0].observationErrors.thread).toBeUndefined();
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
+});
 describe("Host renderer read authority", () => {
+  it("only prewarms after Main verifies the Host serving this read connection", async () => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    let onState: ((snapshot: Snapshot) => void) | undefined;
+    const desktop: PlatformServices = {
+      snapshot: async () => ({ projects: [] }),
+      onState(listener: (snapshot: Snapshot) => void) {
+        onState = listener;
+        return () => {};
+      },
+      chooseProject: async () => null,
+      command: async () => {
+        throw new Error("Native write invoked");
+      },
+      theme: async () => ({ dark: true, id: "dark" }),
+      onTheme: () => () => {},
+      preview: async () => ({}),
+    };
+    const services = createHostReadServices(desktop, options(transport(observation).factory));
+    try {
+      await until(services);
+      expect(services.reads?.canPrewarm?.()).toBe(false);
+      onState?.({
+        projects: [],
+        verifiedDesktopHost: { hostId: connection.hostId, generation: "old" },
+      });
+      expect(services.reads?.canPrewarm?.()).toBe(false);
+      onState?.({
+        projects: [],
+        verifiedDesktopHost: { hostId: connection.hostId, generation: connection.hostGeneration },
+      });
+      expect(services.reads?.canPrewarm?.()).toBe(true);
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    false,
+    true,
+    "leave",
+    "pending",
+    "desktop",
+    "desktop-leave",
+    "desktop-unavailable",
+  ] as const)(
+    "activates a persisted conversation on submit with concurrent shell refresh=%s",
+    async (backgroundRefresh) => {
+      const page = new EventTarget();
+      vi.stubGlobal("window", page);
+      let phase = "stopped";
+      let persistedReads = 0;
+      const observedStates: string[] = [];
+      const events: string[] = [];
+      const wire = transport({
+        ...observation,
+        thread: { ...observation.thread, desktop: { configuration: { revision: 9 } } },
+      });
+      const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+        const base = await wire.factory(lifecycle);
+        return {
+          ...base,
+          identity: {
+            ...base.identity,
+            persistedHistory: true,
+            writeMethods: ["project.activate", "session.send"],
+          },
+          transport: {
+            ...base.transport,
+            async request(method, params, context) {
+              if (method === "shell.subscribe") {
+                observedStates.push(phase);
+                return {
+                  ...identity,
+                  subscriptionId: "shell",
+                  snapshot: {
+                    projects: [
+                      {
+                        ...project,
+                        state: phase,
+                        serviceGeneration: phase === "ready" ? "core-gen" : undefined,
+                      },
+                    ],
+                    navigation: [navigation],
+                  },
+                };
+              }
+              if (method === "session.openPersisted") {
+                persistedReads++;
+                if (phase !== "stopped")
+                  throw Object.assign(Error("history busy during activation"), {
+                    code: "RESOURCE_BUSY",
+                  });
+                return {
+                  ...identity,
+                  ...context,
+                  serviceGeneration: "old-gen",
+                  threadId: params.threadId,
+                  snapshot: {
+                    ...observation,
+                    thread: { ...observation.thread, desktop: { configuration: { revision: 7 } } },
+                  },
+                  access: { kind: "persisted", readOnly: true, snapshotId: "saved" },
+                };
+              }
+              if (method === "session.open") {
+                events.push("live-read");
+                expect(phase).toBe("ready");
+              }
+              return base.transport.request(method, params, context);
+            },
+            async write(method, params, _context, commandId) {
+              if (method === "project.activate") {
+                events.push(method);
+                expect(params).toEqual({});
+                if (backgroundRefresh === "pending")
+                  return {
+                    projectId: "canonical",
+                    state: "pending",
+                    activationId: "original-activation",
+                  };
+                if (backgroundRefresh === true) {
+                  phase = "starting";
+                  wire.send({
+                    ...identity,
+                    subscriptionId: "shell",
+                    event: "shell.invalidated",
+                    sequence: 1,
+                  });
+                  await vi.waitFor(() => expect(observedStates.at(-1)).toBe("starting"));
+                  expect(persistedReads).toBe(1);
+                  phase = "ready";
+                  wire.send({
+                    ...identity,
+                    subscriptionId: "shell",
+                    event: "shell.invalidated",
+                    sequence: 1,
+                  });
+                  await vi.waitFor(async () =>
+                    expect(
+                      (await services.snapshot()).projects[0].state.threads.thread
+                        ?.persistedHistory,
+                    ).not.toBe(true),
+                  );
+                } else phase = "ready";
+                if (backgroundRefresh === "leave") await services.reads!.selectSession(null);
+                return { projectId: "canonical", state: "ready", serviceGeneration: "core-gen" };
+              }
+              events.push(method);
+              expect(phase).toBe("ready");
+              expect(params).toMatchObject({ expectedConfigRevision: 9 });
+              return {
+                admissionState: "accepted",
+                commandId,
+                method,
+                target: { threadId: "thread" },
+                nativeRequestId: commandId,
+              };
+            },
+          },
+        };
+      };
+      let desktopState: Snapshot = { projects: [], connection: { state: "connecting" } };
+      const desktopListeners = new Set<(value: Snapshot) => void>();
+      const desktop: PlatformServices = {
+        snapshot: async () => desktopState,
+        onState: (listener) => {
+          desktopListeners.add(listener);
+          return () => desktopListeners.delete(listener);
+        },
+        chooseProject: async () => null,
+        command: async () => {
+          throw new Error("Native write invoked");
+        },
+        theme: async () => ({ dark: true, id: "dark" }),
+        onTheme: () => () => {},
+        preview: async () => {
+          throw new Error("Native preview invoked");
+        },
+      };
+      const waitsForDesktop =
+        typeof backgroundRefresh === "string" && backgroundRefresh.startsWith("desktop");
+      const services = createHostReadServices(
+        waitsForDesktop ? desktop : undefined,
+        options(factory),
+      );
+      try {
+        await until(services);
+        await services.reads!.selectSession({
+          projectId: "alias",
+          threadId: "thread",
+          persisted: true,
+        });
+        expect(events).toEqual([]);
+        const submitted = services.writes!.route("send", {
+          projectId: "alias",
+          threadId: "thread",
+          text: "continue",
+          requestId: crypto.randomUUID(),
+        });
+        if (waitsForDesktop) {
+          await vi.waitFor(() => expect(desktopListeners.size).toBe(2));
+          expect(events).toEqual([]);
+          if (backgroundRefresh === "desktop-leave") await services.reads!.selectSession(null);
+          desktopState = {
+            projects: [],
+            verifiedDesktopHost: {
+              hostId: connection.hostId,
+              generation: connection.hostGeneration,
+            },
+            connection: {
+              state: backgroundRefresh === "desktop-unavailable" ? "unavailable" : "ready",
+            },
+          };
+          for (const listener of desktopListeners) listener(desktopState);
+          if (backgroundRefresh !== "desktop") {
+            await expect(submitted).rejects.toMatchObject({
+              code:
+                backgroundRefresh === "desktop-leave" ? "STALE_CONNECTION" : "DESKTOP_UNAVAILABLE",
+            });
+            expect(events).toEqual([]);
+            expect(desktopListeners.size).toBe(1);
+            return;
+          }
+        }
+        if (backgroundRefresh === "pending") {
+          const error = await submitted.catch((error: unknown) => error);
+          expect(error).toMatchObject({
+            code: "ACTIVATION_PENDING",
+            activationId: "original-activation",
+          });
+          expect(error).not.toHaveProperty("submissionUnknown");
+          expect(events).toEqual(["project.activate"]);
+          return;
+        }
+        if (backgroundRefresh === "leave") {
+          await expect(submitted).rejects.toMatchObject({ code: "STALE_CONNECTION" });
+          expect(events).toEqual(["project.activate"]);
+          return;
+        }
+        await submitted;
+        expect(events).toEqual(["project.activate", "live-read", "session.send"]);
+      } finally {
+        page.dispatchEvent(new Event("pagehide"));
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+  it("routes remote silent connect prewarm through project.activate without desktop.command and wakes stopping sessions on send", async () => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    let phase: ShellProject["state"] = "stopped";
+    let blockedExplicitStop = false;
+    const events: string[] = [];
+    const liveObservation = {
+      ...observation,
+      thread: { ...observation.thread, desktop: { configuration: { revision: 9 } } },
+    };
+    const wire = transport(liveObservation);
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: {
+          ...base.identity,
+          persistedHistory: true,
+          writeMethods: ["project.activate", "session.send"],
+        },
+        transport: {
+          ...base.transport,
+          async request(method, params, context) {
+            if (method === "shell.subscribe")
+              return {
+                ...identity,
+                subscriptionId: "shell",
+                snapshot: {
+                  projects: [
+                    {
+                      ...project,
+                      state: phase,
+                      serviceGeneration: phase === "ready" ? "core-gen" : undefined,
+                    },
+                  ],
+                  navigation: [navigation],
+                },
+              };
+            if (method === "session.open") {
+              events.push("live-read");
+              return base.transport.request(method, params, context);
+            }
+            return base.transport.request(method, params, context);
+          },
+          async write(method, _params, _context, commandId) {
+            events.push(method);
+            if (method === "project.activate") {
+              if (blockedExplicitStop)
+                return { projectId: "canonical", state: "blocked", reason: "explicitlyStopped" };
+              phase = "ready";
+              return { projectId: "canonical", state: "ready", serviceGeneration: "core-gen" };
+            }
+            return {
+              admissionState: "accepted",
+              commandId,
+              method,
+              target: { threadId: "thread" },
+              nativeRequestId: commandId,
+            };
+          },
+        },
+      };
+    };
+    const services = createHostReadServices(undefined, options(factory));
+    try {
+      await until(services);
+      // 显式停止时，远端 connect 预热仍被 Host 拒绝。
+      blockedExplicitStop = true;
+      await expect(services.writes!.route("connect", { projectId: "alias" })).rejects.toMatchObject(
+        {
+          code: "ACTIVATION_BLOCKED",
+        },
+      );
+      // 空闲休眠时，远端静默 connect 通过 project.activate 唤醒并刷新 shell。
+      blockedExplicitStop = false;
+      const connected = await services.writes!.route("connect", { projectId: "alias" });
+      expect(connected?.routed).toBe(true);
+      expect((await services.snapshot()).projects[0].state.connected).toBe(true);
+
+      // 打开实时会话后进入 stopping（尚未切到 persistedHistory），直接发送仍按需激活。
+      await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+      events.length = 0;
+      phase = "stopping";
+      wire.send({
+        ...identity,
+        subscriptionId: "shell",
+        event: "shell.invalidated",
+        sequence: 1,
+      });
+      await vi.waitFor(async () =>
+        expect((await services.snapshot()).projects[0].state.hostState).toBe("stopping"),
+      );
+      await services.writes!.route("send", {
+        projectId: "alias",
+        threadId: "thread",
+        text: "wake during stopping",
+        requestId: crypto.randomUUID(),
+      });
+      expect(events).toEqual(["project.activate", "live-read", "session.send"]);
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  });
+  it.each([
+    {
+      name: "fork",
+      params: {
+        projectId: "alias",
+        sourceThreadId: "thread",
+        anchor: { turnId: "latest-turn", boundary: "after" },
+      },
+      shouldActivate: true,
+    },
+    {
+      name: "editMessage",
+      params: {
+        projectId: "alias",
+        threadId: "thread",
+        text: "edited",
+        requestId: crypto.randomUUID(),
+      },
+      shouldActivate: true,
+    },
+    {
+      name: "side",
+      params: {
+        operation: "create",
+        projectId: "alias",
+        sourceThreadId: "thread",
+        requestId: crypto.randomUUID(),
+      },
+      shouldActivate: true,
+    },
+    {
+      name: "side",
+      params: { operation: "closeOwned" },
+      shouldActivate: false,
+    },
+  ])(
+    "routes persisted wake for $name (shouldActivate=$shouldActivate)",
+    async ({ name, params, shouldActivate }) => {
+      const page = new EventTarget();
+      vi.stubGlobal("window", page);
+      let phase = "stopped";
+      const events: string[] = [];
+      const wire = transport(observation);
+      const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+        const base = await wire.factory(lifecycle);
+        return {
+          ...base,
+          identity: {
+            ...base.identity,
+            persistedHistory: true,
+            writeMethods: ["project.activate", "session.send"],
+          },
+          transport: {
+            ...base.transport,
+            async request(method, reqParams, context) {
+              if (method === "shell.subscribe") {
+                return {
+                  ...identity,
+                  subscriptionId: "shell",
+                  snapshot: {
+                    projects: [
+                      {
+                        ...project,
+                        state: phase,
+                        serviceGeneration: phase === "ready" ? "core-gen" : undefined,
+                      },
+                    ],
+                    navigation: [navigation],
+                  },
+                };
+              }
+              if (method === "session.openPersisted") {
+                return {
+                  ...identity,
+                  ...context,
+                  serviceGeneration: "old-gen",
+                  threadId: reqParams.threadId,
+                  snapshot: observation,
+                  access: { kind: "persisted", readOnly: true, snapshotId: "saved" },
+                };
+              }
+              if (method === "session.open") events.push("live-read");
+              return base.transport.request(method, reqParams, context);
+            },
+            async write(method) {
+              if (method === "project.activate") {
+                events.push("project.activate");
+                phase = "ready";
+                return { projectId: "canonical", state: "ready", serviceGeneration: "core-gen" };
+              }
+              return { admissionState: "accepted" };
+            },
+          },
+        };
+      };
+      const services = createHostReadServices(undefined, options(factory));
+      try {
+        await until(services);
+        await services.reads!.selectSession({
+          projectId: "alias",
+          threadId: "thread",
+          persisted: true,
+        });
+        const result = await services.writes!.route(name, params);
+        expect(result).toBeUndefined();
+        expect(events).toEqual(shouldActivate ? ["project.activate", "live-read"] : []);
+      } finally {
+        page.dispatchEvent(new Event("pagehide"));
+        vi.unstubAllGlobals();
+      }
+    },
+  );
   it("projects a stopped project's persisted history as read-only without marking it connected", async () => {
     const page = new EventTarget();
     vi.stubGlobal("window", page);
@@ -392,8 +1211,8 @@ describe("Host renderer read authority", () => {
                   "tasks.read",
                   "manage.command",
                   "providers.read",
-                  "pages.command",
-                  "pages.resource",
+                  "bots.read",
+                  "bots.command",
                 ]
               : [],
             writeLimits: {},
@@ -410,8 +1229,8 @@ describe("Host renderer read authority", () => {
           library: permitted,
           taskCatalog: permitted,
           taskManage: permitted,
-          pages: permitted,
-          settings: permitted ? ["模型服务"] : [],
+          bots: permitted,
+          settings: permitted ? ["providers"] : [],
           mutations: false,
           conversationSubmit: false,
           conversationCreate: false,
@@ -988,7 +1807,7 @@ describe("Host renderer read authority", () => {
       library: false,
       taskCatalog: false,
       taskManage: false,
-      pages: false,
+      bots: false,
       settings: [],
     });
     expect(wire.requests.map((request) => request.method)).toEqual([
@@ -1049,7 +1868,7 @@ describe("Host renderer read authority", () => {
       (await services.snapshot()).projects[0].state.threads.thread.turns[0].items[0].type,
     ).toBe("historyDeferred");
   });
-  it("loads a watched child tool body through that child's subscription", async () => {
+  it("loads a watched child's older history and tool body on its own subscription", async () => {
     const body = {
       sourceThreadId: "child",
       sourceTurnId: "child-turn",
@@ -1081,7 +1900,7 @@ describe("Host renderer read authority", () => {
           },
         ],
       },
-      history: { snapshotId: "child-history", complete: true, nextCursor: null },
+      history: { snapshotId: "child-history", complete: false, nextCursor: "child-older" },
     };
     const wire = transport();
     let holdHistory = false;
@@ -1115,21 +1934,31 @@ describe("Host renderer read authority", () => {
                   snapshotId: "child-history",
                   complete: true,
                   nextCursor: null,
-                  data: [
-                    {
-                      sourceThreadId: "child",
-                      sourceTurnId: "child-turn",
-                      sourceItemId: "tool",
-                      sourceTurnStatus: "completed",
-                      fragment: {
-                        text,
-                        offsetUtf8: 0,
-                        nextOffsetUtf8: totalBytes,
-                        totalBytes,
-                        version: "v1",
-                      },
-                    },
-                  ],
+                  data:
+                    params.cursor === "child-older"
+                      ? [
+                          {
+                            ...entry,
+                            sourceThreadId: "child",
+                            sourceTurnId: "older-turn",
+                            turn: { id: "older-turn", status: "completed" },
+                          },
+                        ]
+                      : [
+                          {
+                            sourceThreadId: "child",
+                            sourceTurnId: "child-turn",
+                            sourceItemId: "tool",
+                            sourceTurnStatus: "completed",
+                            fragment: {
+                              text,
+                              offsetUtf8: 0,
+                              nextOffsetUtf8: totalBytes,
+                              totalBytes,
+                              version: "v1",
+                            },
+                          },
+                        ],
                 },
               };
             }
@@ -1141,6 +1970,12 @@ describe("Host renderer read authority", () => {
     const services = createHostReadServices(undefined, options(factory));
     await until(services);
     await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const opened = await call(services, "open", { projectId: "alias", threadId: "child" });
+    expect(opened.projects[0].state?.threads.child.id).toBe("child");
+    expect(opened.projects[0].state?.threads.thread.id).toBe("thread");
+    expect((await services.snapshot()).projects[0].state.threads.child).toBeUndefined();
+    const listed = await call(services, "list", { projectId: "alias" });
+    expect(listed.projects[0].state?.threads.thread.id).toBe("thread");
     const release = services.reads!.watch!({ projectId: "alias", threadId: "child" });
     try {
       await vi.waitFor(async () =>
@@ -1151,6 +1986,15 @@ describe("Host renderer read authority", () => {
         (await services.snapshot()).projects[0].state.threads.child.turns[0].items[0],
       ).toMatchObject({ type: "dynamicToolCall", arguments: { path: "child" } });
       expect((await services.snapshot()).projects[0].state.threads.thread.id).toBe("thread");
+      const projected = (await services.snapshot()).projects[0].state.threads.child;
+      expect(projected.displayHistory).toMatchObject({ supported: true, complete: false });
+      await services.reads!.loadOlder(undefined, projected.displayHistory.viewGeneration);
+      const paged = (await services.snapshot()).projects[0].state.threads;
+      expect(paged.child.turns.map((turn: { id: string }) => turn.id)).toEqual([
+        "older-turn",
+        "child-turn",
+      ]);
+      expect(paged.thread.turns.map((turn: { id: string }) => turn.id)).toEqual(["latest-turn"]);
       holdHistory = true;
       const pending = services.reads!.loadItem("tool", { projectId: "alias", threadId: "child" });
       await vi.waitFor(() => expect(releaseHistory).toBeDefined());
@@ -1229,6 +2073,29 @@ describe("Host renderer read authority", () => {
     expect(thread.executionCore.serviceGeneration).toBe("execution-gen");
     expect(thread.worktree.branch).toBe("feature");
   });
+  it("preserves Cloud ownership after reading the remote thread", async () => {
+    const execution = {
+      ...project,
+      projectId: "cloud-session:source:record",
+      logicalProjectId: "canonical",
+      alias: { sourceId: "source", projectId: "record" },
+      workspace: "cloud://record",
+      summaries: {
+        state: "fresh",
+        items: [{ ...project.summaries.items[0], cloud: { sessionId: "record", connected: true } }],
+      },
+    };
+    const wire = transport(observation, undefined, {
+      projects: [{ ...project, summaries: { state: "fresh", items: [] } }, execution],
+      navigation: [navigation],
+    });
+    const services = createHostReadServices(undefined, options(wire.factory));
+    await until(services);
+    await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const thread = (await services.snapshot()).projects[0].state.threads.thread;
+    expect(thread.cloud).toEqual({ sessionId: "record", connected: true });
+    expect(thread.executionProjectId).toBe("record");
+  });
   it("retains unrelated project projections during a native session delta", async () => {
     const other = {
       ...project,
@@ -1266,6 +2133,91 @@ describe("Host renderer read authority", () => {
     expect(next.projects[1]).toBe(previous);
     expect(next.projects[0].state.threads.thread.turns[0].items[0].text).toBe("changed");
   });
+  it("sends a saved task draft through its Host task owner", async () => {
+    const wire = transport({
+      ...observation,
+      thread: {
+        ...observation.thread,
+        desktop: {
+          configuration: {
+            revision: 7,
+            options: { appendInstructions: "AREAL_TASK_DRAFT_V1\nTime zone: Asia/Shanghai\n" },
+          },
+        },
+      },
+    });
+    let loseReply = false;
+    const write = vi.fn(async (method: string, params: JsonObject, ..._binding: unknown[]) => {
+      if (method === "command.read")
+        return { commandId: params.commandId, admissionState: "notFound" };
+      if (method === "tasks.read")
+        return {
+          requestId: params.requestId,
+          submissionUnknown: false,
+          receipt: { threadId: "thread", turnId: "turn" },
+        };
+      if (loseReply) throw new Error("connection closed");
+      return { threadId: "thread", turnId: "turn" };
+    });
+    const services = createHostReadServices(
+      undefined,
+      options(async (lifecycle) => {
+        const opened = await wire.factory(lifecycle);
+        return {
+          ...opened,
+          identity: {
+            ...opened.identity,
+            writeMethods: ["desktop.command", "session.send", "command.read", "tasks.read"],
+          },
+          transport: {
+            ...opened.transport,
+            async write(method, params, context, commandId) {
+              if (
+                method === "desktop.command" &&
+                (params.request as JsonObject)?.operation === "inspect"
+              )
+                return {};
+              return write(method, params, context, commandId);
+            },
+          },
+        };
+      }),
+    );
+    await until(services);
+    await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const { call } = await import("./services.js");
+    const requestId = "11111111-1111-4111-8111-111111111111";
+    const message = { projectId: "alias", threadId: "thread", requestId, text: "Adjust weekdays" };
+    expect(await call(services, "send", message)).toEqual({ threadId: "thread", turnId: "turn" });
+    expect(write).toHaveBeenCalledExactlyOnceWith(
+      "desktop.command",
+      {
+        command: "manage",
+        request: { ...message, operation: "taskDraftSend", timeZone: "Asia/Shanghai" },
+      },
+      null,
+      undefined,
+    );
+    loseReply = true;
+    const original = "22222222-2222-4222-8222-222222222222";
+    await expect(call(services, "send", { ...message, requestId: original })).rejects.toMatchObject(
+      {
+        requestId: original,
+        submissionUnknown: true,
+      },
+    );
+    expect(
+      await call(services, "reconcile", { projectId: "alias", requestId: original }),
+    ).toMatchObject({
+      outcomes: { [original]: { accepted: true, threadId: "thread", turnId: "turn" } },
+    });
+    expect(write.mock.calls.map(([method]) => method)).toEqual([
+      "desktop.command",
+      "desktop.command",
+      "command.read",
+      "tasks.read",
+    ]);
+  });
   it("routes complete conversation inputs and preserves unknown drafts without replay", async () => {
     const wire = transport({
       ...observation,
@@ -1278,6 +2230,9 @@ describe("Host renderer read authority", () => {
       commandId?: string;
     }> = [];
     let admissionState = "accepted";
+    let failShellRefresh = false;
+    let heldShellRefresh: Promise<void> | undefined;
+    let shellRefreshHeld = false;
     const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
       const opened = await wire.factory(lifecycle);
       return {
@@ -1288,6 +2243,15 @@ describe("Host renderer read authority", () => {
         },
         transport: {
           ...opened.transport,
+          async request(method, params, context) {
+            if (method === "shell.subscribe" && heldShellRefresh) {
+              shellRefreshHeld = true;
+              await heldShellRefresh;
+            }
+            if (failShellRefresh && method === "shell.subscribe")
+              throw new Error("catalog unavailable");
+            return opened.transport.request(method, params, context);
+          },
           async write(method, params, context, commandId) {
             writes.push({ method, params, projectId: context?.projectId, commandId });
             return {
@@ -1329,12 +2293,54 @@ describe("Host renderer read authority", () => {
       },
     });
     expect(writes.at(-1)?.params).not.toHaveProperty("projectId");
+    let releaseShell!: () => void;
+    heldShellRefresh = new Promise<void>((resolve) => {
+      releaseShell = resolve;
+    });
+    const heldRequestId = "33333333-3333-4333-8333-333333333333";
+    try {
+      const result = await Promise.race([
+        call(services, "create", { ...creation, requestId: heldRequestId }),
+        new Promise((resolve) => setTimeout(() => resolve("blocked by shell"), 0)),
+      ]);
+      expect(shellRefreshHeld).toBe(true);
+      expect(result).toEqual({ threadId: "thread", requestId: heldRequestId });
+    } finally {
+      heldShellRefresh = undefined;
+      releaseShell();
+    }
+    failShellRefresh = true;
+    await expect(
+      call(services, "create", { ...creation, requestId: "22222222-2222-4222-8222-222222222222" }),
+    ).resolves.toEqual({ threadId: "thread", requestId: "22222222-2222-4222-8222-222222222222" });
+    failShellRefresh = false;
+
     const message = {
       projectId: "alias",
       threadId: "thread",
       text: "continue",
       attachments: [{ type: "file" as const, url: "areal://blob/test", mimeType: "text/plain" }],
       conversationQuotes: [{ text: "quoted" }],
+      contextParts: [
+        {
+          type: "reviewComment" as const,
+          comment: {
+            id: "comment",
+            path: "src/app.ts",
+            root: "/workspace",
+            scope: "branch",
+            ref: "main",
+            token: "token",
+            head: "head",
+            base: "base",
+            side: "additions" as const,
+            start: 3,
+            end: 3,
+            snippet: "const value = 1;",
+            body: "Please extract this value.",
+          },
+        },
+      ],
       mcpContent: [{ type: "text" as const, text: "app content" }],
       expectedTurnId: "turn",
       enqueue: true,
@@ -1347,6 +2353,7 @@ describe("Host renderer read authority", () => {
         expectedConfigRevision: 7,
         attachments: message.attachments,
         conversationQuotes: message.conversationQuotes,
+        contextParts: message.contextParts,
         mcpContent: message.mcpContent,
       },
     });
@@ -1362,6 +2369,7 @@ describe("Host renderer read authority", () => {
           expectedTurnId: "turn",
           attachments: message.attachments,
           conversationQuotes: message.conversationQuotes,
+          contextParts: message.contextParts,
           mcpContent: message.mcpContent,
         },
       },
@@ -1402,6 +2410,25 @@ describe("Host renderer read authority", () => {
       params: { commandId: original.requestId },
     });
     expect(writes.filter((write) => write.method === "session.send")).toHaveLength(2);
+    const plugin = {
+      pluginId: "example@local",
+      componentId: "commands/review.md",
+      installedDigest: "installed",
+      arguments: "file with spaces.ts --strict",
+    };
+    await call(services, "send", {
+      projectId: "alias",
+      threadId: "thread",
+      text: "",
+      command: plugin,
+      requestId,
+    });
+    expect(writes.at(-1)).toEqual({
+      method: "session.send",
+      projectId: "canonical",
+      commandId: requestId,
+      params: { threadId: "thread", expectedConfigRevision: 7, text: "", command: plugin },
+    });
     expect(services.capabilities).toMatchObject({
       mutations: false,
       conversationSubmit: true,
@@ -1409,7 +2436,60 @@ describe("Host renderer read authority", () => {
     });
   });
 
-  it("routes stop and approvals through Host receipts and falls back only when Host declines", async () => {
+  it("checks the exact original native configuration when the gateway has no receipt", async () => {
+    const wire = transport(observation);
+    const requestId = "44444444-4444-4444-8444-444444444444";
+    const outcome = {
+      status: "completed",
+      accepted: true,
+      threadId: "thread",
+      operation: {
+        method: "areal/thread/configure",
+        requestId,
+        target: { kind: "thread" as const, threadId: "thread" },
+      },
+    };
+    const writes: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const opened = await wire.factory(lifecycle);
+      return {
+        ...opened,
+        identity: { ...opened.identity, writeMethods: ["command.read", "desktop.command"] },
+        transport: {
+          ...opened.transport,
+          async write(method, params) {
+            writes.push({ method, params });
+            if (method === "command.read")
+              return { commandId: requestId, admissionState: "notFound", submissionUnknown: true };
+            return { outcomes: { [requestId]: outcome } };
+          },
+        },
+      };
+    };
+    const services = createHostReadServices(undefined, options(factory));
+    await until(services);
+    const { call } = await import("./services.js");
+    await expect(call(services, "reconcile", { projectId: "alias", requestId })).resolves.toEqual({
+      outcomes: { [requestId]: outcome },
+    });
+    expect(writes).toEqual([
+      { method: "command.read", params: { commandId: requestId } },
+      {
+        method: "desktop.command",
+        params: { command: "reconcile", request: { projectId: "alias", requestId } },
+      },
+    ]);
+    expect(
+      recoveredOutcome(
+        (await services.snapshot()).projects[0],
+        requestId,
+        "thread",
+        outcome.operation,
+      ),
+    ).toEqual(outcome);
+  });
+
+  it("routes stop and approvals through Host receipts without retrying a declined stop", async () => {
     const pending = {
       threadId: "thread",
       requestId: "approval",
@@ -1446,7 +2526,6 @@ describe("Host renderer read authority", () => {
         },
       };
     };
-    // 只核对是否退回桌面路径；桌面回执结构由桌面契约测试覆盖。
     const native_ = vi.fn(async () => ({ ok: false as const, error: { message: "desktop path" } }));
     const desktop: PlatformServices = {
       snapshot: async () => ({ projects: [] }),
@@ -1470,15 +2549,30 @@ describe("Host renderer read authority", () => {
     await call(services, "stop", stop);
     expect(writes.at(-1)).toMatchObject({
       method: "turn.stop",
+      commandId: stop.requestId,
       params: { threadId: "thread", expectedTurnId: "latest-turn" },
     });
     expect(native_).not.toHaveBeenCalled();
     stopReply = { admissionState: "unknown", commandId: "lost" };
-    await expect(call(services, "stop", stop)).rejects.toMatchObject({ submissionUnknown: true });
+    await expect(call(services, "stop", stop)).rejects.toMatchObject({
+      requestId: stop.requestId,
+      submissionUnknown: true,
+      outcome: {
+        kind: "unconfirmed",
+        operation: { method: "turn/interrupt", requestId: stop.requestId },
+      },
+    });
+    stopReply = { admissionState: "pending" };
+    await expect(call(services, "stop", stop)).rejects.toMatchObject({
+      submissionUnknown: true,
+      requestId: stop.requestId,
+    });
     expect(native_).not.toHaveBeenCalled();
     stopReply = Object.assign(new Error("workflow"), { code: "TASK_CONTROL_REQUIRED" });
-    await expect(call(services, "stop", stop)).rejects.toThrow("desktop path");
-    expect(native_).toHaveBeenCalledTimes(1);
+    await expect(call(services, "stop", stop)).rejects.toMatchObject({
+      code: "TASK_CONTROL_REQUIRED",
+    });
+    expect(native_).not.toHaveBeenCalled();
     await call(services, "respond", {
       projectId: "alias",
       threadId: "thread",
@@ -1497,7 +2591,7 @@ describe("Host renderer read authority", () => {
       },
     });
     expect(writes.filter((entry) => entry.method === "attention.read")).toHaveLength(2);
-    expect(native_).toHaveBeenCalledTimes(1);
+    expect(native_).not.toHaveBeenCalled();
   });
 });
 
@@ -1558,4 +2652,357 @@ it("reprojects completed inspection and fences its connection and Core generatio
     extras,
   ).snapshot.projects[0].configurations.thread as Record<string, unknown>;
   expect(replacement.modelName).toBeUndefined();
+});
+
+it("preserves safe Host rejection detail and reason for diagnosis", () => {
+  expect(() =>
+    settleHostCommand({
+      commandId: "original",
+      admissionState: "rejected",
+      error: {
+        code: "INVALID_PARAMS",
+        message: "expectedRevision does not match",
+        reason: "configurationChanged",
+      },
+    }),
+  ).toThrow("expectedRevision does not match");
+});
+
+it("uses the native attachment identity and Host state as the execution authority", () => {
+  const client = {
+    snapshot: () => ({ connection: "ready", identity: connection }),
+    readsSnapshot: () => ({ session: { state: "fresh" } }),
+  };
+  const projector = createHostSnapshotProjector(
+    client as never,
+    {} as never,
+    options(transport().factory),
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+  );
+  const extras = {
+    watched: new Map(),
+    tasks: new Map(),
+    historyVersion: 0,
+    commandOutcomes: new Map(),
+  };
+  const projectState = (
+    hostGeneration: string,
+    state: ShellProject["state"],
+    suppressed: boolean,
+  ) =>
+    projector(
+      {
+        snapshot: {
+          projects: [{ ...project, state, scheduleActivationSuppressed: suppressed }],
+          navigation: [navigation],
+        },
+      } as never,
+      true,
+      undefined,
+      undefined,
+      {
+        ...extras,
+        desktopSnapshot: {
+          connection: { state: "ready" },
+          verifiedDesktopHost: { hostId: connection.hostId, generation: hostGeneration },
+          // 原生 Main 不再维护 Node 项目镜像，过期镜像不能改变 Host 的可执行事实。
+          projects: [
+            { id: "alias", state: { connected: false }, scheduling: { suppressed: true } },
+          ],
+        },
+      } as never,
+    ).snapshot.projects[0];
+  expect(projectState("old-host", "ready", false)).toMatchObject({
+    localExecutionReady: false,
+    state: { connected: false },
+    scheduling: { suppressed: false },
+  });
+  expect(projectState(connection.hostGeneration, "stopped", false)).toMatchObject({
+    localExecutionReady: false,
+    state: { connected: false, hostState: "stopped" },
+    scheduling: { suppressed: false },
+  });
+  expect(projectState(connection.hostGeneration, "stopped", true)).toMatchObject({
+    localExecutionReady: false,
+    state: { connected: false },
+    scheduling: { suppressed: true },
+  });
+  expect(projectState(connection.hostGeneration, "ready", false)).toMatchObject({
+    localExecutionReady: true,
+    state: { connected: true },
+    scheduling: { suppressed: false },
+  });
+});
+it.each([false, true])(
+  "connects a foreground project through native Host (resume=%s)",
+  async (resumeScheduling) => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    let phase = "stopped";
+    const wire = transport();
+    const activated: unknown[] = [];
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["project.activate", "desktop.command"] },
+        transport: {
+          ...base.transport,
+          async request(method, params, context) {
+            if (method === "shell.subscribe")
+              return {
+                ...identity,
+                subscriptionId: "shell",
+                sequence: 0,
+                snapshot: {
+                  projects: [
+                    {
+                      ...project,
+                      state: phase,
+                      serviceGeneration: phase === "ready" ? "core-gen" : undefined,
+                    },
+                  ],
+                  navigation: [navigation],
+                },
+              };
+            return base.transport.request(method, params, context);
+          },
+          async write(method, params, context) {
+            expect(method).toBe(resumeScheduling ? "desktop.command" : "project.activate");
+            activated.push({ params, context });
+            phase = "ready";
+            return { projectId: "canonical", state: "ready", serviceGeneration: "core-gen" };
+          },
+        },
+      };
+    };
+    const services = createHostReadServices(undefined, options(factory));
+    try {
+      await until(services);
+      const result = await call(services, "connect", {
+        projectId: "alias",
+        ...(resumeScheduling ? { resumeScheduling: true } : {}),
+      });
+      expect(result).toMatchObject({ projects: [{ id: "alias", state: { connected: true } }] });
+      expect(activated).toEqual(
+        resumeScheduling
+          ? [
+              {
+                params: {
+                  sourceId: "source",
+                  command: "connect",
+                  request: { projectId: "alias", resumeScheduling: true },
+                },
+                context: null,
+              },
+            ]
+          : [{ params: {}, context: { projectId: "canonical" } }],
+      );
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  },
+);
+
+it("browser Host services apply explicit light/dark theme choices and react to system changes", async () => {
+  let systemDark = false;
+  const listeners = new Set<() => void>();
+  const originalMatchMedia = globalThis.matchMedia;
+  globalThis.matchMedia = ((query: string) =>
+    ({
+      matches: query.includes("dark") ? systemDark : false,
+      media: query,
+      addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
+    }) as unknown as MediaQueryList) as typeof globalThis.matchMedia;
+  const services = createHostReadServices(undefined, {
+    bootstrap: async () => {
+      throw new Error("unused");
+    },
+    origin: "http://127.0.0.1",
+    transport: () => {
+      throw new Error("unused");
+    },
+  });
+  try {
+    expect(await services.theme("data-dense")).toEqual({ dark: true, id: "data-dense" });
+    expect(await services.theme("soft-glass")).toEqual({ dark: false, id: "soft-glass" });
+    expect(await services.theme("system")).toEqual({ dark: false, id: "soft-glass" });
+    const observed: { dark: boolean; id: string }[] = [];
+    const unsubscribe = services.onTheme((next) => observed.push(next));
+    systemDark = true;
+    for (const listener of listeners) listener();
+    expect(observed).toEqual([{ dark: true, id: "data-dense" }]);
+    // 显式选择浅色后，系统配色变化不再覆盖用户选择。
+    await services.theme("soft-glass");
+    systemDark = false;
+    for (const listener of listeners) listener();
+    expect(observed).toHaveLength(1);
+    unsubscribe();
+  } finally {
+    disposeHostReadServices(services);
+    globalThis.matchMedia = originalMatchMedia;
+  }
+});
+
+it("separates connect vs submit activation messages and wakes the execution worktree project for persisted threads", async () => {
+  const page = new EventTarget();
+  vi.stubGlobal("window", page);
+  let worktreePhase: ShellProject["state"] = "stopped";
+  let pendingOnce = true;
+  const activated: string[] = [];
+  const sent: Array<{ method: string; projectId: string }> = [];
+  const worktreeProject: ShellProject = {
+    ...project,
+    projectId: "worktree-canonical",
+    alias: { sourceId: "source", projectId: "worktree-alias" },
+    logicalProjectId: "canonical",
+    workspace: "/work/wt",
+    state: "stopped",
+    serviceGeneration: undefined,
+    worktree: {
+      state: "ready",
+      directory: "/work/wt",
+      checkoutRoot: "/work/wt",
+      branch: "feature",
+      base: "main",
+      sourceRoot: "/canonical",
+      requestId: "request",
+      automatic: true,
+    },
+    summaries: {
+      state: "fresh",
+      items: [{ ...project.summaries.items[0], id: "wt-thread" }],
+    },
+  };
+  const worktreeNav = {
+    ...navigation,
+    bindings: [
+      ...navigation.bindings,
+      { projectId: "worktree-canonical", alias: "worktree-alias", projectless: false },
+    ],
+  };
+  const liveObservation = {
+    ...observation,
+    thread: {
+      ...observation.thread,
+      id: "wt-thread",
+      desktop: { configuration: { revision: 11 } },
+    },
+  };
+  const wire = transport(liveObservation);
+  const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+    const base = await wire.factory(lifecycle);
+    return {
+      ...base,
+      identity: {
+        ...base.identity,
+        persistedHistory: true,
+        writeMethods: ["project.activate", "session.send"],
+      },
+      transport: {
+        ...base.transport,
+        async request(method, reqParams, context) {
+          if (method === "shell.subscribe")
+            return {
+              ...identity,
+              subscriptionId: "shell",
+              snapshot: {
+                projects: [
+                  { ...project, state: "stopped", serviceGeneration: undefined },
+                  {
+                    ...worktreeProject,
+                    state: worktreePhase,
+                    serviceGeneration: worktreePhase === "ready" ? "wt-gen" : undefined,
+                  },
+                ],
+                navigation: [worktreeNav],
+              },
+            };
+          if (method === "session.openPersisted")
+            return {
+              ...identity,
+              ...context,
+              projectId: "worktree-canonical",
+              serviceGeneration: "old-wt-gen",
+              threadId: "wt-thread",
+              snapshot: {
+                ...observation,
+                thread: {
+                  ...observation.thread,
+                  id: "wt-thread",
+                  desktop: { configuration: { revision: 5 } },
+                },
+              },
+              access: { kind: "persisted", readOnly: true, snapshotId: "saved" },
+            };
+          if (method === "session.open") return base.transport.request(method, reqParams, context);
+          return base.transport.request(method, reqParams, context);
+        },
+        async write(method, _params, context, commandId) {
+          if (method === "project.activate") {
+            const targetId = String(context?.projectId ?? "");
+            activated.push(targetId);
+            if (pendingOnce) {
+              pendingOnce = false;
+              return {
+                projectId: targetId,
+                state: "pending",
+                reason: "activationIncomplete",
+                activationId: "act-1",
+              };
+            }
+            worktreePhase = "ready";
+            return { projectId: targetId, state: "ready", serviceGeneration: "wt-gen" };
+          }
+          sent.push({ method, projectId: String(context?.projectId ?? "") });
+          return {
+            admissionState: "accepted",
+            commandId,
+            method,
+            target: { threadId: "wt-thread" },
+            nativeRequestId: commandId,
+          };
+        },
+      },
+    };
+  };
+  const services = createHostReadServices(undefined, options(factory));
+  try {
+    await until(services);
+    await services.reads!.selectSession({
+      projectId: "alias",
+      threadId: "wt-thread",
+      persisted: true,
+    });
+    // connect 预热遇到 pending 不应暴露“消息尚未提交，草稿已保留”。
+    const connectError = await services
+      .writes!.route("connect", { projectId: "alias", threadId: "wt-thread" })
+      .catch((error: unknown) => error);
+    expect(connectError).toMatchObject({
+      code: "ACTIVATION_PENDING",
+      activationState: "pending",
+      activationReason: "activationIncomplete",
+      activationId: "act-1",
+      message: "项目仍在启动中，请稍后重试。",
+    });
+    expect(activated).toEqual(["worktree-canonical"]);
+
+    // 真实发送必须唤醒工作树对应的执行项目（worktree-canonical），而不是逻辑主项目（canonical）。
+    await services.writes!.route("send", {
+      projectId: "alias",
+      threadId: "wt-thread",
+      text: "hello worktree",
+      requestId: crypto.randomUUID(),
+    });
+    expect(activated).toEqual(["worktree-canonical", "worktree-canonical"]);
+    expect(sent).toEqual([{ method: "session.send", projectId: "worktree-canonical" }]);
+  } finally {
+    page.dispatchEvent(new Event("pagehide"));
+    vi.unstubAllGlobals();
+  }
 });

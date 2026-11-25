@@ -119,7 +119,7 @@ async function settingsChecks() {
       const wide = getComputedStyle(el.querySelector(".settings-field-layout-wide"));
       const text = getComputedStyle(el.querySelector('input[type="text"]'));
       const probe = document.createElement("span");
-      probe.style.background = "var(--color-settings-card)";
+      probe.style.background = "var(--color-surface-card)";
       probe.style.color = "var(--color-settings-secondary)";
       el.append(probe);
       const semantic = {
@@ -204,11 +204,16 @@ async function settingsChecks() {
     // 按 settings-page 规格解析角色令牌，字号变化时不沿用旧的固定几何值。
     const settingsTokens = await page.evaluate(() => {
       const probe = document.body.appendChild(document.createElement("div"));
+      probe.style.height = "var(--spacing-control)";
+      const controlHeight = getComputedStyle(probe).height;
       probe.style.borderRadius = "var(--radius-panel)";
       probe.style.lineHeight = "var(--line-height-ui)";
-      probe.style.minHeight = "calc(var(--spacing-control-sm) + var(--spacing-section))";
+      probe.style.minHeight = "calc(var(--spacing-control) + var(--spacing-field))";
       probe.style.maxHeight = "calc(var(--spacing-control-sm) + var(--spacing-field))";
       probe.style.width = "calc(var(--reading-width) * 3 / 8)";
+      probe.style.padding = "var(--composer-inset) var(--spacing-field)";
+      probe.style.left = "var(--spacing-field)";
+      probe.style.fontSize = "var(--text-ui-caption)";
       const css = getComputedStyle(probe);
       const values = {
         radius: css.borderRadius,
@@ -216,6 +221,10 @@ async function settingsChecks() {
         rowMinHeight: css.minHeight,
         compactMinHeight: css.maxHeight,
         wideControlWidth: css.width,
+        rowPadding: css.padding,
+        fieldSpacing: css.left,
+        controlFont: css.fontSize,
+        controlHeight,
       };
       probe.remove();
       return values;
@@ -228,19 +237,19 @@ async function settingsChecks() {
         `${name} consumes the settings card semantic background`,
       );
       assert.equal(value.title.font, `${sample.font}px`);
-      assert.equal(value.title.weight, "500");
+      assert.equal(value.title.weight, "600");
       assert.equal(value.title.margin, "0px");
       assert.equal(value.title.line, settingsTokens.titleLine);
       assert.equal(value.description.font, `${Number(sample.font) - 2}px`);
       assert.equal(value.description.color, value.semantic.secondary);
       assert.equal(value.description.margin, "2px 0px 0px");
       assert.equal(value.row.minHeight, settingsTokens.rowMinHeight);
-      assert.equal(value.row.padding, "12px 16px");
+      assert.equal(value.row.padding, settingsTokens.rowPadding);
       assert.deepEqual(value.separator, {
         height: "0.5px",
         content: '""',
-        left: "16px",
-        right: "16px",
+        left: settingsTokens.fieldSpacing,
+        right: settingsTokens.fieldSpacing,
       });
       assert.equal(
         value.columns,
@@ -255,8 +264,8 @@ async function settingsChecks() {
           `${name} keeps the wide control column`,
         );
       assert.deepEqual(value.nativeText, {
-        font: `${Number(sample.font) - 1}px`,
-        height: `${Number(sample.font) + 14}px`,
+        font: settingsTokens.controlFont,
+        height: settingsTokens.controlHeight,
       });
       assert.deepEqual(
         value.overflow,
@@ -295,8 +304,8 @@ async function settingsChecks() {
       });
     assert.deepEqual(
       mobile,
-      { direct: true, padding: "16px", display: "flex" },
-      "the real Mobile stylesheet retains its direct content slot and padding",
+      { direct: true, padding: "16px", display: "grid" },
+      "the real Mobile SettingsGroupCard layout='grid' retains its direct content slot and padding",
     );
     assert.equal(
       await preview.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
@@ -781,7 +790,7 @@ try {
       const reasoningToggle = reading.getByRole("button", { name: "思考过程", exact: true });
       await toggleHere(reasoningToggle, "Enter", "reasoning keyboard expansion");
       await toggleHere(reasoningToggle, undefined, "reasoning mouse collapse");
-      const processToggle = reading.locator(".turn-progress-summary");
+      const processToggle = reading.locator('[data-testid="turn-elapsed"] button').first();
       await toggleHere(processToggle, "Enter", "turn progress keyboard collapse");
       await toggleHere(processToggle, undefined, "turn progress mouse expansion");
       await readingGroup.scrollIntoViewIfNeeded();
@@ -979,7 +988,7 @@ try {
       checks.push(
         "one sweeping tail status for tool and model progress; tool rows stay static; input, retry and disconnect retain canonical static labels",
       );
-      const progressToggle = updating.locator(".turn-progress-summary");
+      const progressToggle = updating.locator('[data-testid="turn-elapsed"] button').first();
       await progressToggle.click();
       await progressToggle.click();
       const updatingGroup = updating.locator(
@@ -1391,9 +1400,9 @@ try {
               height: el.getBoundingClientRect().height,
             };
           };
-          // 圆角按规格取令牌 radius-card，不写死像素值。
+          // 圆角按规格取令牌 radius-dialog（2xl），不写死像素值。
           const probe = document.body.appendChild(document.createElement("div"));
-          probe.style.borderRadius = "var(--radius-card)";
+          probe.style.borderRadius = "var(--radius-dialog)";
           const cardRadius = getComputedStyle(probe).borderRadius;
           probe.remove();
           return {

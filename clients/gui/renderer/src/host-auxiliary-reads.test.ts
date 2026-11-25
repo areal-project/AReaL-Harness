@@ -9,6 +9,82 @@ import {
 afterEach(() => vi.useRealTimers());
 
 describe("model catalog refresh", () => {
+  it("leaves room for foreground work while loading multiple project catalogs", async () => {
+    const pending: ((value: unknown) => void)[] = [];
+    const query = vi.fn(() => new Promise((resolve) => pending.push(resolve)));
+    const client = {
+      snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+      query,
+    } as unknown as HostClient;
+    const projects = Array.from({ length: 20 }, (_, i) => ({
+      projectId: `project-${i}`,
+      state: "stopped",
+    }));
+    const catalogs = new Map();
+    const refresh = () => refreshModelCatalogs(client, projects, catalogs, refresh);
+    refresh();
+    refresh();
+    expect(query).toHaveBeenCalledTimes(2);
+    pending[0]({ models: [] });
+    await vi.waitFor(() => expect(query).toHaveBeenCalledTimes(3));
+    expect(query).toHaveBeenLastCalledWith("project.models", "project-2", {});
+  });
+
+  it("reads a stopped project's model catalog without a Core generation", async () => {
+    const query = vi.fn().mockResolvedValue({ models: [{ modelId: "saved" }] });
+    const client = {
+      snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+      query,
+    } as unknown as HostClient;
+    const catalogs = new Map();
+    refreshModelCatalogs(
+      client,
+      [
+        { projectId: "cold", state: "stopped" },
+        { projectId: "unpublished", state: "legacyPending" },
+      ],
+      catalogs,
+      () => {},
+    );
+    await vi.waitFor(() =>
+      expect(catalogs.get("cold")?.value?.models).toEqual([{ modelId: "saved" }]),
+    );
+    expect(query).toHaveBeenCalledExactlyOnceWith("project.models", "cold", {});
+  });
+
+  it("keeps cached catalog values across serviceGeneration transitions on the same connection", async () => {
+    const pending: ((value: unknown) => void)[] = [];
+    const client = {
+      snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+      query: () => new Promise((resolve) => pending.push(resolve)),
+    } as unknown as HostClient;
+    const catalogs = new Map<
+      string,
+      { identity: string; scope?: string; connectionId?: string; value?: Record<string, unknown> }
+    >();
+    refreshModelCatalogs(
+      client,
+      [{ projectId: "host", state: "stopped" }] as unknown as ShellProject[],
+      catalogs,
+      () => {},
+    );
+    pending[0]({ models: [{ modelId: "saved" }] });
+    await Promise.resolve();
+    expect(catalogs.get("host")?.value?.models).toEqual([{ modelId: "saved" }]);
+
+    refreshModelCatalogs(
+      client,
+      [
+        { projectId: "host", state: "ready", serviceGeneration: "gen-1" },
+      ] as unknown as ShellProject[],
+      catalogs,
+      () => {},
+    );
+    expect(catalogs.get("host")?.value?.models).toEqual([{ modelId: "saved" }]);
+    pending[1]({ models: [{ modelId: "live" }] });
+    await Promise.resolve();
+    expect(catalogs.get("host")?.value?.models).toEqual([{ modelId: "live" }]);
+  });
   it("refreshes a project catalog when another client changes its revision", async () => {
     const pending: ((value: unknown) => void)[] = [];
     const client = {
@@ -39,6 +115,26 @@ describe("model catalog refresh", () => {
     expect(catalogs.get("host")?.value).toEqual({ models: ["new"] });
   });
 
+  it("refreshes a cold project when Host publishes a provider revision", async () => {
+    const query = vi.fn().mockResolvedValue({ models: [{ modelId: "saved" }] });
+    const client = {
+      snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+      query,
+    } as unknown as HostClient;
+    const catalogs = new Map();
+    const projects = [{ projectId: "cold", state: "stopped" }];
+    refreshModelCatalogs(client, projects, catalogs, () => {}, "initial");
+    await Promise.resolve();
+    query.mockResolvedValue({ models: [{ modelId: "updated" }] });
+    refreshModelCatalogs(client, projects, catalogs, () => {}, "changed");
+    await vi.waitFor(() =>
+      expect(catalogs.get("cold")?.value?.models).toEqual([{ modelId: "updated" }]),
+    );
+    refreshModelCatalogs(client, projects, catalogs, () => {}, "changed");
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenLastCalledWith("project.models", "cold", {});
+  });
+
   it("retries a failed read after the back-off instead of keeping the generation empty", async () => {
     vi.useFakeTimers();
     let calls = 0;
@@ -62,7 +158,7 @@ describe("model catalog refresh", () => {
     refresh();
     expect(calls).toBe(1);
     fail = false;
-    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(calls).toBe(2);
     expect(catalogs.get("host")?.value).toMatchObject({ profiles: [{ id: "profile" }] });
     // 模型服务设置的应用状态变了：同一代也重读，重读期间旧目录还在；状态没变不重读。
@@ -95,6 +191,7 @@ it("retries a failed configuration inspection for the same revision", async () =
     {
       id: "p",
       state: {
+        connected: true,
         threads: {
           t: { desktop: { configuration: { revision: 2, defaultModelRevision: "original" } } },
         },
@@ -104,7 +201,7 @@ it("retries a failed configuration inspection for the same revision", async () =
   const inspections = new Map<string, { identity: string; value?: Record<string, unknown> }>();
   const refresh = () => refreshInspections(client, projects as never, inspections, refresh);
   refresh();
-  await vi.advanceTimersByTimeAsync(5000);
+  await vi.advanceTimersByTimeAsync(1000);
   expect(calls).toBe(2);
   expect(inspections.get("p:t")?.value).toEqual({ modelName: "legacy-alpha" });
 });
@@ -119,7 +216,7 @@ it("does not install an inspection from an older revision or connection", async 
   const project = {
     id: "p",
     core: { serviceGeneration: "g" },
-    state: { threads: { t: { desktop: { configuration: { revision: 1 } } } } },
+    state: { connected: true, threads: { t: { desktop: { configuration: { revision: 1 } } } } },
   };
   const inspections = new Map<
     string,
@@ -136,4 +233,90 @@ it("does not install an inspection from an older revision or connection", async 
   replies[2]({ modelName: "current" });
   await Promise.resolve();
   expect(inspections.get("p:t")?.value).toEqual({ modelName: "current" });
+});
+
+it("bounds background inspections so history cannot exhaust Host command admission", async () => {
+  const replies: ((value: unknown) => void)[] = [];
+  const client = {
+    snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+    workbench: () => new Promise((resolve) => replies.push(resolve)),
+  } as unknown as HostClient;
+  const projects = [
+    {
+      id: "p",
+      state: {
+        connected: true,
+        threads: Object.fromEntries(
+          Array.from({ length: 40 }, (_, i) => [
+            `t${i}`,
+            { desktop: { configuration: { revision: 1 } } },
+          ]),
+        ),
+      },
+    },
+  ];
+  const inspections = new Map<
+    string,
+    { identity: string; scope?: string; value?: Record<string, unknown> }
+  >();
+  const refresh = () => refreshInspections(client, projects as never, inspections, refresh);
+  refresh();
+  expect(replies).toHaveLength(2);
+  for (let i = 0; i < 40; i++) {
+    replies[i]({ modelName: "model" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(replies.length - i - 1).toBeLessThanOrEqual(2);
+  }
+  expect(inspections.size).toBe(40);
+  expect([...inspections.values()].every((entry) => entry.value?.modelName === "model")).toBe(true);
+});
+
+it("drops stale features and profiles when Core serviceGeneration changes on the same connection", async () => {
+  const replies: ((value: unknown) => void)[] = [];
+  const client = {
+    snapshot: () => ({ connection: "ready", identity: { connectionId: "same-socket" } }),
+    query: () => new Promise((resolve) => replies.push(resolve)),
+  } as unknown as HostClient;
+  const catalogs = new Map<
+    string,
+    { identity: string; scope?: string; connectionId?: string; value?: Record<string, unknown> }
+  >();
+  refreshModelCatalogs(
+    client,
+    [{ projectId: "p1", state: "ready", serviceGeneration: "gen-1" }],
+    catalogs,
+    () => {},
+  );
+  replies[0]({
+    models: [{ providerId: "fixture", modelId: "m1" }],
+    profiles: [{ id: "p-old", revision: "r1" }],
+    features: { permissionPresets: true, permissionFullAccess: true },
+  });
+  await Promise.resolve();
+  expect(catalogs.get("p1")?.value?.features).toEqual({
+    permissionPresets: true,
+    permissionFullAccess: true,
+  });
+
+  // Core 换代（gen-2）但 socket 未变：模型列表可暂留不闪烁，但旧代 features 与 profiles 必须清空等待新代确认。
+  refreshModelCatalogs(
+    client,
+    [{ projectId: "p1", state: "ready", serviceGeneration: "gen-2" }],
+    catalogs,
+    () => {},
+  );
+  expect(catalogs.get("p1")?.value?.models).toEqual([{ providerId: "fixture", modelId: "m1" }]);
+  expect(catalogs.get("p1")?.value?.features).toBeUndefined();
+  expect(catalogs.get("p1")?.value?.profiles).toBeUndefined();
+
+  replies[1]({
+    models: [{ providerId: "fixture", modelId: "m1" }],
+    profiles: [{ id: "p-new", revision: "r2" }],
+    features: { permissionPresets: true, permissionFullAccess: false },
+  });
+  await Promise.resolve();
+  expect(catalogs.get("p1")?.value?.features).toEqual({
+    permissionPresets: true,
+    permissionFullAccess: false,
+  });
 });

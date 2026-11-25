@@ -37,18 +37,30 @@ export class CommandState {
     )
       this.drafts.set(key, "");
   }
-  failureIsUnknown(error) {
+  failureIsUnknown(error, command) {
+    // 旧 Host 的 RESYNC_REQUIRED 也可能发生在受理后，仍须核对原回执。
+    if (
+      ["session.create", "session.send"].includes(command?.method) &&
+      error.code === "CORE_UNAVAILABLE" &&
+      error.submissionUnknown === false &&
+      error.commandId === command.commandId
+    )
+      return false;
     return (
       !error.code ||
       error.submissionUnknown ||
-      ["SUBMISSION_UNKNOWN", "RESYNC_REQUIRED", "GRANT_CHANGED", "CORE_UNAVAILABLE"].includes(
-        error.code,
-      )
+      [
+        "SUBMISSION_UNKNOWN",
+        "REQUEST_TIMEOUT",
+        "RESYNC_REQUIRED",
+        "GRANT_CHANGED",
+        "CORE_UNAVAILABLE",
+      ].includes(error.code)
     );
   }
   failed(key, command, error) {
     if (this.commands.get(key) !== command) return;
-    const unknown = this.failureIsUnknown(error);
+    const unknown = this.failureIsUnknown(error, command);
     command.admissionState = unknown ? "unknown" : "rejected";
     command.submissionUnknown = unknown;
     command.error = { code: error.code ?? "SUBMISSION_UNKNOWN", message: error.message };

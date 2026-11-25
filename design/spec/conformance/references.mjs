@@ -32,7 +32,6 @@ const SHOTS = [
   "window.settings-snapshots",
   "window.settings-browser",
   "window.settings-cloud",
-  "window.settings-computer",
   "window.settings-worktrees",
   "window.settings-hooks",
   "window.settings-models",

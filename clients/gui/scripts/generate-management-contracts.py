@@ -15,10 +15,105 @@ RECURSIVE = {}
 DOCUMENT_HASH = {}
 
 
-def table(source, name):
-    text = source.split(f'const {name} = {{', 1)[1].split('\n};', 1)[0]
-    return {op: (method, re.findall(r'"([^"]+)"', fields)) for op, method, fields in re.findall(r'(\w+):\s*\[\s*"([^"]+)"\s*,\s*\[([^\]]*)\]', text)}
-
+# 桌面管理契约公开的字段投影。Host 独立执行准入与路由。
+CORE_PROJECTIONS = {
+    'pluginHooks': ('areal/plugin/hooks/list', []),
+    'pluginMcp': ('areal/plugin/mcp/list', []),
+    'plugins': ('areal/plugin/list', []),
+    'plugin': ('areal/plugin/read', ['id']),
+    'pluginComponents': ('areal/plugin/components', ['id']),
+    'providers': ('areal/provider/list', []),
+    'profile': ('areal/profile/read', ['id', 'revision']),
+    'skills': ('areal/skill/list', ['threadId', 'agentProfile']),
+    'skill': ('areal/skill/read', ['threadId', 'agentProfile', 'skill', 'resource', 'offset', 'maxBytes']),
+    'inspect': ('areal/thread/inspect', ['threadId']),
+    'context': ('areal/context/read', ['threadId', 'offset', 'limit']),
+    'inheritedHistory': ('areal/conversation/history', ['threadId', 'view', 'cursor', 'maxBytes']),
+    'plan': ('areal/plan/read', ['threadId']),
+    'processes': ('areal/process/list', ['threadId']),
+    'process': ('areal/process/get', ['threadId', 'id']),
+    'processWait': ('areal/process/wait', ['threadId', 'id', 'timeoutMs']),
+    'goal': ('areal/goal/get', ['threadId']),
+    'permissions': ('areal/permissions/read', ['threadId']),
+    'interactions': ('areal/interaction/list', ['threadId']),
+    'processOutput': ('areal/process/read', ['threadId', 'id', 'after', 'maxBytes', 'waitMs']),
+    'executionTraceResult': ('areal/execution/traceResult', ['threadId', 'executionId', 'workerThreadId', 'uri']),
+    'executionTrace': ('areal/execution/trace', ['threadId', 'executionId', 'workerThreadId', 'cursor']),
+    'executions': ('areal/execution/list', ['parentThreadId', 'offset', 'limit']),
+    'execution': ('areal/execution/read', ['parentThreadId', 'executionId', 'offset']),
+    'executionArtifact': ('areal/execution/artifact', ['parentThreadId', 'executionId', 'path', 'offset']),
+    'executionWait': ('areal/execution/wait', ['parentThreadId', 'executionId', 'timeoutMs']),
+    'agents': ('areal/agent/list', ['parentThreadId', 'cursor', 'limit']),
+    'agentWait': ('areal/agent/wait', ['parentThreadId', 'threadIds', 'timeoutMs']),
+    'workflows': ('areal/workflow/list', []),
+    'server': ('areal/server/status', []),
+    'workflow': ('areal/workflow/read', ['id', 'revision']),
+    'workgroupPolicy': ('areal/workgroup/policy', []),
+    'workgroups': ('areal/workgroup/list', []),
+    'workgroup': ('areal/workgroup/read', ['id']),
+    'workgroupWait': ('areal/workgroup/wait', ['id', 'afterRevision', 'timeoutMs']),
+    'workgroupArtifact': ('areal/workgroup/artifact', ['id', 'path', 'offset']),
+    'pluginArchiveImport': ('areal/plugin/importArchive', ['path', 'expectedRevision']),
+    'pluginHooksConfigure': ('areal/plugin/hooks/configure', ['id', 'expectedDigest', 'definitionDigest', 'enabled', 'trusted', 'allowReadOnlyCommands']),
+    'hookAcknowledge': ('areal/hook/acknowledge', ['threadId', 'invocationId', 'inspection']),
+    'pluginAuthConfigure': ('areal/plugin/auth/configure', ['id', 'server', 'expectedDigest', 'configuration']),
+    'pluginConnection': ('areal/plugin/connection', ['id', 'expectedDigest', 'connect']),
+    'pluginComponentConfigure': ('areal/plugin/component/configure', ['id', 'component', 'enabled', 'expectedRevision', 'expectedDigest']),
+    'pluginSetup': ('areal/plugin/setup', ['id', 'threadId']),
+    'pluginUserConfigSave': ('areal/plugin/userConfig/set', ['id', 'expectedRevision', 'expectedDigest', 'values', 'clearKeys']),
+    'pluginDevelopmentLink': ('areal/plugin/development/link', ['id', 'expectedRevision', 'expectedDigest']),
+    'pluginDevelopmentUnlink': ('areal/plugin/development/unlink', ['id', 'expectedRevision']),
+    'providerSave': ('areal/provider/upsert', ['provider', 'expectedRevision']),
+    'providerRemove': ('areal/provider/remove', ['id', 'expectedRevision']),
+    'archive': ('areal/thread/archive', ['threadId']),
+    'unarchive': ('areal/conversation/unarchive', ['threadId']),
+    'processCloseStdin': ('areal/process/closeStdin', ['threadId', 'id']),
+    'processStart': ('areal/process/start', ['threadId', 'lifetime', 'argv', 'cwd', 'tty', 'cols', 'rows', 'timeoutMs']),
+    'processWrite': ('areal/process/write', ['threadId', 'id', 'dataBase64']),
+    'processResize': ('areal/process/resize', ['threadId', 'id', 'cols', 'rows']),
+    'processTerminate': ('areal/process/terminate', ['threadId', 'id']),
+    'goalCreate': ('areal/goal/create', ['threadId', 'expectedRevision', 'objective', 'tokenBudget', 'maxTurns', 'maxActiveSeconds', 'inferLimits']),
+    'goalUpdate': ('areal/goal/update', ['threadId', 'expectedRevision', 'goalId', 'objective', 'tokenBudget', 'maxTurns', 'maxActiveSeconds', 'inferLimits']),
+    'goalPause': ('areal/goal/pause', ['threadId', 'expectedRevision', 'goalId']),
+    'goalResume': ('areal/goal/resume', ['threadId', 'expectedRevision', 'goalId']),
+    'goalClear': ('areal/goal/clear', ['threadId', 'expectedRevision', 'goalId']),
+    'pluginAuth': ('areal/plugin/auth', ['id', 'server', 'operation']),
+    'mcpExtensionCall': ('areal/mcp/extension/call', ['threadId', 'serverId', 'expectedGeneration', 'kind', 'arguments', 'requestId']),
+    'workgroupStart': ('areal/workgroup/start', ['plan', 'workers', 'admission']),
+    'workflowStart': ('areal/workflow/start', ['workflow', 'workers', 'admission']),
+    'workgroupRevise': ('areal/workgroup/revise', ['id', 'expectedRevision', 'plan']),
+    'taskSchedulePreview': ('areal/task/schedule/preview', ['schedule', 'from', 'count']),
+    'taskScheduleContext': ('areal/task/schedule/context', ['timeZone']),
+    'tasks': ('areal/task/list', ['after', 'limit']),
+    'task': ('areal/task/read', ['taskId']),
+    'taskInbox': ('areal/inbox/list', ['after', 'limit']),
+    'taskChannel': ('areal/channel/read', ['taskId', 'afterSequence', 'limit']),
+    'taskRuns': ('areal/task/runs/list', ['taskId', 'cursor', 'limit']),
+    'taskRun': ('areal/task/run/read', ['taskId', 'runId']),
+    'taskCreate': ('areal/task/create', ['mode', 'objective', 'threadId', 'sourceThreadId', 'interactionMode', 'schedule', 'scheduleV2', 'tokenBudget', 'maxTurns', 'maxActiveSeconds', 'delivery', 'model', 'parameters']),
+    'taskUpdate': ('areal/task/update', ['taskId', 'expectedRevision', 'objective', 'schedule', 'scheduleV2', 'delivery', 'model', 'parameters']),
+    'taskRunNow': ('areal/task/runNow', ['taskId', 'expectedRevision']),
+    'taskPause': ('areal/task/pause', ['taskId', 'expectedRevision']),
+    'taskResume': ('areal/task/resume', ['taskId', 'expectedRevision']),
+    'taskStopRun': ('areal/task/stopRun', ['taskId', 'expectedRevision', 'expectedRunId']),
+    'taskResumeRun': ('areal/task/resumeRun', ['taskId', 'expectedRevision', 'expectedRunId']),
+    'taskCancel': ('areal/task/cancel', ['taskId', 'expectedRevision']),
+    'taskDelete': ('areal/task/delete', ['taskId', 'expectedRevision']),
+    'taskReply': ('areal/channel/reply', ['taskId', 'runId', 'questionId', 'answers']),
+    'executionCancel': ('areal/execution/cancel', ['parentThreadId', 'executionId', 'mode']),
+    'executionApply': ('areal/execution/apply', ['parentThreadId', 'executionId']),
+    'workgroupCancel': ('areal/workgroup/cancel', ['id']),
+    'planUpdate': ('areal/plan/update', ['threadId', 'expectedRevision', 'steps']),
+    'contextCompact': ('areal/context/compact', ['threadId']),
+    'permissionsForget': ('areal/permissions/forget', ['threadId', 'project']),
+    'providerProbe': ('areal/provider/probe', ['id', 'model']),
+    'closeResources': ('areal/thread/closeResources', ['threadId']),
+    'serverDrain': ('areal/server/drain', []),
+    'serverGc': ('areal/server/gc', []),
+    'agentSpawn': ('areal/agent/spawn', ['parentThreadId', 'agentProfile', 'model', 'instructions', 'skills', 'toolAllowlist']),
+    'pluginAuthCredential': ('areal/plugin/auth/configure', ['id', 'server', 'expectedDigest', 'configuration']),
+    'toolAcknowledge': ('areal/tool/acknowledge', ['threadId', 'itemId', 'inspection']),
+}
 
 def literal(value):
     return json.dumps(value, ensure_ascii=False, separators=(',', ':'))
@@ -192,24 +287,9 @@ class Module:
         req['properties']['projectId'] = {'type':'string'}
         req['required'] += ['operation','projectId']
         req['additionalProperties'] = True
-        if operation == 'mcpApps':
-            # mcp_apps.rs:573 forwards the complete protocol Tool metadata with one routing name.
-            item = res['properties']['data']['items']
-            item['properties']['tools']['items'] = {'allOf':[{'$mcpOwner':'McpToolMetadata'},{'type':'object','properties':{'toolName':{'type':'string'}},'required':['toolName']}]}
-            item['properties']['icons'] = {'anyOf':[{'type':'array','items':{'$mcpOwner':'McpIcon'}},{'type':'null'}]}
-        if operation == 'mcpForms':
-            # rmcp ElicitRequestParams.message is a String (core/mcp/src/lib.rs:144).
-            res['properties']['data']['items']['properties']['message'] = {'type':'string'}
-        if operation == 'mcpToolResult':
-            res['properties']['toolMetadata'] = {'$mcpOwner':'McpToolMetadata'}
-        if operation in ('mcpToolResult','mcpExtensionCall','mcpAppOpen','mcpAppOpenFromResult'):
-            # mcp_apps.rs:1966,2268 forwards the original validated MCP result content.
-            if operation in ('mcpAppOpen','mcpAppOpenFromResult'):
-                instance = res if operation == 'mcpAppOpen' else res['oneOf'][0]['properties']['instance']
-                instance['properties']['toolMetadata'] = {'$mcpOwner':'McpToolMetadata'}
-                result = instance['properties']['initialResult']['anyOf'][0]
-            else: result = res['properties']['mcpResult'] if operation == 'mcpToolResult' else res
-            result['properties']['content']['items'] = {'$mcpOwner':'McpContentBlock'}
+        if operation == 'mcpExtensionCall':
+            # mcp_apps.rs forwards the original validated MCP result content.
+            res['properties']['content']['items'] = {'$mcpOwner':'McpContentBlock'}
         if operation in ('skills','skill'):
             # core/app-server/src/desktop.rs:83-99,833-858: exactly one owner.
             version = resolve(SCHEMAS['requests']['areal/skill/read'],SCHEMAS['requests']['areal/skill/read'])['properties']['skill']
@@ -276,15 +356,6 @@ class Module:
             res['required'].append('questionId')
         if operation == 'processStart':
             res['properties'].update({'shell':{'type':'string'},'fontFamily':{'type':'string'},'fontSize':{'type':'number'},'theme':{'type':'object','additionalProperties':{'type':'string'}},'fontFamilySource':{'enum':['custom','system','fallback']}})
-        if operation == 'mcpAppRequest':
-            identity={'type':['string','number','null']}
-            req['properties']['request']={'type':'object','properties':{'jsonrpc':{'const':'2.0'},'id':identity,'method':{'type':'string'},'params':True},'required':['jsonrpc','method']}
-            for branch in res['oneOf']: branch['properties']['id']=identity
-        if operation == 'mcpAppOpen':
-            req['properties']['fileResource']={'type':'object','properties':{'uri':{'type':'string'},'path':{'type':'string'}},'required':['uri','path'],'additionalProperties':False}
-        if operation in ('mcpAppOpen','mcpAppOpenFromResult'):
-            resource=res if operation == 'mcpAppOpen' else res['oneOf'][0]['properties']['instance']
-            resource['properties']['resource']['properties']['mimeType']={'enum':['text/html;profile=mcp-app','text/html']}
         if operation in ('agentSpawn','agentWait'):
             # desktop/agents.rs:179,224,385 projects known configuration and isolated results.
             version = resolve(SCHEMAS['requests']['areal/skill/read'],SCHEMAS['requests']['areal/skill/read'])['properties']['skill']
@@ -307,34 +378,9 @@ class Module:
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--check',action='store_true');args=parser.parse_args()
-    source=(ROOT/'services/workbench/src/desktop/core/management.cjs').read_text()
-    routes=table(source,'reads')
-    fields=source.split('const fields = {',1)[1].split('\n};',1)[0]
-    field_map={op:re.findall(r'"([^"]+)"',values) for op,values in re.findall(r'(\w+):\s*\[([^\]]*)\]',fields)}
-    mutation_text=source.split('const mutations = {',1)[1].split('\n};',1)[0]
-    for op,method in re.findall(r'(\w+):\s*"([^"]+)"',mutation_text):routes[op]=(method,field_map[op])
-    for match in re.finditer(r'const operations = \{', source):
-        part=source[match.end():].split('\n    };',1)[0]
-        for op,method,fields in re.findall(r'(\w+):\s*\[\s*"([^"]+)"\s*,\s*\[([^\]]*)\]',part):routes[op]=(method,re.findall(r'"([^"]+)"',fields))
-    tasks=(ROOT/'services/workbench/src/desktop/core/tasks.cjs').read_text()
-    routes.update(table(tasks,'reads'));routes.update(table(tasks,'writes'))
-    routes.update({
-      'executionCancel':('areal/execution/cancel',['parentThreadId','executionId','mode']),
-      'executionApply':('areal/execution/apply',['parentThreadId','executionId']),
-      'workgroupCancel':('areal/workgroup/cancel',['id']),
-      'planUpdate':('areal/plan/update',['threadId','expectedRevision','steps']),
-      'contextCompact':('areal/context/compact',['threadId']),
-      'permissionsForget':('areal/permissions/forget',['threadId','project']),
-      'providerProbe':('areal/provider/probe',['id','model']),
-      'closeResources':('areal/thread/closeResources',['threadId']),
-      'serverDrain':('areal/server/drain',[]),'serverGc':('areal/server/gc',[]),
-      'agentSpawn':('areal/agent/spawn',['parentThreadId','agentProfile','model','instructions','skills','toolAllowlist']),
-      'pluginAuthCredential':('areal/plugin/auth/configure',['id','server','expectedDigest','configuration']),
-      'toolAcknowledge':('areal/tool/acknowledge',['threadId','itemId','inspection']),
-    })
     groups={}
-    for op,(method,fields) in routes.items():
-        domain=('plugin-setup' if op == 'pluginSetup' else 'tasks' if method.startswith(('areal/task/','areal/channel/','areal/inbox/')) else 'plugins' if method.startswith(('areal/plugin/','areal/marketplace/','areal/hook/')) else 'mcp' if method.startswith(('areal/mcp/','areal/genUi/')) else 'workgroups' if method.startswith(('areal/workgroup/','areal/workflow/')) else 'processes' if method.startswith('areal/process/') else 'agents' if method.startswith('areal/agent/') else 'execution' if method.startswith('areal/execution/') else 'configuration' if method.startswith(('areal/provider/','areal/profile/','areal/skill/')) else 'thread')
+    for op,(method,fields) in CORE_PROJECTIONS.items():
+        domain=('plugin-setup' if op == 'pluginSetup' else 'tasks' if method.startswith(('areal/task/','areal/channel/','areal/inbox/')) else 'plugins' if method.startswith(('areal/plugin/','areal/marketplace/','areal/hook/')) else 'mcp' if method.startswith('areal/mcp/') else 'workgroups' if method.startswith(('areal/workgroup/','areal/workflow/')) else 'processes' if method.startswith('areal/process/') else 'agents' if method.startswith('areal/agent/') else 'execution' if method.startswith('areal/execution/') else 'configuration' if method.startswith(('areal/provider/','areal/profile/','areal/skill/')) else 'thread')
         groups.setdefault(domain,Module(domain)).add(op,method,fields)
     owner = Module('owner-directory')
     page = SCHEMAS['responses']['areal/task/directory/list']
@@ -361,7 +407,7 @@ def main():
         owner.standalone_names.add(owner.shape(document, alias)[0])
     groups['owner-directory'] = owner
     outputs={f'management-{domain}-protocol.cjs':module.emit() for domain,module in groups.items()}
-    index=['// @ts-check','"use strict";','// Generated from the actual Desktop routing tables and checked Core schemas.']
+    index=['// @ts-check','"use strict";','// Generated from the management projections and checked Core schemas.']
     for kind in ['RequestMap','ResponseMap']:
         index.append('/** @typedef {'+'&'.join('import("./management-'+domain+'-protocol.cjs").'+kind for domain, module in groups.items() if module.requests)+'} '+kind+' */')
     index.append('/** @param {string} operation */')
@@ -378,7 +424,7 @@ def main():
         if not target.exists() or target.read_text()!=content:
             changed.append(filename)
             if not args.check:target.write_text(content)
-    print(json.dumps({'sourceSha256':hashlib.sha256(SOURCE.read_bytes()).hexdigest(),'operations':len(routes),'files':{key:len(value.splitlines()) for key,value in outputs.items()},'changed':changed},indent=2))
+    print(json.dumps({'sourceSha256':hashlib.sha256(SOURCE.read_bytes()).hexdigest(),'operations':len(CORE_PROJECTIONS),'files':{key:len(value.splitlines()) for key,value in outputs.items()},'changed':changed},indent=2))
     if args.check and changed:raise SystemExit(1)
 
 if __name__=='__main__':main()

@@ -19,18 +19,7 @@ pub(super) const METHODS: &[&str] = &[
     "areal/goal/update",
     "areal/hook/acknowledge",
     "areal/interaction/respond",
-    "areal/mcp/app/close",
-    "areal/mcp/app/open",
-    "areal/mcp/app/openFromResult",
-    "areal/mcp/app/request",
-    "areal/mcp/app/tools/register",
-    "areal/mcp/app/tools/revoke",
     "areal/mcp/extension/call",
-    "areal/mcp/form/preview",
-    "areal/mcp/form/resource/prepare",
-    "areal/mcp/form/resource/release",
-    "areal/mcp/form/resource/stage",
-    "areal/mcp/form/respond",
     "areal/permissions/forget",
     "areal/plan/update",
     "areal/plugin/auth",
@@ -139,7 +128,9 @@ fn request_digest(method: &str, params: &Value, caps: &Value) -> Option<String> 
         "areal/channel/reply" => digest::<t::ChannelReply>(params),
         _ if caps["methodSemantics"][method]["receipt"] == "management" => {
             let mut params = params.clone();
-            params.as_object_mut()?.remove("requestId");
+            if !areal_protocol::plugin_runtime::FULL_MANAGEMENT_RECEIPT_PARAMS.contains(&method) {
+                params.as_object_mut()?.remove("requestId");
+            }
             Some(areal_local_service::storage::digest(
                 &serde_json::to_vec(&params).ok()?,
             ))
@@ -162,7 +153,7 @@ fn entry_id(entry: &Value) -> Option<&str> {
         .as_str()
         .or_else(|| entry["params"]["requestId"].as_str())
 }
-fn find(host: &Host, project: &str, id: &str) -> Result<Option<Value>> {
+pub(super) fn find(host: &Host, project: &str, id: &str) -> Result<Option<Value>> {
     let (_, snapshot) = host.journal.native_snapshot(project)?;
     Ok(snapshot["outcomes"].get(id).cloned().or_else(|| {
         snapshot["pending"]
@@ -173,23 +164,50 @@ fn find(host: &Host, project: &str, id: &str) -> Result<Option<Value>> {
             .cloned()
     }))
 }
+#[derive(Clone, Copy)]
+enum Channel<'a> {
+    Lease(&'a str),
+    Shared,
+}
+
+fn pending_read() -> Value {
+    json!({"confirmed":false,"state":"unconfirmed"})
+}
+
 async fn rpc(
     host: &Host,
     project: &str,
-    lease: &str,
+    channel: Channel<'_>,
     method: &str,
     params: Value,
 ) -> Result<Value> {
-    host.schedules
-        .connections
-        .workbench_request(host, project, lease, method, params)
-        .await
+    match channel {
+        Channel::Lease(lease) => {
+            host.schedules
+                .connections
+                .workbench_request(host, project, lease, method, params)
+                .await
+        }
+        Channel::Shared => {
+            let scope = host.schedules.connections.shared_identity(host, project)?;
+            host.schedules
+                .connections
+                .shared_workbench_request(
+                    host,
+                    project,
+                    (&scope.0, &scope.1, &scope.2),
+                    method,
+                    params,
+                )
+                .await
+        }
+    }
 }
-async fn capabilities(host: &Host, project: &str, lease: &str) -> Result<Value> {
+async fn capabilities(host: &Host, project: &str, channel: Channel<'_>) -> Result<Value> {
     let response = rpc(
         host,
         project,
-        lease,
+        channel,
         "areal/capabilities",
         json!({"apiVersion":"areal.core.v1"}),
     )
@@ -329,7 +347,7 @@ fn outcome(entry: &Value, receipt: &Value) -> Value {
 }
 fn read_result(entry: &Value) -> Value {
     if entry.get("status").is_none() {
-        return json!({"confirmed":false,"state":"unconfirmed"});
+        return pending_read();
     }
     let mut value = json!({"confirmed":true,"accepted":entry["accepted"]!=false,"status":entry["status"],"operation":entry["operation"]});
     if let Some(error) = entry.get("error") {
@@ -343,7 +361,7 @@ fn read_result(entry: &Value) -> Value {
 async fn original_receipt(
     host: &Host,
     project: &str,
-    lease: &str,
+    channel: Channel<'_>,
     entry: &Value,
     caps: &Value,
 ) -> Result<Option<Value>> {
@@ -362,7 +380,7 @@ async fn original_receipt(
         let response = rpc(
             host,
             project,
-            lease,
+            channel,
             "areal/workgroup/read",
             json!({"id":entry["params"]["id"]}),
         )
@@ -396,7 +414,7 @@ async fn original_receipt(
     if method == "areal/thread/start" && entry["params"]["creationAdmission"].is_object() {
         params["creationAdmission"] = entry["params"]["creationAdmission"].clone();
     }
-    let response = rpc(host, project, lease, "areal/request/read", params).await?;
+    let response = rpc(host, project, channel, "areal/request/read", params).await?;
     if response.get("error").is_some() {
         return Ok(None);
     }
@@ -416,6 +434,9 @@ async fn original_receipt(
         &caps["features"]["threadCreationJournal"]["binding"],
         thread,
     );
+    if receipt.is_none() && method == "areal/queue/steer" {
+        return Ok(failed_queue_steer(&expected, &response["result"]));
+    }
     if matches!(
         method,
         "areal/process/write"
@@ -434,7 +455,7 @@ async fn original_receipt(
             let processes = rpc(
                 host,
                 project,
-                lease,
+                channel,
                 "areal/process/list",
                 json!({"threadId":entry["params"]["threadId"]}),
             )
@@ -471,6 +492,38 @@ async fn original_receipt(
     Ok(receipt)
 }
 
+// 旧管理日志按不含 requestId 的参数计算摘要。仅结算与原请求完全匹配的终态错误。
+fn failed_queue_steer(expected: &ExpectedSubmission, result: &Value) -> Option<Value> {
+    let mut params = wire_params(&expected.method, &expected.params);
+    let original = digest::<areal_protocol::desktop::QueueSteer>(&params)?;
+    if expected.digest.as_ref() != Some(&original) || expected.identity.is_none() {
+        return None;
+    }
+    params.as_object_mut()?.remove("requestId");
+    let management = ExpectedSubmission {
+        digest: Some(areal_local_service::storage::digest(
+            &serde_json::to_vec(&params).ok()?,
+        )),
+        strict: true,
+        ..expected.clone()
+    };
+    let mut receipt =
+        areal_protocol::submissions::reconcile(&management, result, &Value::Null, None)?;
+    if receipt["status"] != "failed" || !receipt["error"].is_object() {
+        return None;
+    }
+    receipt["accepted"] = match receipt["error"]["data"]["outcome"]["kind"].as_str() {
+        Some("rejected") => json!(false),
+        Some("admitted")
+            if receipt["error"]["data"]["outcome"]["operation"] == expected.operation() =>
+        {
+            json!(true)
+        }
+        _ => return None,
+    };
+    Some(receipt)
+}
+
 fn error_from_receipt(receipt: &Value, operation: &Value) -> Value {
     let mut error = receipt
         .get("error")
@@ -503,15 +556,34 @@ pub(super) async fn reconcile(
     method: &str,
     params: Value,
 ) -> Result<Value> {
+    reconcile_channel(host, project, Channel::Lease(lease), method, params).await
+}
+
+pub(super) async fn reconcile_shared(
+    host: &Rc<Host>,
+    project: &str,
+    method: &str,
+    params: Value,
+) -> Result<Value> {
+    reconcile_channel(host, project, Channel::Shared, method, params).await
+}
+
+async fn reconcile_channel(
+    host: &Rc<Host>,
+    project: &str,
+    channel: Channel<'_>,
+    method: &str,
+    params: Value,
+) -> Result<Value> {
     ensure!(METHODS.contains(&method), "FORBIDDEN");
     let id = request_id(&params)?;
     let Some(entry) = find(host, project, id)? else {
-        return Ok(json!({"confirmed":false,"state":"unconfirmed"}));
+        return Ok(pending_read());
     };
     ensure!(entry["method"] == method, "COMMAND_CONFLICT");
     let settled = entry.get("status").is_some();
     if entry["rustOwner"] != true {
-        return Ok(json!({"confirmed":false,"state":"unconfirmed"}));
+        return Ok(pending_read());
     }
     let mut original = entry.clone();
     if entry["params"].is_object() {
@@ -566,12 +638,12 @@ pub(super) async fn reconcile(
         }
         original["params"] = bound;
     }
-    let caps = capabilities(host, project, lease).await?;
-    let Some(receipt) = original_receipt(host, project, lease, &original, &caps).await? else {
+    let caps = capabilities(host, project, channel).await?;
+    let Some(receipt) = original_receipt(host, project, channel, &original, &caps).await? else {
         return Ok(if settled {
             read_result(&entry)
         } else {
-            json!({"confirmed":false,"state":"unconfirmed"})
+            pending_read()
         });
     };
     if !matches!(receipt["status"].as_str(), Some("completed" | "failed"))
@@ -606,10 +678,222 @@ pub(super) async fn submit(
     remember: bool,
     reject_known: bool,
 ) -> Result<Value> {
+    submit_channel(
+        host,
+        project,
+        Channel::Lease(lease),
+        method,
+        params,
+        remember,
+        reject_known,
+    )
+    .await
+}
+
+pub(super) async fn submit_shared(
+    host: &Rc<Host>,
+    project: &str,
+    method: &str,
+    params: Value,
+    remember: bool,
+) -> Result<Value> {
+    submit_result(host, project, Channel::Shared, method, params, remember).await
+}
+
+pub(super) async fn submit_desktop_turn(
+    host: &Rc<Host>,
+    source: &str,
+    project: &str,
+    mut params: Value,
+) -> Result<Value> {
+    let method = "areal/turn/submit";
+    // 旧请求只用原回执核对，不为读取旧请求重新绑定浏览器。
+    let prepared = if find(host, project, request_id(&params)?)?.is_none() {
+        Some(
+            super::execution_preparation::prepare_core(host, source, project, method, &mut params)
+                .await?,
+        )
+    } else {
+        None
+    };
+    let channel = prepared
+        .as_ref()
+        .and_then(|core| core.browser_lease())
+        .map_or(Channel::Shared, Channel::Lease);
+    submit_result(host, project, channel, method, params, true).await
+}
+
+async fn submit_result(
+    host: &Rc<Host>,
+    project: &str,
+    channel: Channel<'_>,
+    method: &str,
+    params: Value,
+    remember: bool,
+) -> Result<Value> {
+    let id = request_id(&params)?.to_owned();
+    let response =
+        match submit_channel(host, project, channel, method, params, remember, true).await {
+            Ok(response) => response,
+            Err(error) => {
+                if error.downcast_ref::<crate::wire::Error>().is_some()
+                    || super::gateway_owner::settled_failure(&error.to_string())
+                {
+                    return Err(error);
+                }
+                if find(host, project, &id)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|entry| entry.get("status").is_none())
+                {
+                    anyhow::bail!("SUBMISSION_UNKNOWN");
+                }
+                return Err(error);
+            }
+        };
+    if let Some(error) = response.get("error") {
+        let kind = error["data"]["outcome"]["kind"].as_str();
+        if matches!(kind, Some("rejected" | "noMutation")) {
+            let message = error["message"].as_str().unwrap_or("Core request rejected");
+            if error["code"] == -32010
+                && (error["data"]["reason"] == "PROFILE_NOT_SUPPORTED"
+                    || message.contains("UNSUPPORTED_PROFILE:"))
+            {
+                anyhow::bail!("PROFILE_NOT_SUPPORTED");
+            }
+            if error["code"] == -32009 {
+                anyhow::bail!("TARGET_CHANGED");
+            }
+            if error["code"] == -32004 {
+                anyhow::bail!("RESOURCE_UNAVAILABLE");
+            }
+            return Err(crate::wire::error(
+                "COMMAND_FAILED",
+                message.chars().take(512).collect::<String>(),
+            ));
+        }
+        anyhow::bail!("SUBMISSION_UNKNOWN");
+    }
+    response.get("result").cloned().context("INVALID_RESPONSE")
+}
+
+pub(super) async fn reconcile_project(
+    host: &Rc<Host>,
+    project: &str,
+    filter_request_id: Option<&str>,
+) -> Result<serde_json::Map<String, Value>> {
+    let (_, snapshot) = host.journal.native_snapshot(project)?;
+    let pending = snapshot["pending"].as_array().cloned().unwrap_or_default();
+    for entry in pending {
+        if entry["rustOwner"] != true {
+            continue;
+        }
+        if let Some(wanted) = filter_request_id
+            && entry_id(&entry) != Some(wanted)
+        {
+            continue;
+        }
+        if let (Some(method), Some(params)) = (entry["method"].as_str(), entry.get("params"))
+            && params.is_object()
+        {
+            let _ = reconcile_shared(host, project, method, params.clone()).await;
+        }
+    }
+    let (_, latest) = host.journal.native_snapshot(project)?;
+    let mut outcomes = serde_json::Map::new();
+    if let Some(map) = latest["outcomes"].as_object() {
+        for (id, value) in map {
+            if filter_request_id.is_some_and(|original| original != id) {
+                continue;
+            }
+            if let Some(projected) = project_outcome(value) {
+                outcomes.insert(id.clone(), projected);
+            }
+        }
+    }
+    Ok(outcomes)
+}
+
+fn project_outcome(value: &Value) -> Option<Value> {
+    let source = value.as_object()?;
+    let mut out = serde_json::Map::new();
+    for key in [
+        "method",
+        "status",
+        "operationId",
+        "threadId",
+        "turnId",
+        "taskId",
+        "parentThreadId",
+        "sourceThreadId",
+        "workgroupId",
+        "draftThreadId",
+        "taskDraftMessage",
+        "taskDraftError",
+        "message",
+        "admissionState",
+    ] {
+        if let Some(field) = source.get(key).and_then(Value::as_str) {
+            out.insert(key.into(), json!(field));
+        }
+    }
+    for key in ["accepted", "cleanupConfirmed"] {
+        if let Some(flag) = source.get(key).and_then(Value::as_bool) {
+            out.insert(key.into(), json!(flag));
+        }
+    }
+    if let Some(rev) = source.get("planRevision").and_then(Value::as_u64) {
+        out.insert("planRevision".into(), json!(rev));
+    }
+    if let Some(op) = source.get("operation").filter(|op| {
+        op["method"].is_string()
+            && op["target"].is_object()
+            && matches!(
+                op["target"]["kind"].as_str(),
+                Some("project" | "thread" | "task")
+            )
+    }) {
+        out.insert("operation".into(), op.clone());
+    }
+    if out.get("operationId").is_some_and(Value::is_string)
+        && out.get("method").is_some_and(Value::is_string)
+        && let Some(remote) = source.get("remote").filter(|r| {
+            r["method"].is_string()
+                && r["capability"].is_string()
+                && r["semanticDigest"].is_string()
+                && r["target"].is_object()
+        })
+    {
+        out.insert("remote".into(), remote.clone());
+    }
+    if let Some(input) = source.get("input") {
+        out.insert("input".into(), input.clone());
+    }
+    if let Some(result) = source.get("result") {
+        out.insert("result".into(), result.clone());
+    }
+    Some(Value::Object(out))
+}
+
+async fn submit_channel(
+    host: &Rc<Host>,
+    project: &str,
+    channel: Channel<'_>,
+    method: &str,
+    params: Value,
+    remember: bool,
+    reject_known: bool,
+) -> Result<Value> {
     ensure!(METHODS.contains(&method) && params.is_object(), "FORBIDDEN");
-    host.schedules
-        .connections
-        .workbench_validate(host, project, lease, method, &params)?;
+    let lease = match channel {
+        Channel::Lease(lease) => {
+            host.schedules
+                .connections
+                .workbench_validate(host, project, lease, method, &params)?;
+            Some(lease)
+        }
+        Channel::Shared => None,
+    };
     let id = request_id(&params)?.to_owned();
     let semantic = semantic(method, &params)?;
     if let Some(entry) = find(host, project, &id)? {
@@ -619,7 +903,7 @@ pub(super) async fn submit(
                     || (entry["rustSemantic"].is_null() && entry["params"] == params)),
             "COMMAND_CONFLICT"
         );
-        let result = reconcile(host, project, lease, method, params).await?;
+        let result = reconcile_channel(host, project, channel, method, params).await?;
         if result["confirmed"] != true {
             return Ok(
                 json!({"error":{"code":-32011,"message":"原提交结果未知，不会重放","data":{"outcome":{"kind":"unconfirmed","operation":entry["operation"]},"recovery":{"kind":"queryOriginal"},"requestId":id}}}),
@@ -642,19 +926,22 @@ pub(super) async fn submit(
             json!({"result":result["result"],"sequence":0})
         });
     }
-    let caps = capabilities(host, project, lease).await?;
+    let caps = capabilities(host, project, channel).await?;
     ensure!(
         caps["methodSemantics"][method]["effect"] == "mutation",
         "FORBIDDEN"
     );
     host.schedules
         .connections
-        .workbench_core_admit(host, project, Some(lease), method, &params)
+        .workbench_core_admit(host, project, lease, method, &params)
         .await?;
-    let scope = host
-        .schedules
-        .connections
-        .workbench_identity(host, project, lease)?;
+    let scope = match channel {
+        Channel::Lease(lease) => host
+            .schedules
+            .connections
+            .workbench_identity(host, project, lease)?,
+        Channel::Shared => host.schedules.connections.shared_identity(host, project)?,
+    };
     let wire = wire_params(method, &params);
     let expected = ExpectedSubmission {
         method: method.into(),
@@ -674,11 +961,11 @@ pub(super) async fn submit(
     host.journal
         .native_admit(project, revision, snapshot, entry.clone(), true)?;
     host.changed();
-    let response = rpc(host, project, lease, method, wire).await;
+    let response = rpc(host, project, channel, method, wire).await;
     let response = match response {
         Ok(response) => response,
         Err(error) => {
-            if let Ok(Some(receipt)) = original_receipt(host, project, lease, &entry, &caps).await
+            if let Ok(Some(receipt)) = original_receipt(host, project, channel, &entry, &caps).await
                 && (matches!(receipt["status"].as_str(), Some("completed" | "failed"))
                     || receipt.get("result").is_some())
             {
@@ -718,6 +1005,52 @@ pub(super) async fn submit(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lost_steer_rejection_requires_original_identity_params_and_terminal_outcome() {
+        let params = json!({"threadId":"thread","requestId":"request","expectedTurnId":"turn",
+            "queueItemId":"item","expectedRevision":2});
+        let expected = ExpectedSubmission {
+            method: "areal/queue/steer".into(),
+            digest: digest::<areal_protocol::desktop::QueueSteer>(&params),
+            params: params.clone(),
+            operation: None,
+            identity: Some("owner".into()),
+            strict: false,
+        };
+        let mut raw = params;
+        raw.as_object_mut().unwrap().remove("requestId");
+        let mut rows = json!({"data":[{"operation":expected.operation(),"identity":"owner",
+            "method":expected.method,"requestId":"request","threadId":"thread","status":"failed",
+            "digest":areal_local_service::storage::digest(&serde_json::to_vec(&raw).unwrap()),
+            "error":{"data":{"outcome":{"kind":"rejected"}}}}]});
+        assert_eq!(
+            failed_queue_steer(&expected, &rows).unwrap()["accepted"],
+            false
+        );
+        rows["data"][0]["identity"] = json!("other");
+        assert!(failed_queue_steer(&expected, &rows).is_none());
+        rows["data"][0]["identity"] = json!("owner");
+        rows["data"][0]["error"]["data"]["outcome"]["kind"] = json!("admitted");
+        assert!(failed_queue_steer(&expected, &rows).is_none());
+        rows["data"][0]["error"]["data"]["outcome"]["operation"] = expected.operation();
+        assert_eq!(
+            failed_queue_steer(&expected, &rows).unwrap()["accepted"],
+            true
+        );
+        rows["data"][0]["error"]["data"]["outcome"]["kind"] = json!("rejected");
+        rows["data"][0]["digest"] = json!("different");
+        assert!(failed_queue_steer(&expected, &rows).is_none());
+    }
+
+    #[test]
+    fn plugin_runtime_receipt_digest_includes_the_original_request_id() {
+        let method = "areal/plugin/hooks/configure";
+        let params = json!({"requestId":"original","id":"example@market","expectedDigest":"package","definitionDigest":"definition","enabled":true,"trusted":true});
+        let caps = json!({"methodSemantics":{(method):{"receipt":"management"}}});
+        let expected = areal_local_service::storage::digest(&serde_json::to_vec(&params).unwrap());
+        assert_eq!(request_digest(method, &params, &caps), Some(expected));
+    }
 
     #[test]
     fn journal_outcome_keeps_associations_without_result_or_error_body() {

@@ -13,7 +13,7 @@ import { SettingsDisclosure } from "./SettingsDisclosure.js";
 import { SettingsSwitch } from "./SettingsPageParts.js";
 import { SettingsSegmentedTabs } from "./SettingsSegmentedTabs.js";
 import { useDraftBlocker, useGuardedNavigation } from "./UnsavedChanges.js";
-import { WorktreeDirectory, WorktreeSettings } from "@areal/ui/experimental";
+import { WorktreeDirectory, WorktreeSettings } from "@areal/ui/compositions";
 import { DelayedVisible } from "@areal/ui";
 import "./WorktreesSettings.css";
 
@@ -107,34 +107,37 @@ function ScriptField({
       action={action}
       hint={platform !== "default" ? t("worktree.overrideHint") : undefined}
     >
-      <Tabs
-        value={platform}
-        onValueChange={(value) => onPlatformChange(value as Platform)}
-        className="settings-segmented-tabs worktrees-script-tabs"
-      >
-        <TabsList
-          aria-label={`${t("worktree.settings.scriptPlatform", { script: label })}${suffix}`}
+      <div className="settings-segmented-tabs worktrees-script-tabs">
+        <Tabs
+          value={platform}
+          onValueChange={(value) => onPlatformChange(value as Platform)}
+          className="gap-2"
         >
+          <TabsList
+            aria-label={`${t("worktree.settings.scriptPlatform", { script: label })}${suffix}`}
+          >
+            {platforms.map((value) => (
+              <TabsTrigger key={value} value={value} disabled={disabled}>
+                {labels[value]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
           {platforms.map((value) => (
-            <TabsTrigger key={value} value={value} disabled={disabled}>
-              {labels[value]}
-            </TabsTrigger>
+            <TabsContent key={value} value={value} className="min-w-0">
+              <Textarea
+                aria-label={`${label}${suffix}`}
+                mono
+                className="min-h-36 max-h-120"
+                rows={6}
+                spellCheck={false}
+                disabled={disabled}
+                value={script[value] ?? ""}
+                onChange={(event) => onChange({ ...script, [value]: event.target.value })}
+              />
+            </TabsContent>
           ))}
-        </TabsList>
-        {platforms.map((value) => (
-          <TabsContent key={value} value={value}>
-            <Textarea
-              aria-label={`${label}${suffix}`}
-              className="worktrees-script-input"
-              rows={6}
-              spellCheck={false}
-              disabled={disabled}
-              value={script[value] ?? ""}
-              onChange={(event) => onChange({ ...script, [value]: event.target.value })}
-            />
-          </TabsContent>
-        ))}
-      </Tabs>
+        </Tabs>
+      </div>
     </WorktreeSettings.Script>
   );
 }
@@ -406,25 +409,27 @@ export function WorktreesSettings({
       <PopoverTrigger render={<Button variant="secondary" size="sm" />}>
         {t("worktree.settings.variables")}
       </PopoverTrigger>
-      <PopoverContent align="end" className="worktrees-variables">
-        <PopoverTitle>{t("worktree.settings.variables")}</PopoverTitle>
-        <p className="settings-section-desc">{t("worktree.settings.variablesDescription")}</p>
-        <dl>
-          {(
-            [
-              ["AREAL_WORKTREE_PATH", "worktree.settings.variableWorktree"],
-              ["AREAL_PROJECT_PATH", "worktree.settings.variableProject"],
-              ["AREAL_WORKTREE_BRANCH", "worktree.settings.variableBranch"],
-            ] as const
-          ).map(([name, message]) => (
-            <div key={name}>
-              <dt>
-                <code>{name}</code>
-              </dt>
-              <dd>{t(message)}</dd>
-            </div>
-          ))}
-        </dl>
+      <PopoverContent align="end" className="w-[min(24rem,var(--available-width))]">
+        <div className="worktrees-variables">
+          <PopoverTitle>{t("worktree.settings.variables")}</PopoverTitle>
+          <p className="settings-section-desc">{t("worktree.settings.variablesDescription")}</p>
+          <dl>
+            {(
+              [
+                ["AREAL_WORKTREE_PATH", "worktree.settings.variableWorktree"],
+                ["AREAL_PROJECT_PATH", "worktree.settings.variableProject"],
+                ["AREAL_WORKTREE_BRANCH", "worktree.settings.variableBranch"],
+              ] as const
+            ).map(([name, message]) => (
+              <div key={name}>
+                <dt>
+                  <code>{name}</code>
+                </dt>
+                <dd>{t(message)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       </PopoverContent>
     </Popover>
   );
@@ -512,7 +517,7 @@ export function WorktreesSettings({
       <Button
         variant="ghost"
         size="icon"
-        className="worktrees-refresh"
+        className="absolute top-3 right-0"
         aria-label={t("worktree.settings.refresh")}
         title={t("worktree.settings.refresh")}
         disabled={loading || busy || !routeId}
@@ -560,13 +565,13 @@ export function WorktreesSettings({
       ) : tab === "general" ? (
         <>
           <SettingsSection title={t("worktree.settings.creationAndCleanup")}>
-            <SettingsGroupCard className="worktrees-general-group">
+            <SettingsGroupCard>
               <SettingsRow
                 label={t("worktree.root")}
                 description={t("worktree.settings.rootDescription")}
                 control={
                   <Input
-                    className="worktrees-root-input"
+                    className="w-full sm:w-64"
                     aria-label={t("worktree.root")}
                     disabled={disabled}
                     value={defaults?.value.worktreeRoot ?? ""}
@@ -612,7 +617,7 @@ export function WorktreesSettings({
                     type="number"
                     min={1}
                     max={1000}
-                    className="worktrees-count-input"
+                    className="w-20"
                     disabled={disabled}
                     value={defaults?.value.keepCount ?? 10}
                     onChange={(event) => changeDefaults({ keepCount: Number(event.target.value) })}
@@ -831,21 +836,23 @@ export function WorktreesSettings({
         </>
       ) : (
         <>
-          <SettingsGroupCard className="worktrees-name-group">
-            <label>
-              {t("worktree.environmentName")}
-              <Input
-                aria-label={t("worktree.environmentName")}
-                disabled={busy}
-                value={editor.draft.name}
-                onChange={(event) =>
-                  updateEditor((value) => ({
-                    ...value,
-                    draft: { ...value.draft, name: event.target.value },
-                  }))
-                }
-              />
-            </label>
+          <SettingsGroupCard>
+            <div className="worktrees-name-group">
+              <label>
+                {t("worktree.environmentName")}
+                <Input
+                  aria-label={t("worktree.environmentName")}
+                  disabled={busy}
+                  value={editor.draft.name}
+                  onChange={(event) =>
+                    updateEditor((value) => ({
+                      ...value,
+                      draft: { ...value.draft, name: event.target.value },
+                    }))
+                  }
+                />
+              </label>
+            </div>
           </SettingsGroupCard>
           <ScriptField
             label={t("worktree.setupScript")}
@@ -1017,8 +1024,8 @@ export function WorktreesSettings({
           <div className="worktrees-save-row">
             {editor.original && (
               <Button
-                variant="ghost"
-                className="worktrees-delete-environment"
+                variant="destructive-subtle"
+                className="mr-auto"
                 disabled={busy}
                 onClick={() => {
                   void deleteEnvironment().catch(() => {});

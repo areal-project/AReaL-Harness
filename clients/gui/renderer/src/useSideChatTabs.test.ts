@@ -97,12 +97,39 @@ it("recovers the original conflicting request instead of the new attempted creat
   expect(state.tabs.map((tab) => tab.childId)).toEqual(["child"]);
 });
 
+it("does not report an existing pending creation as a duplicate failure", async () => {
+  const action = vi.fn(async (_name, request) => {
+    expect(request).toMatchObject({
+      operation: "recover",
+      method: "areal/side/create",
+      requestId: original,
+    });
+    return { confirmed: false, requestId: original };
+  }) as unknown as Action;
+  let state = render(action, [project()]);
+
+  await expect(state.create("project", "parent", "new question")).resolves.toBeUndefined();
+  expect(action).toHaveBeenCalledTimes(1);
+  state = render(action, [project()]);
+  expect(state.pendingCreation("project", "parent")?.requestId).toBe(original);
+});
+
 it("restores pending identity after remount and consumes a background receipt without replay", async () => {
-  const action = vi.fn() as unknown as Action;
+  const action = vi.fn(async () => ({
+    confirmed: false,
+    requestId: original,
+  })) as unknown as Action;
   const owner = project();
   let state = render(action, [owner]);
   expect(state.pendingCreation("project", "parent")?.requestId).toBe(original);
-  await expect(state.create("project", "parent")).rejects.toThrow();
+  await expect(state.create("project", "parent")).resolves.toBeUndefined();
+  expect(action).toHaveBeenCalledWith("side", {
+    operation: "recover",
+    method: "areal/side/create",
+    projectId: "project",
+    sourceThreadId: "parent",
+    requestId: original,
+  });
   const settled = {
     ...owner,
     pending: [],
@@ -120,7 +147,7 @@ it("restores pending identity after remount and consumes a background receipt wi
   state = render(action, [settled]);
   expect(state.pendingCreation("project", "parent")).toBeUndefined();
   expect(state.tabs.map((tab) => tab.childId)).toEqual(["child"]);
-  expect(action).not.toHaveBeenCalled();
+  expect(action).toHaveBeenCalledTimes(1);
 });
 
 it("retains unknown when a snapshot omits the receipt or reports another source", () => {

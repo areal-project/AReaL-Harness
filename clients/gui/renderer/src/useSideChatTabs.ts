@@ -147,21 +147,29 @@ export function useSideChatTabs(action: Action, projects: Data[]) {
       }
     }
   }, [projects, unconfirmed]);
-  const create = async (projectId: string, sourceThreadId: string, firstText = "") => {
+  const create = async (
+    projectId: string,
+    sourceThreadId: string,
+    firstText = "",
+  ): Promise<SideChatTab | undefined> => {
     const owner = `${projectId}:${sourceThreadId}`;
-    if (
-      pending.current.has(owner) ||
-      projects.some(
-        (project) =>
-          project.id === projectId &&
-          project.pending?.some(
-            (entry: Data) =>
-              entry.method === "areal/side/create" &&
-              entry.params?.sourceThreadId === sourceThreadId,
-          ),
-      )
-    )
-      throw new Error(t("chat.side.pendingCreation"));
+    const journalEntry = projects
+      .find((project) => project.id === projectId)
+      ?.pending?.find(
+        (entry: Data) =>
+          entry.method === "areal/side/create" &&
+          entry.params?.sourceThreadId === sourceThreadId &&
+          typeof entry.params?.requestId === "string",
+      );
+    if (journalEntry && !pending.current.has(owner))
+      pending.current.set(owner, {
+        projectId,
+        sourceThreadId,
+        requestId: journalEntry.params.requestId,
+        operation: journalEntry.operation,
+      });
+    if (pending.current.has(owner) || journalEntry)
+      return recoverCreation(projectId, sourceThreadId);
     setCreationError(owner, "");
     const requestId = crypto.randomUUID();
     const request = { projectId, sourceThreadId, requestId };

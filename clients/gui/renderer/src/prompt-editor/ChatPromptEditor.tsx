@@ -4,8 +4,7 @@ import type {
   ComposerFileReferenceInput,
 } from "../lib/workspaceFileComposer.js";
 import { FeedbackNotice } from "../FeedbackNotice.js";
-import { ComposerActionButton } from "@areal/ui/experimental";
-import { ComputerControlEntry } from "../ComputerControlEntry.js";
+import { ComposerActionButton } from "@areal/ui/compositions";
 /* oxlint-disable eslint(max-lines) -- 输入壳同时收口 Lexical 同步、拖拽和工具栏插槽，暂不拆组件。 */
 // 输入展示壳：纯 props 组件、无 store/协议依赖；mention 面板通过 enableMentionPanel 透传。
 import type {
@@ -198,6 +197,16 @@ export function ChatPromptEditor({
   const { intl } = useZCodeIntl();
   const submitDescriptionId = useId();
   const submitBlockedReason = submitDisabled ? submitDisabledReason : undefined;
+  // 本地提交通常在数十毫秒内完成；延迟 150ms 显示旋转态，避免发送按钮短闪加载圈后再切停止图标。
+  const [showSpinner, setShowSpinner] = useState(false);
+  useEffect(() => {
+    if (!submitting) {
+      setShowSpinner(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowSpinner(true), 150);
+    return () => clearTimeout(timer);
+  }, [submitting]);
   const toolbarRef = useComposerToolbarFit();
   const internalInputApiRef = useRef<LexicalChatInputHandle | null>(null);
   const resolvedInputApiRef = inputApiRef ?? internalInputApiRef;
@@ -697,7 +706,6 @@ export function ChatPromptEditor({
                     </Button>
                   </ControlHintTooltip>
                 ) : null}
-                <ComputerControlEntry />
                 {betweenCancelAndSubmitAction}
                 {submitControl ?? (
                   <ControlHintTooltip
@@ -715,7 +723,7 @@ export function ChatPromptEditor({
                         aria-label={submitLabel}
                         aria-describedby={submitBlockedReason ? submitDescriptionId : undefined}
                       >
-                        {submitting ? (
+                        {showSpinner ? (
                           <Spinner className="size-4" />
                         ) : (
                           <SendMessageIcon className="size-5" />

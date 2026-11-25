@@ -5,8 +5,11 @@ import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 
 const appRequire = createRequire(new URL("../app/package.json", import.meta.url));
-const buildRequire = createRequire(new URL("../packages/gen-ui/package.json", import.meta.url));
+const buildRequire = createRequire(
+  new URL("../packages/browser-data/package.json", import.meta.url),
+);
 const { WebSocketServer } = appRequire("ws");
+const { HostClient: NativeHostClient } = appRequire("@areal/client/node");
 const { outputFiles } = await buildRequire("esbuild").build({
   entryPoints: [fileURLToPath(new URL("../packages/client/src/index.ts", import.meta.url))],
   bundle: true,
@@ -14,9 +17,65 @@ const { outputFiles } = await buildRequire("esbuild").build({
   format: "esm",
   platform: "browser",
 });
-const { HostClient, readHostBootstrap } = await import(
+const { HostClient, readHostBootstrap, beginSessionLoad, sessionLoadTiming } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString("base64")}`
 );
+
+test("native desktop negotiated frames accept fragmented history while ordinary Host frames stay bounded", () => {
+  const result = "x".repeat(1024 * 1024 + 256);
+  const bytes = Buffer.from(JSON.stringify({ version: 1, id: "large", result }) + "\n");
+  const native = new NativeHostClient({ desktopCore: true });
+  let received;
+  native.pending.set("large", {
+    resolve: (value) => {
+      received = value;
+    },
+    reject: assert.fail,
+  });
+  native.receive(bytes.subarray(0, bytes.length - 1));
+  assert.equal(native.pending.has("large"), true);
+  native.receive(bytes.subarray(bytes.length - 1));
+  assert.equal(received, result);
+  const ordinary = new NativeHostClient();
+  let rejected;
+  ordinary.pending.set("large", {
+    resolve: assert.fail,
+    reject: (error) => {
+      rejected = error;
+    },
+  });
+  ordinary.receive(bytes.subarray(0, bytes.length - 1));
+  assert.match(rejected.message, /exceeds/);
+});
+
+test("session latency ignores superseded reads and records each milestone once", () => {
+  performance.clearMeasures("areal.session-load");
+  beginSessionLoad("first");
+  const original = sessionLoadTiming("first");
+  original.mark("cache", false);
+  beginSessionLoad("second");
+  original.mark("response");
+  assert.equal(sessionLoadTiming("first"), undefined);
+  beginSessionLoad("first");
+  original.mark("messagesPainted");
+  const current = sessionLoadTiming("first");
+  current.mark("cache", true);
+  current.mark("projection");
+  current.mark("projection");
+  current.mark("messagesPainted");
+  const entries = performance.getEntriesByName("areal.session-load");
+  assert.equal(entries.filter((entry) => entry.detail.sample === original.sample).length, 2);
+  const latest = entries.filter((entry) => entry.detail.sample === current.sample);
+  assert.deepEqual(
+    latest.map((entry) => entry.detail.stage),
+    ["selected", "cache", "projection", "messagesPainted"],
+  );
+  assert.equal(latest.at(-1).detail.cache, "hit");
+  assert.ok(latest.every((entry) => entry.duration >= 0));
+  beginSessionLoad("");
+  assert.equal(sessionLoadTiming("first"), undefined);
+  performance.clearMeasures("areal.session-load");
+});
 const hostId = "ae883ffd-144b-4092-bb4c-c7b719bd9d06";
 const generation = "dd6013a2-dfd2-42d5-afb9-f90e78af0dfe";
 const origin = "areal-ui://app";
@@ -29,6 +88,32 @@ const status = {
   stopIntent: false,
   capabilities: [],
 };
+
+test("focus and online events preserve an in-flight Host handshake", async () => {
+  const events = new EventTarget();
+  const signals = [];
+  const rejectors = [];
+  const client = new HostClient({
+    origin,
+    bootstrap: async () => {},
+    events,
+    transport: ({ signal }) => {
+      signals.push(signal);
+      return new Promise((_resolve, reject) => rejectors.push(reject));
+    },
+  });
+  const connecting = client.retry();
+  try {
+    events.dispatchEvent(new Event("focus"));
+    events.dispatchEvent(new Event("online"));
+    assert.equal(signals.length, 1);
+    assert.equal(signals[0].aborted, false);
+  } finally {
+    client.close();
+    for (const reject of rejectors) reject(new Error("fixture closed"));
+    await connecting;
+  }
+});
 
 async function server(t, respond) {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
@@ -263,7 +348,7 @@ const nativeObservation = (threadId) => ({
   history: { snapshotId: "native-history", nextCursor: "opaque-core-cursor", complete: false },
   ownership: { sourceThreadId: "native-source" },
 });
-async function readServer(t, handler = () => false) {
+async function readServer(t, handler = () => false, options = {}) {
   let socket,
     shellSubscriptions = 0,
     sessionSubscriptions = 0,
@@ -350,6 +435,7 @@ async function readServer(t, handler = () => false) {
     }
   });
   const client = new HostClient({
+    ...options,
     origin,
     bootstrap: async () => ({
       version: 1,
@@ -386,6 +472,19 @@ test("concurrent selection of the same conversation shares one subscription", as
   assert.equal(frames.filter((frame) => frame.method === "subscription.close").length, 0);
 });
 
+test("reselecting a fresh conversation keeps the baseline visible and records a cache hit", async (t) => {
+  const { client, frames } = await readServer(t);
+  const target = { projectId: project.projectId, threadId: "thread" };
+  await client.selectSession(target);
+  beginSessionLoad(target.threadId);
+  await client.selectSession(target);
+  assert.equal(client.readsSnapshot().session.state, "fresh");
+  assert.equal(frames.filter((frame) => frame.method === "session.open").length, 1);
+  const timing = sessionLoadTiming(target.threadId);
+  timing.mark("cache", true);
+  assert.equal(performance.getEntriesByName("areal.session-load").at(-1)?.detail.cache, "hit");
+});
+
 test("UI restoration joins the selected conversation's automatic reconnect", async (t) => {
   const { client, frames, listener } = await readServer(t);
   const target = { projectId: project.projectId, threadId: "thread" };
@@ -401,37 +500,6 @@ test("UI restoration joins the selected conversation's automatic reconnect", asy
   assert.equal(client.readsSnapshot().session.state, "fresh");
   assert.equal(frames.filter((frame) => frame.method === "session.open").length, 2);
   assert.equal(frames.filter((frame) => frame.method === "subscription.close").length, 0);
-});
-
-test("page events are bound to the ready connection and stop after unsubscribe", async (t) => {
-  const { client, send } = await readServer(t);
-  const events = [];
-  const page = {
-    event: "pages.event",
-    connectionId: "read-connection",
-    gatewayGeneration: generation,
-    token: "page",
-    notification: { jsonrpc: "2.0", method: "ui/notifications/test" },
-  };
-  let accepted;
-  const arrived = new Promise((resolve) => {
-    accepted = resolve;
-  });
-  const off = client.subscribePageEvents((event) => {
-    events.push(event);
-    accepted();
-  });
-  send({ ...page, connectionId: "old-connection" });
-  send({ ...page, gatewayGeneration: "old-generation" });
-  send({ ...page, notification: [] });
-  send(page);
-  await arrived;
-  assert.deepEqual(events, [page]);
-  off();
-  const barrier = new Promise((resolve) => client.subscribePageEvents(resolve));
-  send({ ...page, token: "next" });
-  await barrier;
-  assert.equal(events.length, 1);
 });
 
 test("one WS multiplexes shell and native session; deltas retain native fields and untouched references", async (t) => {
@@ -1141,4 +1209,379 @@ test("browser clients never offer gui-write-v1", async (t) => {
   await waitState(client, (state) => state.connection === "offline");
   assert.deepEqual(hello.params.capabilities, ["gui-read-v1", "persistedHistoryV1"]);
   assert.equal(client.writable("session.send"), false);
+});
+
+test("a ready Core selection never reopens a persisted Store reader", async (t) => {
+  let fixture;
+  fixture = await readServer(t, ({ frame, reply }) => {
+    if (frame.method === "hello") {
+      reply({
+        version: 1,
+        hostId,
+        generation,
+        capabilities: [],
+        negotiatedCapabilities: ["gui-read-v1", "persistedHistoryV1"],
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+      });
+      return true;
+    }
+    if (frame.method === "session.openPersisted") {
+      [...fixture.listener.clients][0].send(
+        JSON.stringify({
+          version: 1,
+          id: frame.id,
+          error: { code: "RESOURCE_BUSY", message: "Host read request failed" },
+        }),
+      );
+      return true;
+    }
+    return false;
+  });
+  await fixture.client.selectSession({
+    projectId: project.projectId,
+    threadId: "thread",
+    persisted: true,
+  });
+  assert.equal(fixture.client.readsSnapshot().session.state, "fresh");
+  assert.equal(fixture.frames.filter((f) => f.method === "session.openPersisted").length, 0);
+  assert.equal(fixture.frames.filter((f) => f.method === "session.open").length, 1);
+});
+
+test("failed conversation reads keep the Host code for the detail view, not the message", async (t) => {
+  let fixture;
+  fixture = await readServer(t, ({ frame }) => {
+    if (frame.method !== "session.open") return false;
+    [...fixture.listener.clients][0].send(
+      JSON.stringify({
+        version: 1,
+        id: frame.id,
+        error: { code: "CORE_UNAVAILABLE", message: "Host read request failed" },
+      }),
+    );
+    return true;
+  });
+  await assert.rejects(
+    fixture.client.selectSession({ projectId: project.projectId, threadId: "thread" }),
+  );
+  const read = fixture.client.readsSnapshot().session;
+  assert.equal(read.state, "unavailable");
+  // 上屏文案按 code 取；错误码只作详情，不拼进 message。
+  assert.doesNotMatch(read.error, /CORE_UNAVAILABLE|session\.open/);
+});
+
+test("a queue-full rejection keeps its message readable and its method and reason in the detail", async (t) => {
+  let fixture;
+  fixture = await readServer(t, ({ frame }) => {
+    if (frame.method !== "session.open") return false;
+    [...fixture.listener.clients][0].send(
+      JSON.stringify({
+        version: 1,
+        id: frame.id,
+        error: {
+          code: "CAPACITY_EXCEEDED",
+          message: "Host command failed",
+          method: "session.open",
+          reason: "commandQueueFull",
+        },
+      }),
+    );
+    return true;
+  });
+  await assert.rejects(
+    fixture.client.selectSession({ projectId: project.projectId, threadId: "thread" }),
+  );
+  // 上屏文案由 code 决定；message 只承载 method 和队列原因，供“查看详情”使用。
+  const failure = await fixture.client
+    .selectSession({ projectId: project.projectId, threadId: "thread" })
+    .catch((error) => error);
+  assert.equal(failure.code, "CAPACITY_EXCEEDED");
+  assert.equal(failure.method, "session.open");
+  assert.equal(failure.reason, "commandQueueFull");
+  assert.notEqual(failure.message, "Host command failed");
+  assert.match(failure.detail, /session\.open/);
+  assert.match(failure.detail, /commandQueueFull/);
+  assert.doesNotMatch(failure.message, /CAPACITY_EXCEEDED|session\.open|commandQueueFull/);
+});
+
+test("idle hibernation transitions an open live session through stopping to persisted history without errors", async (t) => {
+  let fixture;
+  let shellSequence = 0;
+  let openCount = 0;
+  let persistedCount = 0;
+  let currentServiceGeneration = project.serviceGeneration;
+  fixture = await readServer(t, ({ frame, reply, sessionIdentity }) => {
+    if (frame.method === "hello") {
+      reply({
+        version: 1,
+        hostId,
+        generation,
+        capabilities: [],
+        negotiatedCapabilities: ["gui-read-v1", "persistedHistoryV1"],
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+      });
+      return true;
+    }
+    if (frame.method === "session.open") {
+      openCount++;
+      reply({
+        ...sessionIdentity(frame.params.threadId),
+        serviceGeneration: currentServiceGeneration,
+        subscriptionId: `live-sub-${openCount}`,
+        sequence: 0,
+        snapshot: { thread: { id: frame.params.threadId, turns: [{ id: "t1", items: [] }] } },
+      });
+      return true;
+    }
+    if (frame.method === "session.openPersisted") {
+      persistedCount++;
+      reply({
+        ...sessionIdentity(frame.params.threadId),
+        serviceGeneration: project.serviceGeneration,
+        subscriptionId: `persisted-sub-${persistedCount}`,
+        sequence: 0,
+        access: { kind: "persisted", readOnly: true, snapshotId: "snap-1" },
+        snapshot: {
+          thread: { id: frame.params.threadId, turns: [{ id: "t1", items: [] }] },
+          access: { kind: "persisted", readOnly: true, snapshotId: "snap-1" },
+        },
+      });
+      return true;
+    }
+    return false;
+  });
+
+  await fixture.client.selectSession({ projectId: project.projectId, threadId: "thread" });
+  const observedSessions = [];
+  const off = fixture.client.subscribeReads(() => {
+    observedSessions.push(fixture.client.readsSnapshot().session);
+  });
+  t.after(off);
+
+  const socket = [...fixture.listener.clients][0];
+  const shellSub = fixture.client.readsSnapshot().shell.value.subscriptionId;
+  const liveSub = fixture.client.readsSnapshot().session.value.subscriptionId;
+
+  // 1) Host enters stopping: sends shell.updated first, then session.invalidated.
+  socket.send(
+    JSON.stringify({
+      version: 1,
+      method: "shell.updated",
+      params: {
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+        subscriptionId: shellSub,
+        sequence: ++shellSequence,
+        event: "shell.updated",
+        delta: {
+          projects: {
+            upsert: [{ ...project, state: "stopping" }],
+            remove: [],
+          },
+          navigation: { upsert: [], remove: [] },
+        },
+      },
+    }),
+  );
+  socket.send(
+    JSON.stringify({
+      version: 1,
+      method: "session.invalidated",
+      params: {
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+        subscriptionId: liveSub,
+        projectId: project.projectId,
+        serviceGeneration: project.serviceGeneration,
+        threadId: "thread",
+        view: "conversation",
+        sequence: 1,
+        event: "session.invalidated",
+        error: { code: "RESYNC_REQUIRED", message: "resync" },
+      },
+    }),
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(openCount, 1, "must not retry session.open while project is stopping");
+  assert.equal(persistedCount, 0, "must wait for stopped before opening persisted history");
+  assert.equal(fixture.client.readsSnapshot().session.state, "stale");
+  assert.equal(fixture.client.readsSnapshot().session.error, undefined);
+
+  // 2) Host finishes stopping -> state becomes stopped.
+  socket.send(
+    JSON.stringify({
+      version: 1,
+      method: "shell.updated",
+      params: {
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+        subscriptionId: shellSub,
+        sequence: ++shellSequence,
+        event: "shell.updated",
+        delta: {
+          projects: {
+            upsert: [{ ...project, state: "stopped", serviceGeneration: undefined }],
+            remove: [],
+          },
+          navigation: { upsert: [], remove: [] },
+        },
+      },
+    }),
+  );
+
+  await waitReads(
+    fixture.client,
+    (reads) => reads.session.state === "fresh" && reads.session.value.access?.kind === "persisted",
+  );
+  assert.equal(openCount, 1);
+  assert.equal(persistedCount, 1);
+
+  // 3) User wakes project -> state becomes ready with new generation.
+  currentServiceGeneration = "core-gen-2";
+  socket.send(
+    JSON.stringify({
+      version: 1,
+      method: "shell.updated",
+      params: {
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+        subscriptionId: shellSub,
+        sequence: ++shellSequence,
+        event: "shell.updated",
+        delta: {
+          projects: {
+            upsert: [{ ...project, state: "ready", serviceGeneration: "core-gen-2" }],
+            remove: [],
+          },
+          navigation: { upsert: [], remove: [] },
+        },
+      },
+    }),
+  );
+
+  await waitReads(
+    fixture.client,
+    (reads) =>
+      reads.session.state === "fresh" &&
+      reads.session.value.serviceGeneration === "core-gen-2" &&
+      reads.session.value.access === undefined,
+  );
+  assert.equal(openCount, 2);
+  assert.equal(
+    observedSessions.some((entry) => entry.state === "unavailable" || Boolean(entry.error)),
+    false,
+    `expected zero errors during hibernation lifecycle, observed: ${JSON.stringify(observedSessions)}`,
+  );
+});
+
+test("history remains readable when a ready Core becomes stopped after selection", async (t) => {
+  let shellReads = 0;
+  const { client, frames } = await readServer(t, ({ frame, reply, sessionIdentity }) => {
+    if (frame.method === "hello") {
+      reply({
+        version: 1,
+        hostId,
+        generation,
+        capabilities: [],
+        negotiatedCapabilities: ["gui-read-v1", "persistedHistoryV1"],
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+      });
+      return true;
+    }
+    if (frame.method === "shell.subscribe") {
+      reply({
+        connectionId: "read-connection",
+        gatewayGeneration: generation,
+        subscriptionId: `shell-test-${++shellReads}`,
+        sequence: 0,
+        snapshot: {
+          projects: [
+            shellReads === 1
+              ? project
+              : { ...project, state: "stopped", serviceGeneration: undefined },
+          ],
+          navigation: [],
+        },
+      });
+      return true;
+    }
+    if (frame.method === "session.openPersisted") {
+      reply({
+        ...sessionIdentity(frame.params.threadId),
+        subscriptionId: "persisted-test",
+        sequence: 0,
+        access: { kind: "persisted", readOnly: true, snapshotId: "saved" },
+        snapshot: nativeObservation(frame.params.threadId),
+      });
+      return true;
+    }
+    return false;
+  });
+  await client.selectSession({ projectId: project.projectId, threadId: "thread" });
+  await client.refreshShell();
+  const result = await waitReads(
+    client,
+    (s) => s.session.state === "fresh" && s.session.value.access?.kind === "persisted",
+  );
+  assert.equal(result.session.value.threadId, "thread");
+  assert.equal(frames.filter((f) => f.method === "session.openPersisted").length, 1);
+});
+
+test("late cached history is scoped to the current selected thread", async (t) => {
+  let resolveCache, failOpen;
+  const cached = new Promise((resolve) => {
+    resolveCache = resolve;
+  });
+  const { client } = await readServer(
+    t,
+    ({ frame }) => {
+      if (frame.method === "session.open" && frame.params.threadId === "slow") {
+        failOpen = true;
+        return true;
+      }
+      return false;
+    },
+    { cache: { loadSession: () => cached } },
+  );
+  void client.selectSession({ projectId: project.projectId, threadId: "slow" }).catch(() => {});
+  while (!failOpen) await new Promise((resolve) => setImmediate(resolve));
+  await client.selectSession({ projectId: project.projectId, threadId: "current" });
+  const current = client.readsSnapshot().session.value;
+  resolveCache({ ...current, threadId: "slow" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(client.readsSnapshot().session.value.threadId, "current");
+});
+
+test("an asynchronous cache may restore only the selected conversation while its live read waits", async (t) => {
+  let resolveCache;
+  const pendingCache = new Promise((resolve) => {
+    resolveCache = resolve;
+  });
+  const { client } = await readServer(
+    t,
+    ({ frame }) => frame.method === "session.open" && frame.params.threadId === "slow",
+    { cache: { loadSession: () => pendingCache } },
+  );
+  await client.selectSession({ projectId: project.projectId, threadId: "baseline" });
+  const baseline = client.readsSnapshot().session.value;
+  void client.selectSession({ projectId: project.projectId, threadId: "slow" }).catch(() => {});
+  resolveCache({ ...baseline, threadId: "slow" });
+  const reads = await waitReads(
+    client,
+    (s) => s.session.state === "stale" && s.session.value.threadId === "slow",
+  );
+  assert.equal(reads.session.value.projectId, project.projectId);
+});
+
+test("persisted intent and live selection share the same ready Core subscription", async (t) => {
+  const { client, frames } = await readServer(t);
+  const target = { projectId: project.projectId, threadId: "thread" };
+  await client.selectSession({ ...target, persisted: true });
+  await client.selectSession(target);
+  await client.selectSession({ ...target, persisted: true });
+  assert.equal(frames.filter((frame) => frame.method === "session.open").length, 1);
+  assert.equal(frames.filter((frame) => frame.method === "subscription.close").length, 0);
 });

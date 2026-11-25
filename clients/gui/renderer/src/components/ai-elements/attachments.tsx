@@ -2,10 +2,6 @@ export {
   type AttachmentData,
   type AttachmentMediaCategory,
   type AttachmentVariant,
-  getMediaCategory,
-  getAttachmentLabel,
-  useAttachmentsContext,
-  useAttachmentContext,
   type AttachmentsProps,
   Attachments,
   type AttachmentProps,
@@ -16,4 +12,10 @@ export {
   AttachmentInfo,
   type AttachmentRemoveProps,
   AttachmentRemove,
-} from "@areal/ui/experimental";
+} from "@areal/ui/compositions";
+export {
+  getMediaCategory,
+  getAttachmentLabel,
+  useAttachmentsContext,
+  useAttachmentContext,
+} from "@areal/ui/conversation-utils";

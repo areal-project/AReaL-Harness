@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { EventEmitter } from "node:events";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -10,8 +10,28 @@ import {
   assertApplicationStopped,
   closeRecordedSmokeApplication,
   closeSmokeApplication,
+  makeFixtureDirectoriesWritable,
   stopAndAssertFixtureHost,
 } from "./application-cleanup.mjs";
+
+test("cleanup removes immutable fixture directories without traversing symlinks", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "areal-fixture-permissions-"));
+  const fixture = join(home, "fixture");
+  const skills = join(fixture, "builtin-skills");
+  const sibling = join(home, "sibling");
+  await mkdir(skills, { recursive: true });
+  await mkdir(sibling, { mode: 0o500 });
+  t.after(async () => {
+    await makeFixtureDirectoriesWritable(home);
+    await rm(home, { recursive: true, force: true });
+  });
+  await writeFile(join(skills, "fixture.txt"), "fixture");
+  await chmod(skills, 0o500);
+  await symlink(sibling, join(fixture, "link"));
+  await makeFixtureDirectoriesWritable(fixture);
+  await rm(fixture, { recursive: true });
+  assert.equal((await stat(sibling)).mode & 0o777, 0o500);
+});
 
 test("GUI exit without a Host receipt cannot prove fixture cleanup", async (t) => {
   const home = await mkdtemp(join(tmpdir(), "areal-no-host-"));
@@ -162,9 +182,16 @@ test(
   async (t) => {
     const root = await mkdtemp(join(tmpdir(), "areal-cleanup-test-"));
     t.after(() => rm(root, { recursive: true, force: true }));
+    const host = spawn(process.execPath, ["-e", "process.on('message', () => process.exit(0))"], {
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+    });
+    t.after(() => {
+      if (host.exitCode === null && host.signalCode === null) host.kill("SIGKILL");
+    });
     let calls = 0;
     const server = createServer((_request, response) => {
       calls++;
+      if (calls === 2) host.send("exit");
       response.end(JSON.stringify([{ state: "stopped", hostPid: null, corePid: null }]));
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -188,8 +215,8 @@ with urllib.request.urlopen(os.environ['AREAL_CLEANUP_TEST_URL'],timeout=2) as r
         NO_PROXY: [process.env.NO_PROXY, "127.0.0.1"].filter(Boolean).join(","),
         no_proxy: [process.env.no_proxy, "127.0.0.1"].filter(Boolean).join(","),
       },
-      null,
+      { hostPid: host.pid },
     );
-    assert.equal(calls, 1);
+    assert.ok(calls > 1, "cleanup waits for the original Host process to exit");
   },
 );

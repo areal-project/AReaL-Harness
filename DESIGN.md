@@ -56,9 +56,15 @@ components:
 - 导航、主内容、辅助面板分工明确；以内容关系组织密度。
 - 表面色差与留白分组，阴影表达浮层结构。
 
-本文件是现有设计系统的便携摘要。frontmatter 是默认主题的提取快照，供设计工具读取；生产值仍只在 [tokens.json](clients/gui/packages/ui/tokens.json) 修改，并通过既有生成器更新。实现优先使用语义变量和现有组件，不能从本文件复制字面量建立第二套主题。规则所有者见[设计地图](design/README.md)与[GUI 设计入口](clients/gui/design-system/README.md)。本次记录依据源码和已确认描述，未进行新的渲染或交互验收。
+本文件是 **人唯一需要感知与维护的设计系统宪法**（视觉北极星、语义角色与品味纠偏记录）。人机协作分工如下：
 
-本地 `.impeccable/design.json` 提供设计面板的组件视觉摘录，依赖宿主加载生产 CSS 变量，不替代 React 组件及其行为合同。其色阶为面板展示插值，不是新增的生产调色板；本次未验证面板渲染。
+- **人只关注两处入口**：本文件（审美意图与 Taste Log）与 `areal-ui-guide` / `areal-ui-critique` Skills（教 Agent 怎么用、怎么审）。历史 `design/` 与 `clients/gui/design-system/` 散文仅作存量归档参考，**不再新增无机器检查的纸面规则**。
+- **已沉淀的设计系统全部代码化**：唯一数值源只在 [tokens.json](clients/gui/packages/ui/tokens.json)，复用件只在 `@areal/ui`（[组件目录](clients/gui/packages/ui/README.md)），上层 UI 零魔法值与禁穿透由 `pnpm --dir clients/gui verify:design` 确定性 Lint 守门。
+- **实时现状永不手写**：随时运行 `pnpm --dir clients/gui run design:health` 查看所有生效 Lint 规则、当前存量债与组件毕业进度。
+
+frontmatter 是默认主题的提取快照，供设计工具读取；实现优先使用语义变量和现有组件，不能从本文件复制字面量建立第二套主题。
+
+本地 `.impeccable/design.json` 提供设计面板的组件视觉摘录，依赖宿主加载生产 CSS 变量，不替代 React 组件及其行为合同。其色阶为面板展示插值，不是新增的生产调色板。
 
 ## Colors
 
@@ -80,7 +86,7 @@ components:
 
 页面标题使用 `--text-page-title`，区块标题使用 `--text-ui-xl`，正文使用 `--text-ui-base`，按钮与紧凑标签使用 `--text-ui-caption`。对话正文、活动行、子代理与过程状态共用 `--text-conversation`、`--conversation-line`、`--conversation-gap`，层级通过颜色与图标表达。
 
-基础界面字号与当前应用默认内容字号均为 14px，实际值随用户设置变化；[表达角色说明](design/foundations/roles.md)仍描述 12px 默认值，与当前源码存在差异。本记录以 [applicationSettings.ts](clients/gui/renderer/src/settings/applicationSettings.ts) 和生产 Token 为现状依据，未调整该既有差异。普通任务标题和正文使用常规字重，强调遵循所属组件合同。
+基础界面字号与默认内容字号均为 `14px`（以 [applicationSettings.ts](clients/gui/renderer/src/settings/applicationSettings.ts) 与 `tokens.json` 为唯一真相，并随用户设置动态缩放）。普通任务标题和正文使用常规字重，强调遵循所属组件合同。
 
 ## Layout
 
@@ -113,9 +119,32 @@ components:
 - Do 分别检查明暗主题、用户字号、窄窗口与键盘焦点。
 - Do 保留操作字号与阅读字号的独立偏好。
 - Do 用状态文字和图标补充颜色表达，并依据真实执行结果呈现反馈。
+- Do 每个页面只聚焦 1 个核心任务、单屏主按钮 ≤ 1，动工前补齐 5 种基础状态（Empty / Loading / Error / Overflow / Pending）。
+- Do 对可逆操作采用“直接执行 + 撤销（Undo）”，仅对不可逆高危操作使用阻断确认弹窗。
 
 ### Don't:
 - Don't 从本文件复制色值、字号或圆角到页面，建立平行主题。
 - Don't 用缩字、禁用透明度或内容裁切掩盖可读性与布局问题。
 - Don't 给每段文字增加卡片、重阴影或装饰渐变。
+- Don't 在弹窗或危险操作上写孤立的“确定 / 取消”，也不要在空状态只写“暂无数据”。
+
+## UX Writing 铁律
+
+1. **动作写“动词 + 具体结果”**：确认与危险弹窗禁止使用孤立的“确定 / 取消 / 提交”，改写为具体后果（如“放弃修改 / 继续编辑”“移除工作树 / 保留”）。
+2. **零内部黑话**：用户可见文案严禁暴露 `Core`、`Host`、`Store`、`revision`、`generation`、`回执`、`快照`、`受理`、`实例`、`核对` 或原始异常堆栈，全部译为用户目标语言。
+3. **报错三段式**：每个面向用户的错误必须说清“发生了什么 + 数据是否安全 + 下一步怎么修”，语气平和不指责用户；技术细节仅收入可展开详情。
+4. **空状态必须有引导**：禁止干瘪的“暂无数据 / 暂无内容”，必须说明这里承载什么，并提供 1 个明确的第一步主动作。
+5. **去客套 + 统一词典**：删除“亲爱的 / 温馨提示 / 为了便于 / 您可以”等废话，普通说明压在 30 汉字内；同一概念全站只用一个标准词（见 [术语词典](design/content/terminology.md) 与 `terms-lint.mjs`）。
+
+## Taste Log（品味纠偏对）
+
+> 每次通过 Prompt 纠正了 Agent 的审美或交互细节，记成一条 `Before → After + 为什么`；能写成 Lint 的同时转进确定性检查，写不成 Lint 的留在这里作为持久品味记忆。
+
+| 场景 | Before（不要这样） | After（要这样） | 为什么 |
+| --- | --- | --- | --- |
+| 空状态与授权页 | 贴左上角堆叠或满屏铺开，缺少视觉重心 | 居中紧凑卡片、留出呼吸感、只放一个主动作 | 安静克制，让用户第一眼聚焦核心动作 |
+| 移动端 / 窄屏主按钮 | 无脑 `width: 100%` 撑满整行形成重色块 | 保持自然宽度或紧凑对齐，不挤占说明文字 | 维持工具感与呼吸感，避免营销落地页气息 |
+| 悬停与展开动效 | 各处手写 `150ms` / `200ms` / `transition: all` | 高频悬停统一 `--motion-fast`（100ms），弹窗/Toast 对称退场，全局响应 reduced-motion | 手感一致、利落不拖沓 |
+| 用户可见文案 | 暴露 `Core`、`Host`、`回执`、`快照`、`核对` 或原始堆栈 | 全部转为面向用户的自然语言与可操作建议 | 界面诚实度优先，不让用户理解后端实现词汇 |
+| Tooltip 与原生控件 | 在页面里手写 `<button>` 或原生 `title="..."` | 复用 `@areal/ui` 组件与 `TitleTooltip` | 保证键盘、焦点、主题与延时分组行为全站统一 |
 - Don't 使用左侧三角作为展开入口；沿用详情入口或带可访问语义的展开文字按钮。

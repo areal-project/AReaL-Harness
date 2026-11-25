@@ -209,52 +209,25 @@ def validate_schema(document, root=ROOT):
         visit(value, name)
     if "anyOf" in document:
         visit({"anyOf": document["anyOf"]}, "root")
-    for transport in ("local", "remote", "loopback", "workbench"):
+    for transport in ("local", "remote", "loopback"):
         methods = document["x-current"][transport]["methods"]
         for method, entry in methods.items():
+            if transport == "remote" and entry.get("x-lane") not in (
+                "control",
+                "query",
+                "mutation",
+            ):
+                raise ValueError(f"{transport}/{method}: invalid or missing x-lane")
             for kind in ("request", "result"):
                 visit({"$ref": entry[kind]}, f"{transport}/{method}/{kind}")
             request = definitions[entry["request"][8:]]
-            direction = entry.get("direction")
-            tag = (
-                "call" if transport == "workbench" and direction == "workbenchToHost" else "method"
-            )
-            if transport == "workbench" and (
-                direction not in {"workbenchToHost", "hostToWorkbench"}
-                or entry.get("x-owner")
-                != ("host" if direction == "workbenchToHost" else "workbench")
-            ):
-                raise ValueError(f"{transport}/{method}: invalid private owner or direction")
             if (
-                request["properties"][tag].get("const") != method
+                request["properties"]["method"].get("const") != method
                 or request.get("additionalProperties") is not False
             ):
                 raise ValueError(
                     f"{transport}/{method}: request envelope must be closed and method-specific"
                 )
-
-    for event, entry in document["x-current"]["workbench"].get("events", {}).items():
-        if entry.get("direction") not in {"workbenchToHost", "hostToWorkbench"} or entry.get(
-            "x-owner"
-        ) != ("workbench" if entry["direction"] == "workbenchToHost" else "host"):
-            raise ValueError(f"workbench/{event}: invalid event owner or direction")
-        visit({"$ref": entry["schema"]}, f"workbench/{event}/schema")
-
-        def event_shape(shape):
-            variants = shape.get("oneOf", shape.get("anyOf"))
-            if variants is not None:
-                for variant in variants:
-                    event_shape(variant)
-                return
-            if (
-                shape.get("additionalProperties") is not False
-                or shape.get("properties", {}).get("event", {}).get("const") != event
-            ):
-                raise ValueError(
-                    f"workbench/{event}: event envelope must be closed and event-specific"
-                )
-
-        event_shape(definitions[entry["schema"][8:]])
 
 
 def current_inventory(root):
@@ -308,35 +281,23 @@ def current_inventory(root):
     plugins_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", plugins, re.S)
     if not plugins_match:
         raise ValueError("Plugin METHODS declaration moved; update inventory extractor")
-    backend = (root / "services/workbench/src/backend-main.cjs").read_text()
-    private = re.search(r"const privateMethods = \[(.*?)\];", backend, re.S)
-    if not private:
-        raise ValueError("Workbench private ready declaration moved; update inventory extractor")
-    reverse = workbench[
-        workbench.index("pub(super) fn reverse(") : workbench.index("\nfn projects(")
-    ]
-    reverse_methods = set()
-    for arm in re.findall(
-        r'((?:"[A-Za-z][A-Za-z0-9_.:/-]*"\s*(?:\|\s*)?)+)(?:\s+if\s+[^=]+)?\s*=>', reverse
-    ):
-        reverse_methods.update(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', arm))
-    private_events = set(
-        re.findall(r'request\.event\s*===\s*"([A-Za-z][A-Za-z0-9_.:/-]*)"', backend)
-    )
-    private_events.update(
-        set(re.findall(r'event:\s*"([A-Za-z][A-Za-z0-9_.:/-]*)"', backend)) - {"ready"}
-    )
+    bots = (root / "core/host/src/bots.rs").read_text()
+    bots_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", bots, re.S)
+    if not bots_match:
+        raise ValueError("Bots METHODS declaration moved; update inventory extractor")
     return {
-        "workbenchEvents": private_events,
-        "workbench": (reverse_methods - private_events)
-        | set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', private[1])),
         "loopback": {"hello"}
         | set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', loopback_match[1])),
         "local": local,
         "remote": set(
             re.findall(
                 r'"([A-Za-z][A-Za-z0-9_.:/-]*)"',
-                match[1] + read_match[1] + upload_match[1] + workbench_match[1] + plugins_match[1],
+                match[1]
+                + read_match[1]
+                + upload_match[1]
+                + workbench_match[1]
+                + plugins_match[1]
+                + bots_match[1],
             )
         ),
         "remoteLegacy": set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', match[1])),
@@ -345,12 +306,22 @@ def current_inventory(root):
 
 def check_inventory(document, root):
     for transport, actual in current_inventory(root).items():
-        if transport == "workbenchEvents":
-            declared = set(document["x-current"]["workbench"]["events"])
-        elif transport == "remoteLegacy":
+        if transport == "remoteLegacy":
             declared = set(
                 document["$defs"]["RemoteReady"]["properties"]["methods"]["items"]["enum"]
             )
+            for name in ("RemoteReady", "RemoteDescription"):
+                methods = document["$defs"][name]["properties"]["methods"]
+                if (
+                    set(methods["items"]["enum"]) != actual
+                    or methods.get("minItems") != len(actual)
+                    or methods.get("maxItems") != len(actual)
+                ):
+                    raise ValueError(
+                        f"remoteLegacy {name} method inventory or bounds drift: "
+                        f"missing={sorted(actual - set(methods['items']['enum']))}, "
+                        f"stale={sorted(set(methods['items']['enum']) - actual)}"
+                    )
         else:
             declared = set(document["x-current"][transport]["methods"])
         if actual != declared:
@@ -543,10 +514,23 @@ class Emitter:
         constants = "\n".join(
             f"pub const {key}: u64 = {value};" for key, value in sorted(limits.items())
         )
+        lanes = [
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
+            "pub enum RemoteMethodLane { Control, Query, Mutation }",
+            "pub const fn remote_method_lane(method: &str) -> Option<RemoteMethodLane> {",
+            "    match method.as_bytes() {",
+        ]
+        for method, entry in sorted(document["x-current"]["remote"]["methods"].items()):
+            lanes.append(
+                f"        b{json.dumps(method)} => Some(RemoteMethodLane::{entry['x-lane'].title()}),"
+            )
+        lanes += ["        _ => None,", "    }", "}"]
         rust_output = (
             header
             + "#![allow(dead_code)]\n\n"
             + constants
+            + "\n\n"
+            + "\n".join(lanes)
             + "\n\n"
             + helper
             + "\n"

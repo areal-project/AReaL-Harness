@@ -199,6 +199,8 @@ export function GitActions({
               <Button
                 variant="secondary"
                 size="sm"
+                shape="pill"
+                className="pointer-events-auto"
                 disabled={busy || !indexReview.enabled}
                 onClick={onChanged}
               >
@@ -211,6 +213,8 @@ export function GitActions({
                 <Button
                   variant="secondary"
                   size="sm"
+                  shape="pill"
+                  className="pointer-events-auto"
                   title={state.root}
                   disabled={disabled || !indexReview.enabled}
                   onClick={() =>
@@ -325,8 +329,8 @@ export function GitActions({
               <section className="grid gap-3 border-t border-border pt-4">
                 <h3 className="text-ui-sm font-medium">推送</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="grid gap-2 text-ui-sm">
-                    远程仓库
+                  <div className="grid gap-2 text-ui-sm">
+                    <span>远程仓库</span>
                     <Select<string>
                       value={remote || null}
                       disabled={disabled || !state.remotes.length}
@@ -345,7 +349,7 @@ export function GitActions({
                         ))}
                       </SelectContent>
                     </Select>
-                  </label>
+                  </div>
                   <label className="grid gap-2 text-ui-sm">
                     目标分支
                     <Input

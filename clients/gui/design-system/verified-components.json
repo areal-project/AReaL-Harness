@@ -26,6 +26,594 @@
       "styles": ["clients/gui/packages/ui/src/components/hover-actions/hover-actions.css"],
       "internalSelectors": [".areal-hover-actions"],
       "enforces": ["R-HOVERACTIONS-002", "R-HOVERACTIONS-003"]
+    },
+    {
+      "id": "disclosure",
+      "contract": "clients/gui/packages/ui/src/components/disclosure/disclosure.md",
+      "styles": ["clients/gui/packages/ui/src/components/disclosure/disclosure.css"],
+      "internalSelectors": [
+        ".areal-disclosure",
+        ".areal-disclosure-trigger",
+        ".areal-disclosure-panel",
+        ".areal-disclosure-indicator"
+      ],
+      "enforces": ["R-DISCLOSURE-006"]
+    },
+    {
+      "id": "notification-toast",
+      "contract": "clients/gui/packages/ui/src/components/notification-toast/notification-toast.md",
+      "styles": [
+        "clients/gui/packages/ui/src/components/notification-toast/notification-toast.css"
+      ],
+      "internalSelectors": [
+        ".areal-notification-toast",
+        ".areal-toast-icon",
+        ".areal-toast-actions"
+      ],
+      "enforces": ["R-NOTIFICATIONTOAST-002"]
+    },
+    {
+      "id": "dialog",
+      "contract": "clients/gui/packages/ui/src/components/dialog/dialog.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"dialog-overlay\"]", "[data-slot=\"dialog-content\"]"],
+      "enforces": ["R-DIALOG-002"]
+    },
+    {
+      "id": "input",
+      "contract": "clients/gui/packages/ui/src/components/input/input.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"input\"]"],
+      "enforces": []
+    },
+    {
+      "id": "switch",
+      "contract": "clients/gui/packages/ui/src/components/switch/switch.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"switch\"]", "[data-slot=\"switch-thumb\"]"],
+      "enforces": []
+    },
+    {
+      "id": "select",
+      "contract": "clients/gui/packages/ui/src/components/select/select.md",
+      "styles": [],
+      "internalSelectors": [
+        "[data-slot=\"select-trigger\"]",
+        "[data-slot=\"select-content\"]",
+        "[data-slot=\"select-item\"]"
+      ],
+      "enforces": []
+    },
+    {
+      "id": "popover",
+      "contract": "clients/gui/packages/ui/src/components/popover/popover.md",
+      "styles": ["clients/gui/packages/ui/src/components/popover/popup.css"],
+      "internalSelectors": ["[data-slot=\"popover-content\"]"],
+      "enforces": []
+    },
+    {
+      "id": "skeleton",
+      "contract": "clients/gui/packages/ui/src/components/skeleton/skeleton.md",
+      "styles": ["clients/gui/packages/ui/src/components/skeleton/skeleton.css"],
+      "internalSelectors": [".areal-skeleton", "[data-slot=\"skeleton\"]"],
+      "enforces": []
+    },
+    {
+      "id": "context-menu",
+      "contract": "clients/gui/packages/ui/src/components/context-menu/context-menu.md",
+      "styles": [],
+      "internalSelectors": [
+        "[data-slot=\"context-menu-content\"]",
+        "[data-slot=\"context-menu-item\"]"
+      ],
+      "enforces": []
+    },
+    {
+      "id": "dropdown-menu",
+      "contract": "clients/gui/packages/ui/src/components/dropdown-menu/dropdown-menu.md",
+      "styles": [],
+      "internalSelectors": [
+        "[data-slot=\"dropdown-menu-content\"]",
+        "[data-slot=\"dropdown-menu-item\"]"
+      ],
+      "enforces": []
+    },
+    {
+      "id": "control-hint-tooltip",
+      "contract": "clients/gui/packages/ui/src/components/control-hint-tooltip/control-hint-tooltip.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"kbd\"]"],
+      "enforces": []
+    },
+    {
+      "id": "action-button",
+      "contract": "clients/gui/packages/ui/src/components/action-button/action-button.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "tooltip",
+      "contract": "clients/gui/packages/ui/src/components/tooltip/tooltip.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"tooltip-content\"]"],
+      "enforces": []
+    },
+    {
+      "id": "settings-disclosure",
+      "contract": "clients/gui/packages/ui/src/components/settings-disclosure/settings-disclosure.md",
+      "styles": [
+        "clients/gui/packages/ui/src/components/settings-disclosure/settings-disclosure.css"
+      ],
+      "internalSelectors": [".settings-disclosure-title", ".settings-disclosure-action"],
+      "enforces": []
+    },
+    {
+      "id": "feedback-notice",
+      "contract": "clients/gui/packages/ui/src/components/feedback-notice/feedback-notice.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "spinner",
+      "contract": "clients/gui/packages/ui/src/components/spinner/spinner.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "input-group",
+      "contract": "clients/gui/packages/ui/src/components/input-group/input-group.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "code-viewer",
+      "contract": "clients/gui/packages/ui/src/components/code-viewer/code-viewer.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "command",
+      "contract": "clients/gui/packages/ui/src/components/command/command.md",
+      "styles": [],
+      "internalSelectors": [
+        "[data-slot=\"command\"]",
+        "[data-slot=\"command-input\"]",
+        "[data-slot=\"command-list\"]",
+        "[data-slot=\"command-item\"]"
+      ],
+      "enforces": []
+    },
+    {
+      "id": "diff-viewer",
+      "contract": "clients/gui/packages/ui/src/components/diff-viewer/diff-viewer.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "markdown-blockquote",
+      "contract": "clients/gui/packages/ui/src/conversation/markdown-blockquote/markdown-blockquote.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "markdown-list",
+      "contract": "clients/gui/packages/ui/src/conversation/markdown-list/markdown-list.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "markdown-surface",
+      "contract": "clients/gui/packages/ui/src/conversation/markdown-surface/markdown-surface.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "message-attachments",
+      "contract": "clients/gui/packages/ui/src/conversation/message-attachments/message-attachments.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-search-input",
+      "contract": "clients/gui/packages/ui/src/settings/settings-search-input/settings-search-input.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-section",
+      "contract": "clients/gui/packages/ui/src/settings/settings-section/settings-section.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-segmented-tabs",
+      "contract": "clients/gui/packages/ui/src/settings/settings-segmented-tabs/settings-segmented-tabs.md",
+      "styles": [
+        "clients/gui/packages/ui/src/settings/settings-segmented-tabs/settings-segmented-tabs.css"
+      ],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-select",
+      "contract": "clients/gui/packages/ui/src/settings/settings-select/settings-select.md",
+      "styles": ["clients/gui/packages/ui/src/settings/settings-select/settings-select.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "resource-controls",
+      "contract": "clients/gui/packages/ui/src/workbench/resource-controls/resource-controls.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "side-pane-frame",
+      "contract": "clients/gui/packages/ui/src/workbench/side-pane-frame/side-pane-frame.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "side-pane-launcher",
+      "contract": "clients/gui/packages/ui/src/workbench/side-pane-launcher/side-pane-launcher.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "task-title-overflow",
+      "contract": "clients/gui/packages/ui/src/workbench/task-title-overflow/task-title-overflow.md",
+      "styles": [
+        "clients/gui/packages/ui/src/workbench/task-title-overflow/task-title-overflow.css"
+      ],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "button",
+      "contract": "clients/gui/packages/ui/src/components/button/button.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"button\"]"],
+      "enforces": []
+    },
+    {
+      "id": "tabs",
+      "contract": "clients/gui/packages/ui/src/components/tabs/tabs.md",
+      "styles": [],
+      "internalSelectors": [
+        "[data-slot=\"tabs\"]",
+        "[data-slot=\"tabs-list\"]",
+        "[data-slot=\"tabs-trigger\"]",
+        "[data-slot=\"tabs-content\"]"
+      ],
+      "enforces": []
+    },
+    {
+      "id": "textarea",
+      "contract": "clients/gui/packages/ui/src/components/textarea/textarea.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"textarea\"]"],
+      "enforces": []
+    },
+    {
+      "id": "card",
+      "contract": "clients/gui/packages/ui/src/components/card/card.md",
+      "styles": [],
+      "internalSelectors": [
+        "[data-slot=\"card\"]",
+        "[data-slot=\"card-header\"]",
+        "[data-slot=\"card-content\"]",
+        "[data-slot=\"card-footer\"]"
+      ],
+      "enforces": []
+    },
+    {
+      "id": "settings-group-card",
+      "contract": "clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-dialog",
+      "contract": "clients/gui/packages/ui/src/settings/settings-dialog/settings-dialog.md",
+      "styles": ["clients/gui/packages/ui/src/settings/settings-dialog/settings-dialog.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "command-details",
+      "contract": "clients/gui/packages/ui/src/conversation/command-details/command-details.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/command-details/command-details.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "attachment-card",
+      "contract": "clients/gui/packages/ui/src/conversation/attachment-card/attachment-card.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/attachment-card/attachment-card.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "task-list-item",
+      "contract": "clients/gui/packages/ui/src/workbench/task-list-item/task-list-item.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "markdown-table",
+      "contract": "clients/gui/packages/ui/src/conversation/markdown-table/markdown-table.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "collapsible-text",
+      "contract": "clients/gui/packages/ui/src/conversation/collapsible-text/collapsible-text.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/collapsible-text/collapsible-text.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "composer-toolbar",
+      "contract": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md",
+      "styles": [],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "thinking-status",
+      "contract": "clients/gui/packages/ui/src/conversation/thinking-status/thinking-status.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/thinking-status/thinking-status.css"],
+      "internalSelectors": [".areal-thinking", ".areal-thinking-message", ".areal-thinking-sweep"],
+      "enforces": []
+    },
+    {
+      "id": "subagent-panel",
+      "contract": "clients/gui/packages/ui/src/conversation/subagent-panel/subagent-panel.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/subagent-panel/subagent-panel.css"],
+      "internalSelectors": [".areal-subagent-panel"],
+      "enforces": []
+    },
+    {
+      "id": "decision-card",
+      "contract": "clients/gui/packages/ui/src/conversation/decision-card/decision-card.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/decision-card/decision-card.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "question-card",
+      "contract": "clients/gui/packages/ui/src/conversation/question-card/question-card.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/question-card/question-card.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "message-code-block",
+      "contract": "clients/gui/packages/ui/src/conversation/message-code-block/message-code-block.md",
+      "styles": [
+        "clients/gui/packages/ui/src/conversation/message-code-block/message-code-block.css"
+      ],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "native-content",
+      "contract": "clients/gui/packages/ui/src/conversation/native-content/native-content.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/native-content/native-content.css"],
+      "internalSelectors": [".areal-native-content"],
+      "enforces": []
+    },
+    {
+      "id": "image-disclosure",
+      "contract": "clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.css"],
+      "internalSelectors": [".areal-image-disclosure", ".areal-image-content"],
+      "enforces": []
+    },
+    {
+      "id": "composer-surface",
+      "contract": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "task-context",
+      "contract": "clients/gui/packages/ui/src/conversation/task-context/task-context.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/task-context/task-context.css"],
+      "internalSelectors": [".areal-task-context"],
+      "enforces": []
+    },
+    {
+      "id": "worktree-directory",
+      "contract": "clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.md",
+      "styles": ["clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "worktree-picker",
+      "contract": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md",
+      "styles": ["clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "worktree-settings",
+      "contract": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md",
+      "styles": ["clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "worktree-status",
+      "contract": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md",
+      "styles": ["clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "worktree-workspace",
+      "contract": "clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.md",
+      "styles": ["clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-page",
+      "contract": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md",
+      "styles": ["clients/gui/packages/ui/src/settings/settings-page/settings-page.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-row",
+      "contract": "clients/gui/packages/ui/src/settings/settings-row/settings-row.md",
+      "styles": ["clients/gui/packages/ui/src/settings/settings-row/settings-row.css"],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "scheduled-workspace",
+      "contract": "clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.md",
+      "styles": [
+        "clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.css"
+      ],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "settings-navigation",
+      "contract": "clients/gui/packages/ui/src/workbench/settings-navigation/settings-navigation.md",
+      "styles": [
+        "clients/gui/packages/ui/src/workbench/settings-navigation/settings-navigation.css"
+      ],
+      "internalSelectors": [],
+      "enforces": []
+    },
+    {
+      "id": "workbench-shell",
+      "contract": "clients/gui/packages/ui/src/workbench/workbench-shell/workbench-shell.md",
+      "styles": ["clients/gui/packages/ui/src/workbench/workbench-shell/workbench-shell.css"],
+      "internalSelectors": [".areal-workbench"],
+      "enforces": []
+    },
+    {
+      "id": "thread-summary-panel",
+      "contract": "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.md",
+      "styles": [
+        "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.css"
+      ],
+      "internalSelectors": [".areal-thread-summary-panel"],
+      "enforces": []
+    },
+    {
+      "id": "kbd",
+      "contract": "clients/gui/packages/ui/src/components/kbd/kbd.md",
+      "styles": ["clients/gui/packages/ui/src/components/kbd/kbd.css"],
+      "internalSelectors": [".areal-kbd"],
+      "enforces": []
+    },
+    {
+      "id": "badge",
+      "contract": "clients/gui/packages/ui/src/components/badge/badge.md",
+      "styles": ["clients/gui/packages/ui/src/components/badge/badge.css"],
+      "internalSelectors": [".areal-badge"],
+      "enforces": []
+    },
+    {
+      "id": "callout",
+      "contract": "clients/gui/packages/ui/src/components/callout/callout.md",
+      "styles": ["clients/gui/packages/ui/src/components/callout/callout.css"],
+      "internalSelectors": [".areal-callout"],
+      "enforces": []
+    },
+    {
+      "id": "composer-request-stack",
+      "contract": "clients/gui/packages/ui/src/conversation/composer-request-stack/composer-request-stack.md",
+      "styles": [
+        "clients/gui/packages/ui/src/conversation/composer-request-stack/composer-request-stack.css"
+      ],
+      "internalSelectors": [".areal-composer-request-stack"],
+      "enforces": []
+    },
+    {
+      "id": "worked-for-divider",
+      "contract": "clients/gui/packages/ui/src/conversation/worked-for-divider/worked-for-divider.md",
+      "styles": [
+        "clients/gui/packages/ui/src/conversation/worked-for-divider/worked-for-divider.css"
+      ],
+      "internalSelectors": [".areal-worked-for-divider"],
+      "enforces": []
+    },
+    {
+      "id": "thread-find-bar",
+      "contract": "clients/gui/packages/ui/src/conversation/thread-find-bar/thread-find-bar.md",
+      "styles": ["clients/gui/packages/ui/src/conversation/thread-find-bar/thread-find-bar.css"],
+      "internalSelectors": [".areal-thread-find-bar"],
+      "enforces": []
+    },
+    {
+      "id": "popover-sidebar",
+      "contract": "clients/gui/packages/ui/src/workbench/popover-sidebar/popover-sidebar.md",
+      "styles": ["clients/gui/packages/ui/src/workbench/popover-sidebar/popover-sidebar.css"],
+      "internalSelectors": [".areal-popover-sidebar-panel"],
+      "enforces": []
+    },
+    {
+      "id": "automation-template-dialog",
+      "contract": "clients/gui/packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.md",
+      "styles": [
+        "clients/gui/packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.css"
+      ],
+      "internalSelectors": [".areal-automation-template-dialog"],
+      "enforces": []
+    },
+    {
+      "id": "shortcut-capture",
+      "contract": "clients/gui/packages/ui/src/settings/shortcut-capture/shortcut-capture.md",
+      "styles": ["clients/gui/packages/ui/src/settings/shortcut-capture/shortcut-capture.css"],
+      "internalSelectors": [".areal-shortcut-capture"],
+      "enforces": []
+    },
+    {
+      "id": "empty-state",
+      "contract": "clients/gui/packages/ui/src/components/empty-state/empty-state.md",
+      "styles": ["clients/gui/packages/ui/src/components/empty-state/empty-state.css"],
+      "internalSelectors": [".areal-empty-state"],
+      "enforces": []
+    },
+    {
+      "id": "confirm-dialog",
+      "contract": "clients/gui/packages/ui/src/components/confirm-dialog/confirm-dialog.md",
+      "styles": [],
+      "internalSelectors": ["[data-slot=\"confirm-dialog\"]"],
+      "enforces": []
+    },
+    {
+      "id": "sheet",
+      "contract": "clients/gui/packages/ui/src/components/sheet/sheet.md",
+      "styles": ["clients/gui/packages/ui/src/components/sheet/sheet.css"],
+      "internalSelectors": [".areal-sheet-overlay", ".areal-sheet-content"],
+      "enforces": []
     }
   ],
   "rules": [

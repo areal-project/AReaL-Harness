@@ -2,8 +2,8 @@
 id: card
 title: Card
 summary: 内容卡，沿用现有生产实现与交互。
-status: experimental
-entry: experimental
+status: stable
+entry: index
 layer: core
 category: control
 aliases: ["内容卡"]

@@ -107,10 +107,10 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
         <PopoverTrigger
           render={
             <Button
-              unstyled
-              data-slot={undefined}
+              variant="ghost"
+              size="icon-lg"
               type="button"
-              className="areal-update-trigger relative inline-flex items-center justify-center size-9 shrink-0 border-0 rounded-navigation bg-transparent text-foreground"
+              className="relative size-9 shrink-0"
               data-testid="areal-update-trigger"
               data-state={update.status}
               aria-label={label}
@@ -153,7 +153,7 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
           side="right"
           align="end"
           sideOffset={12}
-          className="areal-update-panel"
+          className="w-[304px] max-w-[min(304px,calc(100vw-var(--spacing-control-sm)),var(--available-width))] gap-[calc(var(--spacing-inline)*3/2)]"
           aria-label={t("common.update.panel")}
         >
           <div className="flex items-center gap-inline">
@@ -173,7 +173,7 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
               )}
             </div>
           </div>
-          <PopoverDescription className="m-0 text-ui-sm leading-normal wrap-anywhere text-foreground">
+          <PopoverDescription tone="foreground" className="m-0">
             {t(descriptions[update.status])}
           </PopoverDescription>
           {downloading && (

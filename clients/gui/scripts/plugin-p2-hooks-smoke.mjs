@@ -10,16 +10,22 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs";
 import {
-  captureSmokeFailure,
-  createProjectConversation,
-  selectConversation,
-} from "./smoke-navigation.mjs";
+  assertApplicationStopped,
+  closeSmokeApplication,
+  readFixtureHost,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
+import { respondToSessionName } from "./model-fixture.mjs";
+import { openProjectInDesktop } from "./support/journey-fixture.mjs";
+import { until } from "./support/desktop-fixture.mjs";
+import { readCoreThread } from "./support/core-observation.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), ".."),
   require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const scratch = await makeTempDir("areal-plugin-gui-"),
-  workspace = join(scratch, "workspace"),
+  workspace = join(scratch, "demo"),
   userHome = join(scratch, "user");
 await mkdir(join(workspace, ".agents", "plugins"), { recursive: true });
 await mkdir(join(userHome, ".areal"), { recursive: true });
@@ -47,8 +53,13 @@ await writeFile(
 );
 await mkdir(join(source, "hooks"), { recursive: true });
 await writeFile(
-  join(source, "hooks/hook.py"),
-  `import json,os,sys\nv=json.load(sys.stdin)\np=os.environ['PLUGIN_DATA']+'/gui-hooks.jsonl'\nwith open(p,'a') as f:f.write(json.dumps(v)+'\\n')\nprint(json.dumps({'hookSpecificOutput':{'hookEventName':'UserPromptSubmit','additionalContext':'GUI_HOOK_CONTEXT'}}) if v['hook_event_name']=='UserPromptSubmit' else '{}')\n`,
+  join(source, "hooks/hook.sh"),
+  [
+    "IFS= read -r record || exit 1",
+    'case "$record" in *\'"hook_event_name":"UserPromptSubmit"\'*) ;; *) exit 1 ;; esac',
+    'printf \'%s\\n\' "$record" >> "$PLUGIN_DATA/gui-hooks.jsonl" || exit 1',
+    'printf \'%s\\n\' \'{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"GUI_HOOK_CONTEXT"}}\'',
+  ].join("\n") + "\n",
 );
 await writeFile(
   join(source, "hooks/hooks.json"),
@@ -56,9 +67,7 @@ await writeFile(
     hooks: {
       UserPromptSubmit: [
         {
-          hooks: [
-            { type: "command", command: 'python3 "${PLUGIN_ROOT}/hooks/hook.py"', timeout: 3 },
-          ],
+          hooks: [{ type: "command", command: '. "${PLUGIN_ROOT}/hooks/hook.sh"', timeout: 3 }],
         },
       ],
     },
@@ -102,7 +111,9 @@ const requests = [],
 const model = createServer(async (req, res) => {
   let body = "";
   for await (const p of req) body += p;
-  requests.push(JSON.parse(body));
+  const payload = JSON.parse(body);
+  if (respondToSessionName(payload, res)) return;
+  requests.push(payload);
   res.writeHead(200, { "Content-Type": "text/event-stream" });
   res.end(
     "data: " +
@@ -118,26 +129,23 @@ const model = createServer(async (req, res) => {
 await new Promise((r) => model.listen(0, "127.0.0.1", r));
 await writeFile(
   join(userHome, ".areal", "config.toml"),
-  'schema_version=1\n[model]\nname="fixture"\n[model.providers.default]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:' +
-    model.address().port +
-    '"\n',
+  `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`,
 );
-const env = {
-  ...process.env,
+const env = { ...process.env };
+for (const key of Object.keys(env))
+  if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
+Object.assign(env, {
+  HOME: userHome,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
   AREAL_CORE_HOME: join(scratch, "core"),
+  AREAL_CORE_CONFIG: join(userHome, ".areal", "config.toml"),
   AREAL_CORE_USER_HOME: userHome,
+  AREAL_HARNESS_HOME: join(scratch, "registry"),
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
   AREAL_CORE_BIN: process.env.AREAL_CORE_BIN ?? resolve(gui, "../../target/debug/areal"),
-};
-for (const k of [
-  "AREAL_CORE_WORKSPACE",
-  "AREAL_CORE_CONFIG",
-  "AREAL_HARNESS_HOME",
-  "AREAL_HARNESS_CONFIG",
-  "AREAL_CORE_DESKTOP_CONFIG",
-])
-  delete env[k];
+  NO_PROXY: [env.NO_PROXY, "127.0.0.1", "localhost"].filter(Boolean).join(","),
+  no_proxy: [env.no_proxy, "127.0.0.1", "localhost"].filter(Boolean).join(","),
+});
 const coreBinary = env.AREAL_CORE_BIN,
   coreSha256 = createHash("sha256")
     .update(await readFile(coreBinary))
@@ -147,15 +155,62 @@ let app,
   failure,
   passed = false;
 const button = (n) => page.getByRole("button", { name: n, exact: true });
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
-async function until(fn, label) {
-  const end = Date.now() + 30_000;
-  while (Date.now() < end) {
-    const s = await state();
-    if (fn(s)) return s;
-    await new Promise((r) => setTimeout(r, 75));
-  }
-  throw Error("timeout: " + label);
+let host, stopRequestId, loss;
+const writes = [];
+const originalReceipts = [];
+function observePluginSocket(socket) {
+  const remote = socket.connectToServer();
+  const replies = new Map();
+  socket.onMessage((message) => {
+    const { id, method, params } = JSON.parse(message.toString());
+    const request =
+      method === "manage.command" || method === "manage.read"
+        ? params
+        : method === "desktop.command" && params.command === "manage"
+          ? params.request
+          : null;
+    if (request?.operation === "pluginSubmission" && request.requestId === loss?.requestId)
+      replies.set(id, { kind: "lookup", loss });
+    if (request?.operation && request.operation === loss?.operation) {
+      writes.push({ operation: request.operation, requestId: request.requestId });
+      if (!loss.requestId) {
+        loss.requestId = request.requestId;
+        replies.set(id, { kind: "drop", loss });
+      }
+    }
+    remote.send(message);
+  });
+  remote.onMessage((message) => {
+    const { id, result, error } = JSON.parse(message.toString());
+    const matched = replies.get(id);
+    replies.delete(id);
+    if (matched?.kind === "drop") {
+      if (result && !error && result.submissionUnknown !== true) {
+        matched.loss.dropped = true;
+        void Promise.allSettled([socket.close(), remote.close()]);
+        return;
+      }
+      matched.loss.failed = error?.code ?? result?.admissionState ?? "INVALID_RESPONSE";
+    }
+    if (matched?.kind === "lookup") matched.loss.lookup = result;
+    socket.send(message);
+  });
+}
+async function recoverPlugin(operation, trigger) {
+  loss = { operation };
+  const mark = writes.length;
+  await button(trigger).click();
+  await until(() => loss.dropped || loss.failed, `original ${operation} replied`);
+  assert.equal(loss.dropped, true, String(loss.failed));
+  await button("查看插件提交").click();
+  const original = await until(
+    () => loss.lookup?.confirmed && loss.lookup,
+    "original plugin receipt",
+  );
+  originalReceipts.push({ operation, requestId: loss.requestId, receipt: original });
+  assert.equal(original.status, "completed");
+  assert.ok(original.result, "The original completed native receipt has its typed result");
+  assert.deepEqual(writes.slice(mark), [{ operation, requestId: loss.requestId }]);
 }
 async function call(name, params) {
   const r = await page.evaluate(({ name, params }) => window.arealDesktop.command(name, params), {
@@ -180,14 +235,17 @@ async function pluginState(predicate, label) {
   throw Error("timeout: " + label);
 }
 async function settings() {
-  await button("设置").click();
   await page
-    .getByLabel("集成", { exact: true })
+    .getByRole("navigation", { name: "应用导航", exact: true })
     .getByRole("button", { name: "插件", exact: true })
     .click();
-  await page.getByRole("heading", { name: "插件", exact: true }).waitFor();
-  await page.getByRole("button", { name: "查看插件 hello@gui-p0", exact: true }).click();
+  await page
+    .getByRole("tablist", { name: "市场范围", exact: true })
+    .getByRole("tab", { name: "个人", exact: true })
+    .click();
+  await button("查看插件 hello@gui-p0").click();
 }
+console.log("Plugin hooks evidence:", scratch);
 try {
   app = await electron.launch({
     executablePath: require("electron"),
@@ -198,20 +256,28 @@ try {
   page = await app.firstWindow();
   page.setDefaultTimeout(20_000);
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.getByTestId("areal-workbench").waitFor({ timeout: 120_000 });
-  await until((s) => s.connection?.state === "ready", "desktop ready");
-  await app.evaluate(({ dialog, BrowserWindow }, path) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-    dialog.showMessageBox = async () => ({ response: 1 });
-    BrowserWindow.getAllWindows()[0].setSize(1440, 960);
-  }, workspace);
-  await page.evaluate(() => window.arealDesktop.chooseProject());
-  await createProjectConversation(page, "workspace");
-  const ready = await until((s) => s.projects[0]?.state?.connected, "project connected"),
-    projectId = ready.projects[0].id;
+  const ready = page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]');
+  await ready.waitFor({ timeout: 120_000 });
+  host = await until(() => readFixtureHost(env), "original isolated Host");
+  await page.routeWebSocket(/\/host\/socket$/, observePluginSocket);
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "areal-gui:application-preferences",
+      JSON.stringify({
+        locale: "zh-CN",
+        nextPromptSuggestions: false,
+      }),
+    ),
+  );
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await ready.waitFor();
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
+  await openProjectInDesktop(app, page, workspace);
+  const projectId = await page.getByTestId("areal-workbench").getAttribute("data-project-id");
+  assert.ok(projectId);
   await settings();
-  await button("解析并预览来源").click();
-  await page.getByRole("checkbox", { name: "我已核对以上来源、版本和内容摘要" }).check();
+  await button("安装").click();
+  await page.getByRole("region", { name: "来源解析与预览", exact: true }).waitFor();
   await button("安装到用户").click();
   await button("卸载插件").waitFor();
   assert.equal(requests.length, 0, "installation cannot run setup/model");
@@ -232,35 +298,13 @@ try {
   assert(await readOnlyConsent.isDisabled());
   await hooks.scrollIntoViewIfNeeded();
   await page.screenshot({ path: join(scratch, "hook-review.png"), animations: "disabled" });
-  // Lose only the first completed trust reply at Main -> Renderer; Core remains real.
-  await app.evaluate(({ ipcMain }) => {
-    const channel = "areal-core:command",
-      original = ipcMain._invokeHandlers.get(channel);
-    let lose = true;
-    ipcMain.removeHandler(channel);
-    ipcMain.handle(channel, async (event, name, params) => {
-      const result = await original(event, name, params);
-      if (lose && name === "manage" && params.operation === "pluginHooksConfigure" && result.ok) {
-        lose = false;
-        return {
-          ok: false,
-          error: {
-            message: "Injected hook trust response loss",
-            submissionUnknown: true,
-            requestId: params.requestId,
-          },
-        };
-      }
-      return result;
-    });
-  });
   await page
     .getByRole("checkbox", {
       name: "我已审阅以上安装包摘要和全部钩子，允许当前定义运行。",
     })
     .check();
-  await button("信任并启用当前钩子").click();
-  await page.getByRole("dialog").getByRole("button", { name: "核对插件提交", exact: true }).click();
+  await recoverPlugin("pluginHooksConfigure", "信任并启用当前钩子");
+  loss = undefined;
   await button("刷新钩子").click();
   await hooks.getByText("当前定义已获信任", { exact: false }).waitFor();
   checks.push(
@@ -296,30 +340,8 @@ try {
     "separate visible GUI read-only child consent reaches Core for the reviewed definitions",
   );
 
-  // Lose a completed response only at the Main-to-renderer boundary. Core executes unchanged.
-  await app.evaluate(({ ipcMain }) => {
-    const channel = "areal-core:command",
-      original = ipcMain._invokeHandlers.get(channel);
-    let lose = true;
-    ipcMain.removeHandler(channel);
-    ipcMain.handle(channel, async (event, name, params) => {
-      const result = await original(event, name, params);
-      if (lose && name === "manage" && params.operation === "pluginSetup" && result.ok) {
-        lose = false;
-        return {
-          ok: false,
-          error: {
-            message: "Injected response loss",
-            submissionUnknown: true,
-            requestId: params.requestId,
-          },
-        };
-      }
-      return result;
-    });
-  });
-  await button("运行设置").click();
-  await page.getByRole("dialog").getByRole("button", { name: "核对插件提交", exact: true }).click();
+  await recoverPlugin("pluginSetup", "运行设置");
+  loss = undefined;
   await button("打开设置对话").waitFor();
   await button("打开设置对话").click();
   await page.getByTestId("chat-input").waitFor();
@@ -330,6 +352,15 @@ try {
   assert(requests.some((r) => JSON.stringify(r.messages).includes("GUI_PLUGIN_SETUP_BODY_MARKER")));
   await selectConversation(page, setupThread);
   assert.equal(requests.length, 1, "receipt recovery must not replay setup");
+  const history = await readCoreThread({
+    binary: coreBinary,
+    env,
+    gui,
+    workspace,
+    threadId: setupThread,
+  });
+  const hook = history.desktop.hookRuns.find((run) => run.event === "UserPromptSubmit");
+  assert.equal(hook?.outcome, "succeeded", JSON.stringify(hook));
   assert(requests.some((r) => JSON.stringify(r.messages).includes("GUI_HOOK_CONTEXT")));
   checks.push(
     "trusted hook executes through real Runtime and appears in the ordinary model request",
@@ -338,7 +369,7 @@ try {
     "explicit setup enters ordinary accessible chat with packaged skill body and sidebar navigation",
   );
   checks.push(
-    "GUI recovers completed setup after injected Main-to-renderer response loss using real Core receipt without replay",
+    "GUI recovers completed setup after dropping its native Host reply using real Core receipt without replay",
   );
   await page.screenshot({ path: join(scratch, "setup-chat.png"), animations: "disabled" });
   await settings();
@@ -358,6 +389,7 @@ try {
     "native revoke reaches authoritative Core definition trust and removes independent read-only consent",
   );
   await page.screenshot({ path: join(scratch, "hook-revoked.png"), animations: "disabled" });
+  await button("管理启用范围").click();
   await button("在用户范围停用").click();
   await pluginState((r) => r?.enabled === false, "disable committed");
   const current = await call("manage", { projectId, operation: "plugins" });
@@ -377,22 +409,36 @@ try {
   process.exitCode = 1;
   if (page) await captureSmokeFailure(page, scratch, e);
 } finally {
-  if (app) {
-    await app.close().catch((e) => errors.push("close GUI: " + e.message));
+  const electronPid = app?.process().pid;
+  host ??= await readFixtureHost(env);
+  if (host) {
     try {
-      const { ServiceConnection } = require("../app/src/core/service-client.cjs");
-      const connection = new ServiceConnection();
-      try {
-        const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-        await connection.connect(metadata);
-        await connection.request("stopService", { protocol: metadata.protocol }, true);
-      } finally {
-        connection.close();
-      }
-    } catch (e) {
-      errors.push("stop service: " + e.message);
+      const current = await readFixtureHost(env);
+      assert.equal(current?.hostId, host.hostId);
+      assert.equal(current.generation, host.generation);
+      const receipt = await stopFixtureHost(coreBinary, env.AREAL_HARNESS_SERVICE_HOME, scratch);
+      assert.equal(receipt?.state, "completed");
+      stopRequestId = receipt.requestId;
+    } catch (error) {
+      errors.push(`Host stop: ${error.stack}`);
     }
   }
+  try {
+    if (app) {
+      await app.evaluate(({ dialog }) => {
+        dialog.showMessageBox = async () => ({ response: 0 });
+      });
+      await closeSmokeApplication(app, 60_000);
+    }
+  } catch (error) {
+    errors.push(`Electron quit: ${error.stack}`);
+  }
+  try {
+    await assertApplicationStopped(coreBinary, env, { pid: electronPid, hostPid: host?.pid });
+  } catch (error) {
+    errors.push(`process exits: ${error.stack}`);
+  }
+  model.closeAllConnections();
   await new Promise((r) => model.close(r));
   if (errors.length) {
     passed = false;
@@ -416,6 +462,11 @@ try {
           .digest("hex") === coreSha256,
     },
     modelRequests: requests.length,
+    electronPid,
+    hostPid: host?.pid,
+    stopRequestId,
+    writes,
+    originalReceipts,
     scope:
       "source Electron/Core/Runtime P2 hook UI; deterministic external model; no packaged/provider acceptance",
   };

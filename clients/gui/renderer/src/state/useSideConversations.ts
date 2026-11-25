@@ -61,6 +61,7 @@ export function useSideConversations(
     const owner = sideSource.current;
     const tab = await sideChats.create(project.id, thread.id, text);
     if (
+      tab &&
       sideSource.current.owner === owner.owner &&
       owner.instanceId !== undefined &&
       sideSource.current.instanceId === owner.instanceId
@@ -204,6 +205,7 @@ export function useSideConversations(
       }
       if (!sourceCurrent()) return;
       tab ??= await createSide();
+      if (!tab) return;
       const current = sideChats.getTab(tab.projectId, tab.childId);
       if (!current || current.closeRequestId || !sourceCurrent()) return;
       const key = `areal-gui:draft:${tab.projectId}:${tab.childId}`;

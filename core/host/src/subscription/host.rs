@@ -168,7 +168,12 @@ impl Host {
             source.snapshot_async().await?
         } else {
             let mut value = SourceSubscription::stored_accounts_async(&self.migration, id).await?;
-            value.as_object_mut().unwrap().extend(json!({"accountEpoch":0,"authenticated":false,"state":"storage_locked","availability":"unavailable","refreshing":false,"email":null,"planType":null,"models":[],"modelError":null,"diagnostic":null,"login":null,"error":null,"billing":"subscription","catalog":null,"endpoint":null}).as_object().unwrap().clone());
+            let state = if owner.is_none() && account_revision == 0 && transport_revision == 0 {
+                "signed_out"
+            } else {
+                "storage_locked"
+            };
+            value.as_object_mut().unwrap().extend(json!({"accountEpoch":0,"authenticated":false,"state":state,"availability":"unavailable","refreshing":false,"email":null,"planType":null,"models":[],"modelError":null,"diagnostic":null,"login":null,"error":null,"billing":"subscription","catalog":null,"endpoint":null}).as_object().unwrap().clone());
             value
         };
         snapshot["owner"] = json!(if owner.is_some() {
@@ -1149,5 +1154,479 @@ impl Host {
             }
         }
         Ok(())
+    }
+
+    pub(super) async fn ensure_subscription_for_project(
+        &self,
+        source_id: &str,
+        project_id: &str,
+    ) -> Result<()> {
+        let sub =
+            if let Some(existing) = self.subscriptions.sources.borrow().get(source_id).cloned() {
+                existing
+            } else {
+                let snapshot = self.subscription_snapshot(source_id).await?;
+                if snapshot["state"] == "signed_out" && snapshot["owner"] != "nativeV1" {
+                    return Ok(());
+                }
+                self.ensure_native_subscription(source_id).await?
+            };
+        self.subscription_reconcile(project_id, &sub).await
+    }
+
+    async fn ensure_native_subscription(&self, source_id: &str) -> Result<Rc<SourceSubscription>> {
+        let settings = super::library_store::read_source(self, source_id)?;
+        let env: BTreeMap<String, String> = std::env::vars_os()
+            .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+            .collect();
+        let net_input = crate::network::desktop(&settings["settings"], &env).await?;
+        if let Some(existing) = self.subscriptions.sources.borrow().get(source_id).cloned() {
+            existing.network_input(net_input)?;
+            return Ok(existing);
+        }
+        let _handoff = self.subscriptions.handoff_gate.lock().await;
+        if let Some(existing) = self.subscriptions.sources.borrow().get(source_id).cloned() {
+            existing.network_input(net_input)?;
+            return Ok(existing);
+        }
+        if self
+            .migration
+            .vault
+            .subscription_owner(source_id)?
+            .is_some()
+        {
+            let network = Network::new(net_input)?;
+            let source =
+                SourceSubscription::load_async(self.migration.clone(), source_id.into(), network)
+                    .await?;
+            source.start().await?;
+            self.subscriptions
+                .sources
+                .borrow_mut()
+                .insert(source_id.to_owned(), source.clone());
+            let work = source.clone();
+            tokio::task::spawn_local(async move {
+                let _ = work.refresh_catalog(false).await;
+            });
+            return Ok(source);
+        }
+        let migration_id = self.migration.source_migration_id(source_id)?;
+        self.migration
+            .subscription_retired(source_id, &migration_id)?;
+        let (account_revision, _) = self
+            .migration
+            .vault
+            .subscription_slot_async(
+                crate::vault::Slot::SubscriptionAccount {
+                    source_id: source_id.to_owned(),
+                    provider_id: "openai".into(),
+                },
+                &self.migration,
+            )
+            .await?;
+        let (transport_revision, mut transport) = self
+            .migration
+            .vault
+            .subscription_slot_async(
+                crate::vault::Slot::SubscriptionTransport {
+                    source_id: source_id.to_owned(),
+                },
+                &self.migration,
+            )
+            .await?;
+        let network = Network::new(net_input.clone())?;
+        if transport.is_null() {
+            transport = json!({
+                "token": format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple()),
+                "port": 0,
+            });
+        }
+        transport["network"] = serde_json::to_value(net_input)?;
+        let context = HandoffContext {
+            source_id: source_id.to_owned(),
+            migration_id,
+            generation: self.identity.generation.clone(),
+            transport_request_id: uuid::Uuid::new_v4().to_string(),
+            port_request_id: uuid::Uuid::new_v4().to_string(),
+            expected_account_revision: account_revision,
+            expected_transport_revision: transport_revision,
+        };
+        let saved = self
+            .migration
+            .vault
+            .replace_subscription_transport_async(
+                source_id,
+                &context.transport_request_id,
+                transport_revision,
+                transport,
+                &self.migration,
+            )
+            .await?;
+        ensure!(
+            saved["state"] == "completed",
+            error("storageLocked", "transport handoff write is not confirmed")
+        );
+        let source =
+            SourceSubscription::load_async(self.migration.clone(), source_id.into(), network)
+                .await?;
+        if let Err(error) = source
+            .start_with_port_request(Some(&context.port_request_id))
+            .await
+        {
+            source.close().await;
+            return Err(error.into());
+        }
+        if let Err(error) = self
+            .subscription_claim_handoff(&uuid::Uuid::new_v4().to_string(), &context, &source)
+            .await
+        {
+            source.close().await;
+            return Err(error);
+        }
+        self.subscriptions
+            .sources
+            .borrow_mut()
+            .insert(source_id.to_owned(), source.clone());
+        let work = source.clone();
+        tokio::task::spawn_local(async move {
+            let _ = work.refresh_catalog(false).await;
+        });
+        Ok(source)
+    }
+
+    pub(super) async fn chatgpt_desktop_command(
+        self: &Rc<Self>,
+        source_id: &str,
+        request: &Value,
+    ) -> Result<Value> {
+        let obj = request.as_object().context("INVALID_PARAMS")?;
+        if let Some(provider) = obj.get("provider")
+            && !provider.is_null()
+        {
+            ensure!(provider.as_str() == Some("openai"), "INVALID_PARAMS");
+        }
+        let operation = obj
+            .get("operation")
+            .and_then(Value::as_str)
+            .context("INVALID_PARAMS")?;
+        match operation {
+            "status" => {
+                let snapshot = self.subscription_snapshot(source_id).await?;
+                if self.subscriptions.sources.borrow().get(source_id).is_none()
+                    && snapshot["authenticated"] == false
+                    && snapshot["activeAccountId"].is_null()
+                    && snapshot["accounts"]
+                        .as_array()
+                        .is_some_and(|accounts| accounts.is_empty())
+                    && snapshot["state"] == "signed_out"
+                {
+                    return Ok(snapshot);
+                }
+                if self.subscriptions.sources.borrow().get(source_id).is_none()
+                    && snapshot["owner"] == "nativeV1"
+                    && snapshot["state"] != "storage_locked"
+                {
+                    let _ = self.ensure_native_subscription(source_id).await;
+                }
+                if let Some(sub) = self.subscriptions.sources.borrow().get(source_id).cloned()
+                    && snapshot["authenticated"] == true
+                {
+                    tokio::task::spawn_local(async move {
+                        let _ = sub.refresh_catalog(false).await;
+                    });
+                }
+                self.subscription_snapshot(source_id).await
+            }
+            "login" => {
+                let new_account = match obj.get("newAccount") {
+                    None | Some(Value::Null) => None,
+                    Some(v) => Some(v.as_bool().context("INVALID_PARAMS")?),
+                };
+                let account_id = match obj.get("accountId") {
+                    None | Some(Value::Null) => None,
+                    Some(v) => Some(
+                        v.as_str()
+                            .filter(|s| !s.is_empty())
+                            .context("INVALID_PARAMS")?
+                            .to_owned(),
+                    ),
+                };
+                let sub = self.ensure_native_subscription(source_id).await?;
+                let command = sub.command_gate.lock().await;
+                let current = sub.snapshot_async().await?;
+                if current["authenticated"] == true
+                    && (new_account == Some(true)
+                        || account_id
+                            .as_deref()
+                            .is_some_and(|id| Some(id) != current["activeAccountId"].as_str()))
+                {
+                    ensure!(
+                        self.subscription_idle(source_id).await?,
+                        crate::wire::error(
+                            "RESOURCE_UNAVAILABLE",
+                            "请先停止运行中的任务后再切换 ChatGPT 账号",
+                        )
+                    );
+                }
+                let target = if new_account == Some(true) {
+                    json!({"kind": "newAccount"})
+                } else if let Some(id) = account_id {
+                    json!({"kind": "saved", "accountId": id})
+                } else {
+                    json!({"kind": "active"})
+                };
+                let authorization = sub.begin_login(&target).await?;
+                let login_view = sub.login_public();
+                drop(command);
+                let host = Rc::clone(self);
+                let source_key = source_id.to_owned();
+                let sub_ref = Rc::clone(&sub);
+                tokio::task::spawn_local(async move {
+                    match authorization.completion.await {
+                        Ok(record) => {
+                            let _command = sub_ref.command_gate.lock().await;
+                            let ids = host.subscription_projects(&source_key).unwrap_or_default();
+                            let gates = ids
+                                .iter()
+                                .filter_map(|id| {
+                                    host.slots.borrow().get(id).map(|slot| slot.gate.clone())
+                                })
+                                .collect::<Vec<_>>();
+                            let mut locks = Vec::new();
+                            for gate in gates {
+                                locks.push(gate.write_owned().await);
+                            }
+                            let idle = host.subscription_idle(&source_key).await.unwrap_or(false);
+                            let before = sub_ref.account_epoch();
+                            if sub_ref
+                                .finish_login(&authorization.id, record, idle)
+                                .is_ok()
+                            {
+                                drop(locks);
+                                if sub_ref.account_epoch() != before {
+                                    let _ = sub_ref.refresh_catalog(false).await;
+                                }
+                            }
+                            host.changed();
+                        }
+                        Err(failure) => {
+                            sub_ref.login_failed(&authorization.id, &failure);
+                            host.changed();
+                        }
+                    }
+                });
+                self.changed();
+                Ok(login_view)
+            }
+            "cancel" => {
+                if let Some(sub) = self.subscriptions.sources.borrow().get(source_id).cloned() {
+                    if let Some(id) = obj.get("loginId").and_then(Value::as_str) {
+                        let _ = sub.cancel_attempt(id);
+                    } else {
+                        sub.cancel_login();
+                    }
+                    self.changed();
+                }
+                self.subscription_snapshot(source_id).await
+            }
+            "logout" | "forget" | "selectAccount" => {
+                let action = match operation {
+                    "logout" => json!({"kind": "logout"}),
+                    "forget" => json!({"kind": "forget"}),
+                    "selectAccount" => {
+                        let account_id = obj
+                            .get("accountId")
+                            .and_then(Value::as_str)
+                            .filter(|s| !s.is_empty())
+                            .context("INVALID_PARAMS")?;
+                        json!({"kind": "select", "accountId": account_id})
+                    }
+                    _ => unreachable!(),
+                };
+                let sub = self.ensure_native_subscription(source_id).await?;
+                let _command = sub.command_gate.lock().await;
+                let epoch = sub.account_epoch();
+                self.subscription_action(source_id, &sub, epoch, action)
+                    .await?;
+                self.changed();
+                self.subscription_snapshot(source_id).await
+            }
+            "probe" => {
+                let requested = match obj.get("model") {
+                    None | Some(Value::Null) => None,
+                    Some(v) => Some(
+                        v.as_str()
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                            .context("INVALID_PARAMS")?
+                            .to_owned(),
+                    ),
+                };
+                let sub = self.ensure_native_subscription(source_id).await?;
+                let model = match requested {
+                    Some(model) => model,
+                    None => {
+                        let snap = sub.snapshot_async().await?;
+                        snap["models"]
+                            .as_array()
+                            .and_then(|items| items.iter().find_map(|item| item["id"].as_str()))
+                            .filter(|s| !s.is_empty())
+                            .ok_or_else(|| {
+                                crate::wire::error(
+                                    "RESOURCE_UNAVAILABLE",
+                                    "当前订阅账户没有可用于测试的模型",
+                                )
+                            })?
+                            .to_owned()
+                    }
+                };
+                Ok(sub.probe(&model).await?)
+            }
+            _ => anyhow::bail!("INVALID_PARAMS"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod chatgpt_tests {
+    use super::*;
+    use std::path::Path;
+
+    fn host_with_imported_source(base: &Path) -> (Rc<Host>, String) {
+        let mut host = crate::server::schedules::tests::fixture(base);
+        let mut migration = crate::migration::Migration::new(&host.home).unwrap();
+        migration.vault = crate::vault::Vault::isolated_files(&host.home);
+        let core = base.join("core");
+        let profile = base.join("profile");
+        storage::private_dir(&core).unwrap();
+        storage::private_dir(&profile).unwrap();
+        storage::write(&core.join("projects.json"), &json!([])).unwrap();
+        let source_desc = crate::migration::Source {
+            profile,
+            core_home: core,
+            // 过渡：到 0.2.0 删；导入夹具沿用迁移来源字段。
+            legacy_service_home: base.join("legacy"),
+        };
+        migration
+            .attach(source_desc.clone(), "fixture", None)
+            .unwrap();
+        let imported = migration
+            .import(
+                serde_json::from_value(json!({
+                    "requestId": uuid::Uuid::new_v4().to_string(),
+                    "expectedGeneration": host.identity.generation,
+                    "source": source_desc,
+                }))
+                .unwrap(),
+                "fixture",
+                &[],
+                &host.journal,
+            )
+            .unwrap();
+        let source_id = imported["receipt"]["sourceId"].as_str().unwrap().to_owned();
+        let migration_id = imported["receipt"]["requestId"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let retired = migration
+            .retirement_prepare(
+                serde_json::from_value(json!({
+                    "requestId": uuid::Uuid::new_v4().to_string(),
+                    "migrationId": migration_id,
+                    "expectedGeneration": host.identity.generation,
+                }))
+                .unwrap(),
+                "fixture",
+            )
+            .unwrap();
+        assert_eq!(retired["state"], "completed");
+        host.migration = Rc::new(migration);
+        (Rc::new(host), source_id)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn signed_out_chatgpt_status_is_passive_and_creates_no_owner_or_vault_slots() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let base = root.path().canonicalize().unwrap();
+                let (host, source_id) = host_with_imported_source(&base);
+                let status = host
+                    .chatgpt_desktop_command(
+                        &source_id,
+                        &json!({"operation": "status", "provider": "openai"}),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(status["state"], "signed_out");
+                assert_eq!(status["authenticated"], false);
+                assert!(status["activeAccountId"].is_null());
+                assert_eq!(status["accounts"], json!([]));
+                assert!(
+                    host.migration
+                        .vault
+                        .subscription_owner(&source_id)
+                        .unwrap()
+                        .is_none()
+                );
+                assert!(
+                    host.subscriptions
+                        .sources
+                        .borrow()
+                        .get(&source_id)
+                        .is_none()
+                );
+                assert!(status["endpoint"].is_null());
+                let vault_ops = host.home.join("host/vault-operations");
+                assert!(!vault_ops.exists() || std::fs::read_dir(vault_ops).unwrap().count() == 0);
+                let vault_slots = host.home.join("host/vault-slots");
+                if vault_slots.exists() {
+                    for entry in std::fs::read_dir(vault_slots).unwrap() {
+                        let slot: Value = storage::read(&entry.unwrap().path()).unwrap();
+                        assert_eq!(slot["revision"], 0);
+                        assert!(slot["entryId"].is_null());
+                    }
+                }
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn chatgpt_login_and_cancel_work_without_node_workbench() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let base = root.path().canonicalize().unwrap();
+                let (host, source_id) = host_with_imported_source(&base);
+                let login = host
+                    .chatgpt_desktop_command(
+                        &source_id,
+                        &json!({"operation": "login", "provider": "openai"}),
+                    )
+                    .await
+                    .unwrap();
+                let login_id = login["loginId"].as_str().unwrap().to_owned();
+                assert!(!login_id.is_empty());
+                assert!(login["authUrl"].as_str().unwrap().starts_with("https://"));
+                assert!(
+                    host.migration
+                        .vault
+                        .subscription_owner(&source_id)
+                        .unwrap()
+                        .is_some()
+                );
+
+                let after_cancel = host
+                    .chatgpt_desktop_command(
+                        &source_id,
+                        &json!({"operation": "cancel", "provider": "openai", "loginId": login_id}),
+                    )
+                    .await
+                    .unwrap();
+                assert!(after_cancel["login"].is_null());
+                assert_eq!(after_cancel["authenticated"], false);
+                host.close_subscriptions().await;
+            })
+            .await;
     }
 }

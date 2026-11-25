@@ -26,7 +26,7 @@
   --color-composer-action-foreground: var(--color-primary-foreground);
   --color-accent: color-mix(in srgb, #1a1c1f 6%, #ffffff);
   --color-secondary: color-mix(in srgb, #1a1c1f 5%, transparent);
-  --color-user-message: #e8f3fe;
+  --color-user-message: #e8f1ff;
   --color-user-message-text: #0c274a;
   --color-background-win-alt: color-mix(in srgb, #1a1c1f 4%, #ffffff);
   --color-shell: color-mix(in srgb, #1a1c1f 4%, #ffffff);
@@ -120,8 +120,8 @@
   --color-composer-action-foreground: var(--color-primary-foreground);
   --color-accent: color-mix(in srgb, #ffffff 6%, #181818);
   --color-secondary: color-mix(in srgb, #ffffff 5%, transparent);
-  --color-user-message: #173e76;
-  --color-user-message-text: #f6fafe;
+  --color-user-message: #20447a;
+  --color-user-message-text: #f4f4f5;
   --color-background-win-alt: color-mix(in srgb, #ffffff 4%, #181818);
   --color-shell: color-mix(in srgb, #ffffff 5.194805194805195%, #181818);
   --color-navigation-background: color-mix(in srgb, #ffffff 2.5974025974025974%, #181818);

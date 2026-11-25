@@ -38,6 +38,7 @@ function resolveFromApp(name) {
 
 export function detectCapabilities({ env = process.env } = {}) {
   const core = env.AREAL_CORE_BIN;
+  const signedPackage = env.AREAL_TEST_PACKAGE;
   const electron = resolveFromApp("electron");
   // 下载不到与 playwright-core 匹配的浏览器时，可用 AREAL_CHROMIUM 指向已装好的 Chromium。
   const chromium =
@@ -47,6 +48,12 @@ export function detectCapabilities({ env = process.env } = {}) {
   return [
     ...(existsSync(resolve(gui, "renderer/dist/index.html")) ? ["gui-build"] : []),
     ...(core && runs(core, ["build-info"]) ? ["core-binary"] : []),
+    ...(process.platform === "darwin" &&
+    signedPackage &&
+    existsSync(resolve(signedPackage, "Contents/MacOS/AReaL Harness GUI")) &&
+    runs("/usr/bin/codesign", ["--verify", "--strict", resolve(signedPackage)])
+      ? ["signed-gui-package"]
+      : []),
     ...(nativeRuntime() ? ["native-runtime"] : []),
     ...(typeof electron === "string" && existsSync(electron) && display ? ["electron"] : []),
     ...(chromium && existsSync(chromium) ? ["browser"] : []),

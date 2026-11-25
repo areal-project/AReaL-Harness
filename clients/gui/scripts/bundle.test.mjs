@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { createRequire } from "node:module";
 
 const { coreBundleFiles, verifyCoreBundle } = createRequire(import.meta.url)(
-  "../../../services/workbench/src/desktop/core/bundle.cjs",
+  "../packages/workbench/node/bundle.cjs",
 );
 const shellFiles = ["bash", "sh", "COPYING", "corresponding-source.tar.gz", "build.json"].map(
   (name) => "libexec/areal/shells/" + name,

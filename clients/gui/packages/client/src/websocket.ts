@@ -23,6 +23,8 @@ const ERROR_TEXT: Record<string, string> = {
   LIMIT_EXCEEDED: "内容超过大小限制。",
   COMMAND_CONFLICT: "这个操作与正在进行的操作冲突，请稍后重试。",
   RESOURCE_UNAVAILABLE: "目标已不存在或不可用。",
+  RESOURCE_BUSY: "会话正在切换读取方式，请重新读取。",
+  PERSISTED_HISTORY_UNAVAILABLE: "保存的历史暂不可读，请恢复项目后重新读取。",
 };
 
 /**
@@ -33,6 +35,7 @@ const clientError = (clientCode: "DISCONNECTED" | "TIMEOUT", message: string) =>
   Object.assign(new Error(message), { clientCode });
 
 type Pending = {
+  method: string;
   resolve(value: unknown): void;
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
@@ -43,6 +46,7 @@ export async function connectWebSocket(
   signal: AbortSignal,
   onEvent: (event: unknown) => void,
   onClose: () => void,
+  createSocket: (url: string) => WebSocket = (url) => new WebSocket(url),
 ) {
   let bootstrap: HostBootstrap | undefined = readHostBootstrap(await options.bootstrap());
   if (bootstrap.origin !== options.origin) throw new Error("Host origin mismatch");
@@ -52,7 +56,7 @@ export async function connectWebSocket(
       ? bootstrap.preferredSourceId
       : undefined;
   if (!current()) throw new Error("Connection cancelled");
-  const socket = new WebSocket(bootstrap.websocketUrl);
+  const socket = createSocket(bootstrap.websocketUrl);
   let sequence = 0;
   const pending = new Map<string, Pending>();
   const close = () => {
@@ -73,7 +77,7 @@ export async function connectWebSocket(
         reject(clientError("TIMEOUT", "Host read timed out"));
         if (method === "session.open" || method === "session.openPersisted") close();
       }, 15_000);
-      pending.set(id, { resolve, reject, timer });
+      pending.set(id, { method, resolve, reject, timer });
       try {
         socket.send(
           JSON.stringify({
@@ -108,11 +112,14 @@ export async function connectWebSocket(
       if (!current() || socket.readyState !== WebSocket.OPEN)
         return reject(clientError("DISCONNECTED", "Connection unavailable"));
       const id = String(++sequence);
+      // Cloud 沙箱首次启动或休眠唤醒耗时较长，避免客户端过早超时把成功启动误判为结果未知。
+      const timeoutMs =
+        method === "desktop.command" && params.command === "cloudSession" ? 150_000 : 30_000;
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(clientError("TIMEOUT", "Host command timed out"));
-      }, 30_000);
-      pending.set(id, { resolve, reject, timer });
+      }, timeoutMs);
+      pending.set(id, { method, resolve, reject, timer });
       try {
         socket.send(
           JSON.stringify({
@@ -124,7 +131,7 @@ export async function connectWebSocket(
               ? {
                   context: {
                     projectId: context.projectId,
-                    ...(method === "project.models"
+                    ...(["project.models", "project.activate"].includes(method)
                       ? {}
                       : {
                           serviceGeneration: context.serviceGeneration,
@@ -249,11 +256,20 @@ export async function connectWebSocket(
         clearTimeout(handler.timer);
         if (record(message.error)) {
           const generic = message.error.message;
-          const text =
+          const summary =
             typeof generic === "string" && generic && !GENERIC_ERRORS.has(generic)
               ? generic
               : (ERROR_TEXT[String(message.error.code)] ?? "Host 操作失败");
-          handler.reject(Object.assign(new Error(text), message.error, { message: text }));
+          // message 只作原文和详情；上屏按 code 取文案（renderer 的 errors/errorCopy.ts）。
+          // 被拒的方法和 Host 给的排队原因放进详情，用户不必再猜是哪里满了。
+          const method = "method" in message.error ? message.error.method : handler.method;
+          const reason = "reason" in message.error ? message.error.reason : undefined;
+          const detail = [summary, typeof method === "string" ? method : "", reason]
+            .filter((part): part is string => typeof part === "string" && part !== "")
+            .join(" · ");
+          handler.reject(
+            Object.assign(new Error(summary), message.error, { message: summary, detail }),
+          );
         } else handler.resolve(message.result);
       } catch {
         close();

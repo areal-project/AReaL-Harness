@@ -103,11 +103,50 @@
   margin-left: var(--spacing-inline);
   text-decoration: underline;
 }
+.task-resources-trigger[data-has-changes] {
+  width: auto;
+  height: var(--spacing-control);
+  padding-inline: var(--spacing-inline);
+  gap: calc(var(--spacing-inline) * 3 / 4);
+  border-radius: var(--radius-pill);
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  background: var(--color-surface-elevated);
+}
+.task-resources-trigger[data-has-changes]:hover,
+.task-resources-trigger[data-has-changes][aria-expanded="true"] {
+  background: var(--color-surface-tertiary);
+  border-color: var(--color-border-hover);
+}
+.task-resources-diff-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing-inline) / 2);
+  font-size: var(--text-ui-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.task-resources-diff-summary .added {
+  color: var(--color-git-added);
+  padding: calc(var(--spacing-inline) / 4) calc(var(--spacing-inline) / 2);
+  border-radius: var(--radius-pill);
+  background: var(--color-diff-added-surface);
+}
+.task-resources-diff-summary .deleted {
+  color: var(--color-git-deleted);
+  padding: calc(var(--spacing-inline) / 4) calc(var(--spacing-inline) / 2);
+  border-radius: var(--radius-pill);
+  background: var(--color-diff-removed-surface);
+}
 .task-resources-popup {
-  width: calc(var(--ui-font-size) * 22 + var(--spacing-inline) / 2);
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding: 0;
   gap: 0;
-  background: var(--color-menu);
+  border-radius: inherit;
+  background: color-mix(in oklab, var(--color-menu) 92%, transparent);
+  backdrop-filter: var(--material-overlay-filter);
 }
 .task-resources {
   padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
@@ -146,9 +185,11 @@
   font: inherit;
   font-weight: 400;
 }
-.task-resource-row:hover,
-.task-resource-row[data-selected] {
+.task-resource-row:hover {
   background: var(--color-hover);
+}
+.task-resource-row[data-selected] {
+  background: var(--color-selected);
 }
 .task-resource-row > svg {
   flex-shrink: 0;
@@ -159,7 +200,7 @@
   font-size: var(--text-ui-xs);
 }
 .task-resources-heading > span:last-child {
-  font-size: var(--text-fixed-metadata);
+  font-size: var(--text-ui-xs);
 }
 .task-resource-agent-body {
   flex: 1;
@@ -240,7 +281,7 @@
 }
 
 /* Production hosts compose the same package card and history reader as the catalog. */
-.task-resources-popup > .areal-task-context {
+.task-resources-popup > * {
   max-height: min(var(--thread-summary-max-height, 360px), 75dvh, var(--available-height));
 }
 .agent-history-reader {
@@ -249,41 +290,32 @@
   height: 100%;
   min-height: 0;
 }
-.agent-history-reader .areal-subagent-name {
-  white-space: nowrap;
-}
 
 /* 资源卡片复用上下文分区节奏，次级状态不与标题争夺层级。 */
-.areal-task-context .task-resources-section {
+.task-resources-popup .task-resources-section {
   padding-block: var(--spacing-inline);
   border-top: 0;
   border-bottom: var(--border-width-default) solid var(--color-border-subtle, var(--color-border));
 }
-.areal-task-context .task-resources-section:last-child {
+.task-resources-popup .task-resources-section:last-child {
   border-bottom: 0;
 }
-.areal-task-context .task-resources-heading {
+.task-resources-popup .task-resources-heading {
   padding: 0;
   min-height: var(--spacing-control-sm);
   font-size: var(--text-ui-base);
 }
-.areal-task-context .task-resources-heading > button {
+.task-resources-popup .task-resources-heading > button {
   margin-left: auto;
 }
-.areal-task-context .task-resource-note {
+.task-resources-popup .task-resource-note {
   margin: 0;
   padding-block: calc(var(--spacing-inline) / 2);
 }
-.areal-task-context .diff-count {
+.task-resources-popup .diff-count {
   flex: none;
   gap: calc(var(--spacing-inline) * 3 / 4);
   font-size: var(--text-ui-base);
-  font-variant-numeric: tabular-nums;
-}
-/* 有改动时按钮常驻显示 +x −y，不必点开才知道。 */
-.task-resources-trigger .diff-count {
-  margin-left: 0;
-  font-size: var(--text-ui-xs);
   font-variant-numeric: tabular-nums;
 }
 .task-resources-footer {

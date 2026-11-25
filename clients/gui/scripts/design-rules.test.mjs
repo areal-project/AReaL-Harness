@@ -67,6 +67,26 @@ test("component contracts keep at most ten must rules", () => {
   assert.throws(() => validateRuleDocuments(input), /too many must rules.*11 > 10/);
 });
 
+test("component contracts allow ordinary prose without nonNormative hashes while checking rule IDs", () => {
+  const input = base();
+  input.documents.set(
+    "clients/gui/packages/ui/src/control/control.md",
+    "# Control\n\n## 何时使用\n\n默认用于触发动作，需要保持清晰反馈，should remain concise。\n",
+  );
+  input.inventory.push({
+    path: "clients/gui/packages/ui/src/control/control.md",
+    role: "consumer",
+    status: "active",
+  });
+  assert.equal(validateRuleDocuments(input).rules, 1);
+
+  input.documents.set(
+    "clients/gui/packages/ui/src/control/control.md",
+    "# Control\n\n引用未知规则 R-UNKNOWN-999。\n",
+  );
+  assert.throws(() => validateRuleDocuments(input), /unknown rule reference: R-UNKNOWN-999/);
+});
+
 for (const fixture of JSON.parse(
   await readFile(new URL("fixtures/design-rules/cases.json", import.meta.url), "utf8"),
 )) {

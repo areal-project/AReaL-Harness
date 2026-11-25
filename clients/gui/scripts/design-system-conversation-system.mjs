@@ -31,7 +31,7 @@ export async function runConversationSystem(page, scratch, checks) {
   assert.equal(await activity.getAttribute("aria-expanded"), "false");
   assert.equal(await image.getAttribute("aria-expanded"), "false");
   assert.equal(await sources.getByRole("button", { name: /^查看来源：/ }).count(), 3);
-  // R-ACTIVITYGROUP-006：摘要沿 Disclosure 键盘语义，Enter 展开。
+  // R-ACTIVITYGROUP-006 / R-DISCLOSURE-005：标题说明展开内容且沿 Disclosure 键盘语义，Enter 展开，异常状态不藏于折叠面板内。
   await activity.focus();
   await activity.press("Enter");
   const list = preview.getByRole("region", { name: "分组活动列表", exact: true });
@@ -114,7 +114,7 @@ export async function runConversationSystem(page, scratch, checks) {
     true,
     "rows inside an expanded group keep their own icon",
   );
-  const readName = read.locator(".areal-activity-row-detail, .tool-file-link").first();
+  const readName = read.locator('.areal-activity-row-detail, [data-variant="inline-link"]').first();
   assert.equal(await readName.innerText(), "section-2.tsx");
   await readName.hover();
   await page

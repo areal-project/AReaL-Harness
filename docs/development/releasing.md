@@ -59,11 +59,15 @@ Homebrew formula 安装 `bin`、`libexec`、LICENSE 和 manifest，避免改变 
 
 ## GUI 发布
 
+本机 GUI 打包固定 Mac arm64，统一从 `pnpm --dir clients/gui run dist --help` 选择三档：`adhoc`（默认本地测试）、`developer-id`（Developer ID Application 签名、不公证）、`notarized`（正式签名公证）。具体参数见 [GUI 构建指南](../../clients/gui/README.md)。本地打包不要求改版本；Developer ID 两档可显式 `--skip-tests` 跳过功能测试，签名与完整性检查保留，正式档仍执行公证、stapling 与 Gatekeeper。跳过测试的产物不能宣称功能验收通过；公开发行导出的模型验收要求见下文。
+
+涉及对话恢复或发送准入时，在替换安装版前用签名候选运行 `AREAL_TEST_PACKAGE="/绝对路径/AReaL Harness GUI.app" pnpm --dir clients/gui run test:recovery-electron-history-steer`。验收在隔离数据中保留浏览器工具和旧的未决队列请求，分别主动停机和模拟 Core 意外退出。从侧栏打开旧对话后，核对原对话只新增一轮、模型只收到一次请求，并在桌面看到回复。
+
 准备版本号和 PR 前，先按[并行修改与终验](README.md#并行修改与终验)选定任务独占 worktree；不等到打包或推送检查发现并发修改后才隔离。版本准备在该目录完成，正式构建继续使用已合并的固定提交和独占输出目录。
 
 本机无需新增签名时可使用 `AREAL_GUI_UNSIGNED_LOCAL=1 AREAL_GUI_PACKAGE_DIR=/绝对路径/新目录 pnpm --dir clients/gui package`，CLI bundle 对应 `python3 scripts/package.py --unsigned-local --profile debug --output /绝对路径/新目录`。该显式模式跳过 Core 副本和整个 app 的签名，builder 继续使用 `identity: null`；保留输入字节及已有签名，记录真实 bundle 签名核验结果，不移除签名或改变系统策略。它与 `AREAL_GUI_RELEASE=1` 互斥；默认流程仍创建本机 ad-hoc 签名。已生成 ZIP 不证明能启动，须从 ZIP 复制到新隔离目录验收，系统拒绝时保留首次失败并停止该启动路径。
 
-默认本机 ad-hoc 打包输出 `.app`、`AReaL-Harness-GUI-mac-arm64.zip` 和同名 `.dmg`。只需要 DMG 时，使用 `AREAL_GUI_RELEASE=0 AREAL_GUI_UNSIGNED_LOCAL=0 pnpm --dir clients/gui package --dmg-only`；保留签名后的 `.app` 中间产物，不生成 ZIP。该选项不能与正式模式或无新增签名模式组合。`package-evidence.json` 记录 DMG 路径、压缩大小、SHA-256 和框架硬链接核验数量。`AREAL_GUI_UNSIGNED_LOCAL=1` 与正式签名前的 `AREAL_GUI_RELEASE=1` 仍只导出 ZIP。
+默认本机 ad-hoc 打包输出 `.app`、`AReaL-Harness-GUI-mac-arm64.zip` 和同名 `.dmg`。只需要 DMG 时，使用 `AREAL_GUI_RELEASE=0 AREAL_GUI_UNSIGNED_LOCAL=0 pnpm --dir clients/gui package --dmg-only`；保留签名后的 `.app` 中间产物，不生成 ZIP。该选项不能与正式模式或无新增签名模式组合。`package-evidence.json` 记录 DMG 路径、压缩大小与 SHA-256。`AREAL_GUI_UNSIGNED_LOCAL=1` 与正式签名前的 `AREAL_GUI_RELEASE=1` 仍只导出 ZIP。
 
 已有签名 app 可单独导出预览 DMG，输出路径必须尚不存在：
 
@@ -72,7 +76,7 @@ node clients/gui/scripts/macos-dmg.mjs --app "/absolute/AReaL Harness GUI.app" \
   --output /absolute/new-preview.dmg --volume-name "AReaL Harness Preview"
 ```
 
-预览与正式 DMG 共用导出器。导出器保留源 app，在私有副本中证明两份 Electron framework 的全部文件 payload、布局和签名策略等价，再把对应普通文件改为硬链接。签名不同的代码只在一次性文件副本中移除签名以比较完整字节；不支持的差异直接失败。主应用与后台仍保留独立 helper、元数据和本地框架目录。导出器不签名；它在最后一次 app 签名之后创建 HFS+ UDZO DMG，并只在只读挂载的签名、布局及共享 inode 核验通过后发布。正式流程随后继续 DMG 签名、公证和 stapling。ZIP 格式及更新路径不变，不承诺 ZIP 体积下降。ad-hoc 预览不建立 Apple 分发信任。
+预览与正式 DMG 共用导出器。导出器复制已经签名的应用，在 HFS+ UDBZ 镜像只读挂载后核对应用签名和单份 Electron framework 的布局与内容，再写入目标路径。正式流程随后执行 DMG 签名、公证和 stapling。ZIP 继续用于自动更新。ad-hoc 预览用于本机验证。
 
 CLI/TUI/Host 与 GUI 共用一个版本号，只有 `X.Y.Z` 与 `X.Y.Z-beta.N` 两种形状，同号 Beta 低于正式版。用 `python3 scripts/set-version.py X.Y.Z[-beta.N]` 同时改 `Cargo.toml`、`Cargo.lock` 中的工作区成员、`clients/gui/package.json` 与 `clients/gui/app/package.json`，脚本拒绝回退；`--check` 核对两边一致。GUI 包内自带同号的 `areal`，`release-assets.mjs` 核对二者版本相同，客户端才能按版本号判断后台新旧。发布地址统一为 `areal-project/AReaL-Harness`；版本 Release 使用 `gui-v<版本>` 标签，CLI 继续使用 `v<版本>`。GUI Release 不设为 GitHub Latest，避免改变 CLI 安装器的 Latest 语义。
 
@@ -86,16 +90,18 @@ macOS `dir` 目标不会自动生成原生更新配置。正式打包在签名�
 
 ```sh
 make release
-AREAL_GUI_RELEASE=1 AREAL_GUI_PACKAGE_DIR=/absolute/new-package make gui-package
+AREAL_GUI_RELEASE=1 pnpm --dir clients/gui dist --signing adhoc --output /absolute/new-package
 pnpm --dir clients/gui run sign:mac --app "/absolute/new-package/package/mac-arm64/AReaL Harness GUI.app" \
   --output /absolute/new-signed-directory --identity "Developer ID Application: Name (TEAMID)" \
   --keychain-profile areal-harness
 node clients/gui/scripts/release-assets.mjs /absolute/new-signed-directory /absolute/new-assets
 ```
 
-签名脚本先签 Core 可执行文件并更新完整性摘要，再签 Electron 应用；后台服务的共享资源链接按物理文件身份识别，外层签名不得重复签 Core；外层签名完成后、Apple 上传前再次校验 Core 摘要。Apple Accepted 回执、stapler、Gatekeeper、签名后隔离 GUI/Core/Runtime smoke、模型配置与 Composer 专项以及只读 DMG 内签名验证均通过才完成。`notarization.json` 与脱敏 `release.json` 记录 `packagedModelSelection: "passed"`；导出脚本拒绝没有该项验收的旧候选，需要使用当前签名脚本生成新候选。Apple 仍在处理时退出 2，使用同脚本的 `--resume --output` 恢复；不可修改已签名应用。
+签名脚本先签 Core 可执行文件并更新完整性摘要，再签 Electron 应用；后台服务的共享资源链接按物理文件身份识别，外层签名不得重复签 Core；外层签名完成后、Apple 上传前再次校验 Core 摘要。正式档保留 Apple Accepted 回执、stapler、Gatekeeper 与只读 DMG 内签名验证；未指定 `--skip-tests` 时，另执行签名后隔离 GUI/Core/Runtime smoke、模型配置与 Composer 专项。`notarization.json` 与脱敏 `release.json` 记录 `packagedModelSelection: "passed"`；导出脚本拒绝没有该项验收的旧候选，需要使用当前签名脚本生成新候选。Apple 仍在处理时退出 2，使用同脚本的 `--resume --output` 恢复；不可修改已签名应用。
 
-签名前先执行 `history-copy-smoke.mjs`：默认只读安装版的 `~/Library/Application Support/AReaL Harness GUI/areal-core`，`--history-source /absolute/areal-core` 可指定另一份历史。脚本将项目索引、会话、历史归档、附件和 Goal 计量日志复制到权限受限的隔离目录，受控样本的占位工作区在副本中填充；私有副本保留原始会话字节和工作区路径，以满足 Core 的归属校验，只观察、不执行任务。不复制凭据、锁或部署配置，不写原始历史。没有活动轮次且未在结算的 `paused`、`blocked` Goal 可以保留原状进行只读验证；不自动续跑或清除 Goal。已结算的 `completed`、`failed`、`steered`、`cancelled`、`removed` 队列历史可以保留。仅接受空闲、没有待执行队列或未结算执行状态的历史；其他输入会阻断签名。 已完成的子会话执行引用仅在同项目副本中存在对应终态轮次时接受；已关闭且 `cleanupConfirmed=true` 的受管进程历史记录可以保留；未结算引用、工作组、其他受管进程及工作流状态仍阻断签名。候选包必须能连接 Core、逐个打开并确认每个会话的投影（不要求全部会话同时保留在有界缓存中），且打开期间副本字节不变、全过程来源字节不变、没有模型请求。停止测试后台导致的副本队列版本变化单独处理。失败发生在签名身份检查及 Apple 请求之前；成功证据绑定候选 Core 哈希并写入 `notarization.json.historyPreflight`。没有该预检记录的旧签名运行不能通过 `--resume` 绕过，需启动新运行。
+签名耗时诊断：`package-timings.json` 区分构建、打包与 ad-hoc 签名；`signed/notarization-timings.jsonl` 追加记录复制、Core 签名、Electron 签名、压缩、公证及 DMG 制作的起止和耗时，失败也保留，恢复时用新的 `runId` 区分执行，不把人工等待算入执行耗时。阶段可能嵌套，不能直接相加；公证阶段返回 `result: false` 表示本次等待结束但仍需恢复。`commands.log` 记录外部命令的起止、耗时及退出码；`sign-target` 是 Electron 签名目标的开始点，不是内部命令的精确计时。Electron 只单独签原生代码和 bundle，软链接别名与普通二进制资源跳过，资源完整性仍由外层签名及严格验证保证。
+
+未指定 `--skip-tests` 时，签名前先执行 `history-copy-smoke.mjs`：默认只读安装版的 `~/Library/Application Support/AReaL Harness GUI/areal-core`，`--history-source /absolute/areal-core` 可指定另一份历史。脚本将项目索引、会话、历史归档、附件和 Goal 计量日志复制到权限受限的隔离目录，受控样本的占位工作区在副本中填充；私有副本保留原始会话字节和工作区路径，以满足 Core 的归属校验，只观察、不执行任务。不复制凭据、锁或部署配置，不写原始历史。没有活动轮次且未在结算的 `paused`、`blocked` Goal 可以保留原状进行只读验证；不自动续跑或清除 Goal。已结算的 `completed`、`failed`、`steered`、`cancelled`、`removed` 队列历史可以保留。仅接受空闲、没有待执行队列或未结算执行状态的历史；其他输入会阻断签名。 已完成的子会话执行引用仅在同项目副本中存在对应终态轮次时接受；已关闭且 `cleanupConfirmed=true` 的受管进程历史记录可以保留；未结算引用、工作组、其他受管进程及工作流状态仍阻断签名。候选包必须能连接 Core、逐个打开并确认每个会话的投影（不要求全部会话同时保留在有界缓存中），且打开期间副本字节不变、全过程来源字节不变、没有模型请求。停止测试后台导致的副本队列版本变化单独处理。失败发生在签名身份检查及 Apple 请求之前；成功证据绑定候选 Core 哈希并写入 `notarization.json.historyPreflight`。没有该预检记录的旧签名运行不能通过 `--resume` 绕过，需启动新运行。
 
 登记后尚未启动 Core 的项目可以没有状态目录，已连接但没有会话的项目也可以为空。预检保留这些项目，在副本中连接并确认没有创建会话；来源状态目录的存在性及条目在检查期间必须保持不变。存在的状态路径仍必须是普通目录，不能通过符号链接绕过检查；现有会话仍须满足全部空闲和归属约束。
 

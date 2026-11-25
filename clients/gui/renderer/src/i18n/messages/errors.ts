@@ -5,9 +5,17 @@ export const errorMessages = {
     "zh-CN": "操作没有完成，请重试。",
     en: "That didn't work. Please try again.",
   },
+  "errors.CLOUD_IMPORT_REQUIRED": {
+    "zh-CN": "旧版 Cloud 凭据尚未导入。请在桌面应用中解锁凭据后重新连接。",
+    en: "Your previous Cloud credentials still need to be imported. Unlock credentials in the desktop app, then reconnect.",
+  },
+  "errors.SOURCE_CHANGED": {
+    "zh-CN": "来源已变化。请刷新后重试。",
+    en: "The source has changed. Refresh and try again.",
+  },
   "errors.FORBIDDEN": {
-    "zh-CN": "这台设备没有权限做这个操作。请在桌面应用“手机与网页”设置里允许它。",
-    en: "This device isn't allowed to do that. Allow it again in the desktop app under Mobile & Web.",
+    "zh-CN": "这台设备没有权限做这个操作。请在桌面应用“手机连接”设置里允许它。",
+    en: "This device isn't allowed to do that. Allow it again in the desktop app under Mobile connection.",
   },
   "errors.GRANT_CHANGED": {
     "zh-CN": "这台设备的权限刚刚有变化，请刷新后再试。",
@@ -40,6 +48,10 @@ export const errorMessages = {
   "errors.ATTACHMENT_UNSUPPORTED": {
     "zh-CN": "不支持这个附件。可以附加图片、音频，或 UTF-8 编码的文本和源码文件。",
     en: "This attachment isn't supported. Attach an image, audio, or a UTF-8 text or source file.",
+  },
+  "errors.EXECUTION_CONFIGURATION_UNAVAILABLE": {
+    "zh-CN": "历史仍可读取，请修复会话的执行配置后再发送。",
+    en: "History is still readable. Repair this conversation's execution configuration before sending.",
   },
   "errors.PROVIDER_CREDENTIAL_REQUIRED": {
     "zh-CN": "请填写 API Key，或保留已配置的凭据环境变量。",
@@ -89,6 +101,27 @@ export const errorMessages = {
     "zh-CN": "还不确定这次操作是否完成。请先查看结果再决定是否重试，以免重复。",
     en: "We're not sure whether that finished. Check the result before trying again to avoid doing it twice.",
   },
+  "errors.SUBMISSION_PENDING": {
+    "zh-CN": "上一条消息尚未确认，已暂停新的写入以免重复，请先查看最新状态。",
+    en: "The previous message status is still unconfirmed. New sends are paused to avoid duplicates—check the latest status first.",
+  },
+  "errors.ARENA_NOT_CONFIGURED": {
+    "zh-CN": "尚未配置 EnvArena 网关地址或访问令牌，请先完成连接配置。",
+    en: "EnvArena gateway URL or access token is not configured yet. Configure the connection first.",
+  },
+  "errors.BOT_MODEL_AUTH_REQUIRED": {
+    "zh-CN": "远端沙箱无法使用这个模型。请检查模型服务和沙箱授权。",
+    en: "The sandbox cannot use this model. Check the model service and sandbox access.",
+  },
+  "errors.REMOTE_CREDENTIAL_UNSUPPORTED": {
+    "zh-CN": "当前远端沙箱不支持写入自定义 API Key，请留空或升级沙箱后再试。",
+    en: "This EnvArena sandbox version does not support registering custom API keys at runtime yet. Leave API Key blank for a keyless or preconfigured gateway, or upgrade the sandbox.",
+  },
+  "errors.PROVIDER_MANAGED": {
+    "zh-CN":
+      "内置 Provider（如 arena）由远端沙箱托管，不能直接覆盖。请改用新的 Provider ID（例如 custom）。",
+    en: "Built-in providers (such as arena) are managed by the sandbox and cannot be overwritten. Use a different Provider ID (e.g. custom).",
+  },
   "errors.REVIEW_INCOMPLETE": {
     "zh-CN": "还有待确认的内容没有处理，请先处理完再继续。",
     en: "Some items still need your review. Finish them first.",
@@ -117,6 +150,14 @@ export const errorMessages = {
     "zh-CN": "任务列表暂时读不出来，请重试。",
     en: "Couldn't load the task list. Please try again.",
   },
+  "errors.RECONNECTING": {
+    "zh-CN": "原连接刚断开，正在恢复。这条操作没有发出，恢复后再试一次。",
+    en: "The previous connection just dropped and is recovering. Nothing was sent; try again once it's back.",
+  },
+  "errors.stopInProgress": {
+    "zh-CN": "后台服务正在停止。请等连接恢复后再试。",
+    en: "The background service is stopping. Try again once the connection returns.",
+  },
   "errors.PERSISTED_HISTORY_UNAVAILABLE": {
     "zh-CN": "历史记录暂时打不开，请稍后重试。历史本身没有丢失。",
     en: "History can't be opened right now. Nothing is lost; try again in a moment.",
@@ -126,8 +167,8 @@ export const errorMessages = {
     en: "The project's last run hasn't confirmed it stopped, so it can't open yet. History and drafts are kept. Make sure the original task has stopped.",
   },
   "errors.UNSUPPORTED_PROFILE": {
-    "zh-CN": "当前的模型设置不支持这个操作，请在会话设置里换一个模型。",
-    en: "The current model settings don't support this. Choose another model in conversation settings.",
+    "zh-CN": "当前的模型设置不支持这个操作，请在会话配置里换一个模型。",
+    en: "The current model settings don't support this. Choose another model in session configuration.",
   },
   "errors.MODEL_REASONING_EFFORT_UNSUPPORTED": {
     "zh-CN": "当前模型不支持所选推理强度，请选择支持的强度或服务默认值。",
@@ -143,9 +184,9 @@ export const errorMessages = {
   },
   "errors.PAIRING_USED": {
     "zh-CN": "这个邀请已经用过或被取消，请生成新的配对码。",
-    en: "This invite was already used or cancelled. Create a new pairing code.",
+    en: "This invite was already used or canceled. Create a new pairing code.",
   },
-  "errors.PAIRING_CANCELLED": { "zh-CN": "配对已取消。", en: "Pairing was cancelled." },
+  "errors.PAIRING_CANCELLED": { "zh-CN": "配对已取消。", en: "Pairing was canceled." },
   "errors.PROTOCOL_UNSUPPORTED": {
     "zh-CN": "这个客户端版本太旧，请更新后再连接。",
     en: "This app version is too old. Update it and connect again.",
@@ -189,5 +230,45 @@ export const errorMessages = {
   "errors.workerRunMissing": {
     "zh-CN": "找不到这个对话所属的任务运行。",
     en: "Couldn't find the task run this conversation belongs to.",
+  },
+  "errors.storageAuthorizationRequired": {
+    "zh-CN": "macOS 钥匙串未授权当前应用访问凭据，请在钥匙串访问中授权后重试。",
+    en: "macOS Keychain did not authorize this app to access credentials. Grant access in Keychain and try again.",
+  },
+  "errors.storageMissing": {
+    "zh-CN": "钥匙串缺少解密本地凭据的主密钥，请恢复凭据或重新配置手机连接。",
+    en: "The Keychain master key for encrypted credentials is missing. Restore the original key or reconfigure mobile access.",
+  },
+  "errors.storageLocked": {
+    "zh-CN": "本地凭据存储已锁定，请解锁钥匙串后重试。",
+    en: "Credential storage is locked. Unlock your Keychain and try again.",
+  },
+  "errors.credentialHostRestartRequired": {
+    "zh-CN": "新版应用已安装，但旧后台仍在运行，请重启后台服务后重试。",
+    en: "A newer version is installed while the old background service is still running. Restart the background service and try again.",
+  },
+  "errors.remoteCredentialUnreadable": {
+    "zh-CN": "无法解密手机连接凭据，请从同份备份恢复钥匙串，或重新配置并配对。",
+    en: "The saved mobile connection credentials cannot be decrypted. Restore the matching Keychain master key and mobile connection settings from the same backup, then try again. Without a usable backup, set up mobile access again and re-pair your devices. A Provider API key cannot restore mobile access.",
+  },
+  "errors.remoteStateUnavailable": {
+    "zh-CN": "手机连接配置尚未加载完成，请稍后重试。",
+    en: "Remote configuration has not been loaded yet. Try again in a moment.",
+  },
+  "errors.localRelayUnavailable": {
+    "zh-CN": "本机 Relay 组件不完整或签名校验未通过，无法启动内网连接。",
+    en: "The local Relay bundle is incomplete or failed verification and could not start.",
+  },
+  "errors.localRelayAddressUnavailable": {
+    "zh-CN": "无可用内网地址。请让电脑和手机连同一 Wi‑Fi 或 VPN 后重试。",
+    en: "There is no usable local connection address. Connect your computer and phone to the same reachable Wi‑Fi or VPN, enable the local connection again, and generate a new QR code.",
+  },
+  "errors.localRelayStartFailed": {
+    "zh-CN": "本机 Relay 启动失败，请检查端口占用或网络状态后重试。",
+    en: "Failed to start the local Relay. Check port availability and network status, then try again.",
+  },
+  "errors.DESKTOP_RESPONSE_INVALID": {
+    "zh-CN": "界面与后台服务版本数据不匹配，请重启应用后重试。",
+    en: "The interface and background service data format do not match. Restart the app and try again.",
   },
 } as const;

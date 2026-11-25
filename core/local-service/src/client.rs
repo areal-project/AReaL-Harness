@@ -35,6 +35,20 @@ impl std::error::Error for ControlTransportError {
     }
 }
 
+/// 标记停止请求在发送 `StopOperation` 之前就确定失败，避免误标为 `admissionUnknown`。
+#[derive(Debug)]
+struct StopNotDispatched(String);
+impl std::fmt::Display for StopNotDispatched {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+impl std::error::Error for StopNotDispatched {}
+
+pub fn is_stop_not_dispatched(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<StopNotDispatched>().is_some()
+}
+
 pub async fn ensure(spec: &LaunchSpec) -> Result<Service> {
     ensure_inner(spec, None, false, true, None, || Ok(())).await
 }
@@ -281,16 +295,8 @@ async fn launch_unlocked(
                 diagnostic.chars().take(4000).collect::<String>()
             );
         }
-        // 启动门已由本客户端持有；只询问控制端点，不能用独占锁探测抢在新宿主前取锁。
-        if let Ok(service) = request(
-            &spec.home,
-            &spec.service_id,
-            Request::Status { version: VERSION },
-        )
-        .await
-            && service.state == State::Ready
-            && probe(&service).await.is_ok()
-        {
+        // 启动门仍由本客户端持有；只认本次子进程发布的身份与 Core 探测，不能等旧控制连接耗尽启动预算。
+        if let Some(service) = started_service(directory, child.id()).await? {
             check_compatible(spec, &service, directory)?;
             // 后台 wait 回收同进程内退出的子进程；客户端退出不会发送终止信号。
             tokio::spawn(async move {
@@ -305,6 +311,19 @@ async fn launch_unlocked(
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
+}
+
+async fn started_service(directory: &Path, child_pid: Option<u32>) -> Result<Option<Service>> {
+    let Some(service) = storage::read_optional::<Service>(&directory.join("service.json"))? else {
+        return Ok(None);
+    };
+    if service.state != State::Ready || Some(service.host_pid) != child_pid {
+        return Ok(None);
+    }
+    if probe(&service).await.is_err() {
+        return Ok(None);
+    }
+    Ok(Some(service))
 }
 
 fn recovery_proof(directory: &Path, service: &Service) -> Result<storage::CrashReceipt> {
@@ -730,11 +749,14 @@ async fn stop_operation_unlocked(
         );
         return Ok(operation);
     }
-    let capabilities = capabilities_unlocked(root, id, generation).await?;
-    ensure!(
-        capabilities.version == VERSION && capabilities.stop_operations == 1,
-        "service does not support durable stop operations"
-    );
+    let capabilities = capabilities_unlocked(root, id, generation)
+        .await
+        .map_err(|error| anyhow::Error::new(StopNotDispatched(format!("{error:#}"))))?;
+    if capabilities.version != VERSION || capabilities.stop_operations != 1 {
+        return Err(anyhow::Error::new(StopNotDispatched(
+            "service does not support durable stop operations".into(),
+        )));
+    }
     match control_request(root, id, Request::StopOperation {
         version: VERSION,
         generation: generation.to_owned(),
@@ -1048,6 +1070,69 @@ pub async fn bind(root: &Path, workspace: &Path, data: &Path) -> Result<PathBuf>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn startup_reads_only_the_owned_child_publication_and_live_core_without_control() {
+        let root = tempfile::tempdir().unwrap();
+        let core = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let service: Service = serde_json::from_value(json!({
+            "protocolVersion":VERSION,"serviceId":"fixture","generation":"current",
+            "workspace":root.path(),"dataDir":root.path(),"configFingerprint":"fixture",
+            "endpoint":format!("ws://{}/",core.local_addr().unwrap()),"webUrl":"",
+            "authFile":root.path().join("auth.json"),"logFile":root.path().join("host.log"),
+            "hostPid":42,"corePid":43,"state":"ready"
+        }))
+        .unwrap();
+        storage::write(
+            &service.auth_file,
+            &json!({"principals":[{"token":"fixture"}]}),
+        )
+        .unwrap();
+        storage::write(&root.path().join("service.json"), &service).unwrap();
+        assert!(
+            started_service(root.path(), Some(41))
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let identity = service.identity.clone();
+        let http = tokio::spawn(async move {
+            for wrong in [false, true] {
+                let (mut stream, _) = core.accept().await.unwrap();
+                let mut request = BufReader::new(&mut stream);
+                loop {
+                    let mut line = String::new();
+                    request.read_line(&mut line).await.unwrap();
+                    if line == "\r\n" {
+                        break;
+                    }
+                }
+                let mut response = identity.clone();
+                if wrong {
+                    response.generation = "foreign".into();
+                }
+                let body = serde_json::to_string(&response).unwrap();
+                stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.unwrap();
+            }
+        });
+        let published = timeout(
+            Duration::from_secs(3),
+            started_service(root.path(), Some(42)),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert_eq!(published.identity, service.identity);
+        assert!(
+            started_service(root.path(), Some(42))
+                .await
+                .unwrap()
+                .is_none()
+        );
+        http.await.unwrap();
+        assert!(!root.path().join("control.sock").exists());
+    }
 
     #[tokio::test]
     async fn status_waits_for_startup_without_claiming_the_instance_lease() {

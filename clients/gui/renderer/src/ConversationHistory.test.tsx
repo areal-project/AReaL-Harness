@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { PlatformReadProvider } from "./PlatformReadContext.js";
 import { useConversationHistory } from "./ConversationHistory.js";
-import { TaskRunConversations } from "./TaskRunConversations.js";
 import type { Action, PlatformReadServices } from "./services.js";
 
 const effects = vi.hoisted(() => [] as Array<() => void | (() => void)>);
@@ -73,69 +72,31 @@ describe("conversation history ownership", () => {
     cleanups.forEach((cleanup) => cleanup?.());
   });
 
-  it("routes auxiliary Run history through its original Workbench owner", async () => {
+  it("uses the auxiliary Run's Host generation for paging and release", async () => {
     const reads = {
       acquire: vi.fn().mockResolvedValue(undefined),
+      loadOlder: vi.fn().mockResolvedValue(undefined),
       release: vi.fn().mockResolvedValue(undefined),
     } as unknown as PlatformReadServices;
-    const action = vi.fn().mockResolvedValue({ supported: true, viewGeneration: "desktop" });
     const thread = {
       id: "run-thread",
-      turns: [],
-      displayHistory: { supported: true, viewGeneration: "desktop", owner: "workbench" },
-    };
-    const project = {
-      id: "project",
-      core: { instanceId: "core", connectionGeneration: "gen" },
-      state: { connected: true, threads: { "run-thread": thread }, interactions: {} },
+      displayHistory: { supported: true, viewGeneration: "run-observation" },
     };
     let history!: ReturnType<typeof useConversationHistory>;
     function RunView() {
-      history = useConversationHistory("project", thread, action as Action);
+      history = useConversationHistory("project", thread, vi.fn() as Action);
       return null;
     }
     renderToStaticMarkup(
-      createElement(PlatformReadProvider, {
-        reads,
-        children: createElement(TaskRunConversations, {
-          project,
-          task: { id: "task", runs: [{ id: "run", threadId: "run-thread" }] },
-          action: action as Action,
-          disabled: false,
-          renderConversation: () => createElement(RunView),
-        }),
-      }),
+      createElement(PlatformReadProvider, { reads, children: createElement(RunView) }),
     );
     const cleanups = effects.map((effect) => effect());
     await vi.waitFor(() =>
-      expect(action).toHaveBeenCalledWith(
-        "history",
-        expect.objectContaining({
-          projectId: "project",
-          threadId: "run-thread",
-          operation: "acquire",
-        }),
-      ),
+      expect(reads.acquire).toHaveBeenCalledWith(expect.any(String), "run-observation"),
     );
-    expect(reads.acquire).not.toHaveBeenCalled();
     await history.load(undefined, "older");
-    expect(action).toHaveBeenCalledWith(
-      "history",
-      expect.objectContaining({
-        projectId: "project",
-        threadId: "run-thread",
-        operation: "loadOlder",
-        pageId: "older",
-      }),
-    );
+    expect(reads.loadOlder).toHaveBeenCalledWith("older", "run-observation");
     cleanups.forEach((cleanup) => cleanup?.());
-    expect(action).toHaveBeenCalledWith(
-      "history",
-      expect.objectContaining({
-        projectId: "project",
-        threadId: "run-thread",
-        operation: "release",
-      }),
-    );
+    expect(reads.release).toHaveBeenCalledWith(expect.any(String), "run-observation");
   });
 });

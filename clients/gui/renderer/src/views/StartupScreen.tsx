@@ -1,9 +1,10 @@
 import { HostPrerequisiteGuide } from "../HostPrerequisiteGuide.js";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import startupIcon from "../../../app/assets/icon-1024.png";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { Button } from "../components/ui/button.js";
 import { SettingsDisclosure } from "../settings/SettingsDisclosure.js";
+import { preloadWorkbenchSettings } from "./LazyWorkbenchSettings.js";
 import type { BackendStatusAction } from "../BackendStatusNotice.js";
 import type { PlatformServices, Snapshot } from "../services.js";
 import type { RecoveryFailure } from "../recoveryPresentation.js";
@@ -37,9 +38,13 @@ export function StartupScreen({
   onQuit: () => void;
 }) {
   const { t } = useI18n();
+  // 只有已确认的失败或待核对恢复态才展示恢复操作；普通连接等待仍属于 loading。
   const failed =
-    state.restoration.failed || state.connection?.state === "unavailable" || state.lifecycleBlocked;
-  const recovery = failed || state.delayed;
+    state.restoration.failed ||
+    state.connection?.state === "unavailable" ||
+    !!state.lifecycle?.error;
+  const actionable = failed || !!state.lifecycle?.recovery || state.lifecycleBlocked;
+  const delayed = state.delayed && !actionable;
   const busy =
     state.backend.pending ||
     state.restoration.refreshing ||
@@ -56,6 +61,20 @@ export function StartupScreen({
     state.lifecycle?.recovery?.message ||
     state.lifecycle?.message ||
     state.connection?.message;
+  const [slowHint, setSlowHint] = useState(false);
+  useEffect(() => {
+    preloadWorkbenchSettings();
+  }, []);
+  useEffect(() => {
+    setSlowHint(false);
+    if (failed) return;
+    const timer = window.setTimeout(() => setSlowHint(true), 3000);
+    return () => window.clearTimeout(timer);
+  }, [failed]);
+  const showRecoveryActions = actionable || delayed || slowHint;
+  const showQuitAction = services.capabilities?.native !== false && (actionable || delayed);
+  const hasRetryView = failed && state.restoration.failed;
+  const hasBackendAction = actionable && services.capabilities?.native !== false;
   return (
     <div className="startup-screen" data-testid="startup-loading">
       <div className="startup-drag-region" aria-hidden="true" />
@@ -67,8 +86,8 @@ export function StartupScreen({
           {settingsPage}
         </div>
       ) : (
-        <div className="startup-content">
-          <img src={startupIcon} alt="AReaL Harness" width={40} height={40} />
+        <div className="startup-content" data-state={actionable ? "error" : "loading"}>
+          <img src={startupIcon} alt="AReaL Harness" width={48} height={48} />
           {state.connection?.prerequisite ? (
             <HostPrerequisiteGuide
               prerequisite={state.connection.prerequisite}
@@ -78,27 +97,34 @@ export function StartupScreen({
             />
           ) : (
             <>
-              <p role={failed ? "alert" : "status"}>
-                {t(
-                  recovery
-                    ? state.delayed && !failed
-                      ? "startup.delayed"
-                      : "startup.failed"
-                    : "startup.loading",
-                )}
+              {!actionable && (
+                <div className="startup-progress" aria-hidden="true">
+                  <span className="startup-progress-bar" />
+                </div>
+              )}
+              <p
+                className={actionable ? "startup-status startup-status-error" : "startup-status"}
+                role={actionable ? "alert" : "status"}
+              >
+                {t(actionable ? "startup.failed" : "startup.loading")}
               </p>
-              {recovery && (
-                <>
+              {showRecoveryActions && (
+                <div className="startup-recovery">
+                  {!actionable && (delayed || slowHint) && (
+                    <p className="startup-hint">
+                      {t(delayed ? "startup.delayed" : "startup.elapsedHint")}
+                    </p>
+                  )}
                   <div className="startup-actions">
-                    {state.restoration.failed && (
-                      <Button variant="outline" size="sm" disabled={busy} onClick={onRetry}>
+                    {hasRetryView && (
+                      <Button variant="default" size="sm" disabled={busy} onClick={onRetry}>
                         {t("recovery.retryView")}
                       </Button>
                     )}
-                    {services.capabilities?.native !== false && (
+                    {hasBackendAction && (
                       <>
                         <Button
-                          variant="outline"
+                          variant={hasRetryView ? "outline" : "default"}
                           size="sm"
                           disabled={busy}
                           onClick={() => onBackendAction(reconnect ? "reconnect" : "check")}
@@ -115,26 +141,28 @@ export function StartupScreen({
                             {t("startup.recover")}
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm" onClick={onSettings}>
-                          {t("recovery.checkSettings")}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={state.backend.pending}
-                          onClick={onQuit}
-                        >
-                          {t("startup.quit")}
-                        </Button>
                       </>
                     )}
+                    <Button variant="ghost" size="sm" onClick={onSettings}>
+                      {t(actionable ? "recovery.checkSettings" : "startup.openSettings")}
+                    </Button>
+                    {showQuitAction && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={state.backend.pending}
+                        onClick={onQuit}
+                      >
+                        {t("startup.quit")}
+                      </Button>
+                    )}
                   </div>
-                  {details && (
-                    <SettingsDisclosure title={t("recovery.details")}>
-                      <pre>{details}</pre>
-                    </SettingsDisclosure>
-                  )}
-                </>
+                </div>
+              )}
+              {actionable && details && (
+                <SettingsDisclosure title={t("recovery.details")}>
+                  <pre>{details}</pre>
+                </SettingsDisclosure>
               )}
             </>
           )}

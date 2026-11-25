@@ -585,7 +585,7 @@ function Preview() {
             />
           </section>
           <section className="design-preview-panel design-preview-side" aria-label="Side 预览">
-            <h2>Side Chat</h2>
+            <h2>侧边聊天</h2>
             <SideChatPane
               project={project}
               source={source}

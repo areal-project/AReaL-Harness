@@ -72,6 +72,9 @@ pub enum HostCommand {
     Run {
         #[arg(long)]
         managed: bool,
+        /// 等待旧 Host 释放独占锁，供已结算的桌面交接启动使用。
+        #[arg(long, hide = true, conflicts_with = "managed")]
+        wait_for_lock: bool,
     },
     Install,
     Uninstall {
@@ -153,13 +156,18 @@ pub async fn execute(command: HostCommand) -> Result<()> {
         HostCommand::Web {
             action: WebCommand::Revoke { device_id },
         } => serde_json::to_value(Client::connect().await?.revoke_browser(&device_id).await?)?,
-        HostCommand::Run { managed } => {
+        HostCommand::Run {
+            managed,
+            wait_for_lock,
+        } => {
             let options = areal_host::RunOptions::current()?;
             if !managed && areal_host::ServiceInstallation::start_installed(&options.home).await? {
                 return Ok(());
             }
             let exit = if managed {
                 areal_host::run_managed(options).await?
+            } else if wait_for_lock {
+                areal_host::run_when_available(options).await?
             } else {
                 areal_host::run(options).await?
             };

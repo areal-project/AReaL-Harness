@@ -2,8 +2,8 @@
 id: diff-viewer
 title: DiffViewer
 summary: 变更对比与行级批注呈现。
-status: experimental
-entry: experimental
+status: stable
+entry: index
 layer: core
 category: reading
 aliases: ["变更对比与行级批注呈现"]

@@ -1,0 +1,51 @@
+.areal-shortcut-capture {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing-inline) / 2);
+}
+
+.areal-shortcut-capture-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(var(--spacing-inline) * 14);
+  height: var(--spacing-control-sm);
+  padding: 0 var(--spacing-inline);
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-fog);
+  color: var(--color-foreground);
+  font-size: var(--text-ui-caption);
+  cursor: var(--interactive-cursor, pointer);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
+}
+
+.areal-shortcut-capture-button:hover:not(:disabled) {
+  border-color: var(--color-border);
+  background: var(--color-hover);
+}
+
+.areal-shortcut-capture[data-recording="true"] .areal-shortcut-capture-button {
+  border-color: var(--color-brand);
+  background: var(--color-surface-card);
+}
+
+.areal-shortcut-capture-button:focus-visible {
+  outline: var(--focus-width) solid var(--color-brand);
+  outline-offset: var(--focus-offset);
+}
+
+.areal-shortcut-capture-button:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.areal-shortcut-capture-prompt {
+  color: var(--color-brand);
+}
+
+.areal-shortcut-capture-empty {
+  color: var(--color-foreground-subtlest);
+}

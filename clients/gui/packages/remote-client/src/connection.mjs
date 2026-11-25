@@ -35,7 +35,14 @@ export class RemoteConnection {
   rejectPending() {
     for (const value of this.pending.values()) {
       clearTimeout(value.timer);
-      value.reject(new Error("Host 已断开，原提交需核对"));
+      value.reject(
+        value.isWrite
+          ? Object.assign(new Error("Host 已断开，原提交需核对"), {
+              code: "SUBMISSION_UNKNOWN",
+              submissionUnknown: true,
+            })
+          : Object.assign(new Error("Host 已断开"), { code: "CONNECTION_CLOSED" }),
+      );
     }
     this.pending.clear();
   }
@@ -92,15 +99,23 @@ export class RemoteConnection {
     return new Promise((resolve, reject) => {
       if (this.closed || !this.ready || !this.isCurrent())
         return reject(
-          Object.assign(new Error("连接已失效，请重新读取状态"), { code: "RESYNC_REQUIRED" }),
+          Object.assign(new Error("连接已失效，请重新读取状态"), {
+            code: "LOCAL_NOT_SENT",
+          }),
         );
       const id = String(++this.sequence);
+      const isWrite = Boolean(envelope.commandId);
+      const timeoutMs = isWrite ? 30000 : 15000;
       const timer = setTimeout(() => {
         this.pending.delete(id);
         if (envelope.method === "session.open") this.socket.close();
-        reject(new Error("读取超时，请刷新或核对原命令"));
-      }, 15000);
-      this.pending.set(id, { resolve, reject, timer, onResult });
+        const error = Object.assign(new Error("读取超时，请刷新或核对原命令"), {
+          code: "REQUEST_TIMEOUT",
+          ...(isWrite ? { submissionUnknown: true } : {}),
+        });
+        reject(error);
+      }, timeoutMs);
+      this.pending.set(id, { resolve, reject, timer, onResult, isWrite });
       try {
         /** @type {import('../generated/host-protocol').RemoteRequest} */
         const request = { id, ...envelope };
@@ -108,7 +123,9 @@ export class RemoteConnection {
       } catch (error) {
         clearTimeout(timer);
         this.pending.delete(id);
-        reject(error);
+        reject(
+          Object.assign(new Error("LOCAL_NOT_SENT", { cause: error }), { code: "LOCAL_NOT_SENT" }),
+        );
       }
     });
   }

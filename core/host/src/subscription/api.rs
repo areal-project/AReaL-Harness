@@ -34,7 +34,8 @@ impl SourceSubscription {
         let runtime = self.state.borrow();
         let selected = accounts.directory.as_ref().map(AccountDirectory::active);
         let authenticated = selected.is_some_and(|record| record.authenticated());
-        let failure = runtime.failure.as_ref();
+        let catalog_failure = runtime.catalog.refresh_failure.as_ref();
+        let failure = runtime.failure.as_ref().or(catalog_failure);
         let state = if runtime.pending.is_some()
             && failure.is_some_and(|failure| failure.state() == "storage_locked")
         {
@@ -51,7 +52,7 @@ impl SourceSubscription {
             "signed_out"
         };
         let mut value = accounts.public();
-        value.as_object_mut().unwrap().extend(json!({"accountEpoch":runtime.epoch,"authenticated":authenticated,"state":state,"availability":if state=="ready" && !runtime.catalog.models.is_empty(){"available"}else if authenticated{"checking"}else{"unavailable"},"refreshing":runtime.flight.is_some(),"email":selected.and_then(|record|record.email()),"planType":null,"models":runtime.catalog.models,"modelError":failure.filter(|failure|failure.phase=="catalog").map(Failure::message),"diagnostic":failure.map(Failure::diagnostic),"login":self.login_public(),"error":*self.notice.borrow(),"billing":"subscription","catalog":{"source":"account","fresh":runtime.catalog.expires>now_ms(),"sessionRevision":runtime.epoch,"fetchedAt":runtime.catalog.expires.checked_sub(30_000),"overrides":false},"endpoint":self.listener.borrow().as_ref().map(|listener|listener.endpoint.as_str())}).as_object().unwrap().clone());
+        value.as_object_mut().unwrap().extend(json!({"accountEpoch":runtime.epoch,"authenticated":authenticated,"state":state,"availability":if state=="ready" && !runtime.catalog.models.is_empty(){"available"}else if authenticated{"checking"}else{"unavailable"},"refreshing":runtime.flight.is_some(),"email":selected.and_then(|record|record.email()),"planType":null,"models":runtime.catalog.models,"modelError":catalog_failure.map(Failure::message),"diagnostic":failure.map(Failure::diagnostic),"login":self.login_public(),"error":*self.notice.borrow(),"billing":"subscription","catalog":{"source":"account","fresh":runtime.catalog.fresh(),"sessionRevision":runtime.epoch,"fetchedAt":runtime.catalog.expires.checked_sub(30_000),"overrides":false},"endpoint":self.listener.borrow().as_ref().map(|listener|listener.endpoint.as_str())}).as_object().unwrap().clone());
         Ok(value)
     }
     pub(crate) async fn start(self: &Rc<Self>) -> network::Result<()> {

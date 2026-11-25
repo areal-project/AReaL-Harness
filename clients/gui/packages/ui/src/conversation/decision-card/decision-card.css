@@ -1,9 +1,10 @@
 .decision-card {
   margin-bottom: var(--spacing-inline);
-  padding: var(--composer-inset);
-  border: var(--border-width-default) solid var(--color-border);
-  border-radius: var(--radius-card);
-  background: var(--color-composer-catalog);
+  padding: var(--spacing-field);
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  border-radius: var(--radius-dialog);
+  background: var(--color-surface-card);
+  box-shadow: var(--shadow-subtle);
   color: var(--color-foreground);
   font-size: var(--text-ui-base);
   line-height: var(--line-height-ui);
@@ -21,7 +22,9 @@
   align-items: center;
   gap: var(--spacing-inline);
   color: var(--color-foreground-subtle);
-  font-size: var(--text-ui-base);
+  font-size: var(--text-ui-caption);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: var(--tracking-ui-subtle);
 }
 .decision-card-label > svg {
   width: var(--icon-size-control);
@@ -34,7 +37,7 @@
   gap: var(--spacing-inline);
 }
 .decision-card-body {
-  max-height: min(40dvh, 24rem);
+  max-height: min(40dvh, calc(var(--spacing-inline) * 48));
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -54,7 +57,8 @@
   gap: var(--spacing-inline);
   margin-top: var(--spacing-inline);
 }
-.decision-card .decision-button {
+.decision-card .decision-button,
+.decision-card-footer [data-slot="button"] {
   height: var(--spacing-control);
   padding: 0 var(--spacing-inline);
   border-radius: var(--radius-pill);
@@ -70,16 +74,22 @@
   color: var(--color-primary-foreground);
 }
 .decision-card kbd {
-  color: var(--color-foreground-subtle);
+  color: var(--color-foreground-subtlest);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: var(--line-height-ui-sm);
-  padding: 0 calc(var(--spacing-inline) / 2);
+  padding: 0 calc(var(--spacing-inline) / 4);
   border-radius: var(--radius-micro);
-  background: var(--color-surface-tertiary);
+  background: transparent;
   font: inherit;
   font-size: var(--text-ui-sm);
+}
+.decision-card .decision-primary kbd,
+.decision-card .decision-card-footer [data-variant="default"] kbd {
+  color: var(--color-primary-foreground);
+  background: transparent;
+  opacity: 0.78;
 }
 .decision-card .ui-feedback {
   margin: var(--spacing-inline) 0 0;
@@ -97,13 +107,13 @@
   overflow-wrap: anywhere;
 }
 .approval-browser-preview p {
-  margin: 4px 0;
+  margin: calc(var(--spacing-inline) / 2) 0;
 }
 .approval-browser-preview ol {
-  margin: 8px 0;
+  margin: var(--spacing-inline) 0;
 }
 .approval-browser-preview details {
-  margin-top: 8px;
+  margin-top: var(--spacing-inline);
 }
 .approval-scope-details {
   margin-top: var(--spacing-inline);
@@ -112,34 +122,37 @@
   line-height: var(--line-height-ui-sm);
 }
 .approval-scope-details p {
-  margin: 8px 0 0;
+  margin: var(--spacing-inline) 0 0;
 }
 .approval-split {
   display: flex;
   border-radius: var(--radius-pill);
   background: var(--color-primary);
 }
-.decision-card .approval-split .decision-primary {
+.decision-card .approval-split .decision-primary,
+.decision-card .approval-split > [data-slot="button"]:first-child {
   border-radius: var(--radius-pill) 0 0 var(--radius-pill);
-  padding-right: 4px;
+  padding-right: calc(var(--spacing-inline) / 2);
 }
-.decision-card .approval-split .approval-scope-trigger {
-  width: 26px;
-  padding: 0 6px 0 2px;
+.decision-card .approval-split .approval-scope-trigger,
+.decision-card .approval-split > [data-slot="button"]:last-child {
+  width: calc(var(--spacing-inline) * 13 / 4);
+  padding: 0 calc(var(--spacing-inline) * 3 / 4) 0 calc(var(--spacing-inline) / 4);
+  border-left: var(--border-width-default) solid var(--color-border);
   border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
   background: var(--color-primary);
   color: var(--color-primary-foreground);
 }
 .approval-scope-menu {
-  width: 282px;
-  padding: 6px;
+  width: calc(var(--spacing-inline) * 141 / 4);
+  padding: calc(var(--spacing-inline) * 3 / 4);
 }
 .approval-scope-menu [role="menuitem"] {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  padding: 8px;
+  gap: calc(var(--spacing-inline) / 4);
+  padding: var(--spacing-inline);
 }
 .approval-scope-menu small {
   color: var(--color-foreground-subtle);
@@ -161,12 +174,12 @@
   margin: 0;
 }
 .question-answer-bubble > div + div {
-  margin-top: 12px;
+  margin-top: calc(var(--spacing-inline) * 3 / 2);
 }
 .question-answer-title {
   opacity: 0.7;
   font-size: var(--text-ui-caption);
-  margin-bottom: 4px !important;
+  margin-bottom: calc(var(--spacing-inline) / 2) !important;
 }
 
 .decision-card:focus-visible {

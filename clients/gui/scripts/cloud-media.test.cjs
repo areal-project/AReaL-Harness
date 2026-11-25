@@ -2,7 +2,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createRequire } = require("node:module");
-const { buildSync } = createRequire(require.resolve("../packages/gen-ui/package.json"))("esbuild");
+const { buildSync } = createRequire(require.resolve("../packages/browser-data/package.json"))(
+  "esbuild",
+);
 const compiled = buildSync({
   entryPoints: [require.resolve("../renderer/src/ComposerUploads.ts")],
   bundle: true,

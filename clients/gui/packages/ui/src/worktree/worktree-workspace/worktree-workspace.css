@@ -1,3 +1,15 @@
-.worktree-workspace-details { min-width: 0; }
-.worktree-workspace-details code { overflow-wrap: anywhere; }
-.worktree-workspace-log { max-height: 16rem; overflow-y: auto; overflow-x: hidden; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--text-ui-caption); }
+.worktree-workspace-details {
+  min-width: 0;
+}
+.worktree-workspace-details code {
+  overflow-wrap: anywhere;
+}
+.worktree-workspace-log {
+  max-height: calc(var(--spacing-inline) * 32);
+  overflow-y: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-ui-caption);
+}

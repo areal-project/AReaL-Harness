@@ -7,16 +7,42 @@ const inputVariants = cva(
   "w-full min-w-0 border border-input-border bg-input text-foreground ui-control transition-colors outline-none file:inline-flex file:border-0 file:bg-transparent file:font-medium file:text-foreground placeholder:text-foreground-subtlest hover:border-input-border-hover focus-visible:border-input-border-focused focus-visible:bg-input-focused focus-visible:ring-0 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-(--opacity-disabled) aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
   {
     variants: {
+      variant: {
+        default: "",
+        bare: "border-0 bg-transparent px-0 hover:border-transparent focus-visible:border-transparent focus-visible:bg-transparent",
+        "inline-heading":
+          "h-auto border-0 bg-transparent px-0 py-0 text-ui-heading font-semibold hover:border-transparent focus-visible:border-transparent focus-visible:bg-transparent",
+        "inline-subtle":
+          "h-auto border-0 bg-transparent px-0 py-0 text-ui-sm text-foreground-subtle hover:border-transparent focus-visible:border-transparent focus-visible:bg-transparent",
+      },
       size: {
         xs: "h-control-xs rounded-sm px-2 py-0.5 text-ui-base file:h-4 file:text-ui-base",
         sm: "h-control-sm rounded-control px-2 py-0.5 text-ui-base/relaxed file:h-control-xs file:text-ui-base/relaxed",
         default:
           "h-control rounded-control px-2 py-0.5 text-ui-base md:text-ui-base/relaxed file:h-control-sm file:text-ui-base/relaxed",
         lg: "h-control-lg rounded-overlay px-3 py-1.5 text-ui-base file:h-control-sm file:text-ui-base",
+        touch:
+          "min-h-(--size-touch-target) min-w-(--size-touch-target) rounded-control px-2 py-0.5 text-ui-lg md:text-ui-lg",
+      },
+      align: {
+        start: "",
+        center: "text-center",
+      },
+      emphasis: {
+        default: "",
+        strong: "font-semibold",
+      },
+      endAction: {
+        false: "",
+        true: "pr-10",
       },
     },
     defaultVariants: {
+      variant: "default",
       size: "default",
+      align: "start",
+      emphasis: "default",
+      endAction: false,
     },
   },
 );
@@ -30,7 +56,18 @@ interface InputProps extends Omit<React.ComponentProps<"input">, "size">, InputV
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input(
-  { className, htmlSize, size = "default", type, unstyled = false, ...props },
+  {
+    className,
+    htmlSize,
+    variant = "default",
+    size = "default",
+    align = "start",
+    emphasis = "default",
+    endAction = false,
+    type,
+    unstyled = false,
+    ...props
+  },
   ref,
 ) {
   return (
@@ -39,7 +76,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input(
       type={type}
       size={htmlSize}
       data-slot="input"
-      className={unstyled ? className : cn(inputVariants({ size }), className)}
+      className={
+        unstyled
+          ? className
+          : cn(inputVariants({ variant, size, align, emphasis, endAction }), className)
+      }
       {...props}
     />
   );

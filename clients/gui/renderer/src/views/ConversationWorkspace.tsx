@@ -3,8 +3,14 @@ import {
   useConversationSubmitReadOnly,
   useConversationCreateReadOnly,
 } from "../PlatformReadContext.js";
-import React from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { DelayedVisible } from "@areal/ui";
+import { ThreadFindBar, ThreadSummaryItem, ThreadSummaryPanel } from "@areal/ui/compositions";
+import { Check, Cloud } from "lucide-react";
+import { matchesWorkspaceShortcut, useWorkspaceShortcuts } from "../settings/workspaceShortcuts.js";
 import { projectUserState } from "../state/userStates.js";
+import { useCloudConfigStatus } from "../state/useCloudConfigStatus.js";
+import { flushComposerDrafts } from "../composerDraftStorage.js";
 import { ComposerSurface } from "../prompt-editor/ComposerSurface.js";
 import { Button } from "../components/ui/button.js";
 import {
@@ -19,13 +25,18 @@ import { Composer } from "../Composer.js";
 import { ComposerWorkspaceContext } from "../ComposerWorkspaceContext.js";
 import { ConversationDraftEmptyState } from "../ConversationDraftEmptyState.js";
 import { DraftComposer } from "../DraftComposer.js";
-import { LeaveProjectIcon, NewProjectIcon, ProjectFolderIcon } from "../homeChromeIcons.js";
+import {
+  LeaveProjectIcon,
+  NewProjectIcon,
+  ProjectFolderIcon,
+  WorkspaceLocalIcon,
+} from "../homeChromeIcons.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { DismissIcon } from "../interfaceIcons.js";
-import { McpMentionsPicker, useMcpAppsWorkspace } from "../McpAppsWorkspace.js";
 import { Messages } from "../Messages.js";
 import { ProjectlessDraft } from "../ProjectlessDraft.js";
 import { recoverySettings } from "../recoveryPresentation.js";
+import { rawText } from "../errors/errorCopy.js";
 import { conversationLoadState } from "./conversationLoadState.js";
 import { type Action, type PlatformServices } from "../services.js";
 import { projectExecutionBlocked } from "../state/projectExecution.js";
@@ -46,8 +57,6 @@ import { WorktreeStarter } from "../WorktreeStarter.js";
 import { usePendingMessage } from "../pendingMessage.js";
 import { PendingMessageView } from "../UserMessageBody.js";
 
-import { createContext, useContext } from "react";
-
 type ConversationWorkspaceProps = {
   session: ReturnType<typeof useSessionNavigation>;
   services: PlatformServices;
@@ -57,7 +66,6 @@ type ConversationWorkspaceProps = {
   admitting: boolean;
   mainPane: React.RefObject<HTMLElement | null>;
   workspacePanels: ReturnType<typeof useWorkspacePanels>;
-  mcpWorkspace: ReturnType<typeof useMcpAppsWorkspace>;
   side: ReturnType<typeof useSideConversations>;
   fork: ReturnType<typeof useConversationFork>;
   preview: ReturnType<typeof useWorkspacePreview>;
@@ -132,7 +140,9 @@ function ConversationContent() {
           {thread && project ? (
             <ActiveConversation />
           ) : threadId ||
-            (project && (restorationFailed || viewRefreshing || loadState.kind !== "reading")) ? (
+            (project &&
+              (conversationCreateReadOnly || conversationSubmitReadOnly) &&
+              (restorationFailed || viewRefreshing || loadState.kind !== "reading")) ? (
             <div
               className="conversation-loading"
               role="status"
@@ -154,13 +164,20 @@ function ConversationContent() {
                     />
                   </div>
                 )}
-                {(!pendingMessage || loadState.kind === "failed") && (
-                  <p>
-                    {loadState.kind === "failed" && loadState.detail
-                      ? loadState.detail
-                      : t(loadState.message)}
-                  </p>
-                )}
+                {(!pendingMessage || loadState.kind === "failed") &&
+                  (loadState.kind === "failed" ? (
+                    <FeedbackNotice
+                      tone="error"
+                      message={loadState.detail || t(loadState.message)}
+                      detail={viewFailure ? rawText(viewFailure) : undefined}
+                    />
+                  ) : loadState.kind === "starting" ? (
+                    <p>{t(loadState.message)}</p>
+                  ) : (
+                    <DelayedVisible active>
+                      <p>{t(loadState.message)}</p>
+                    </DelayedVisible>
+                  ))}
                 {loadState.kind === "failed" && (
                   <Button
                     variant="outline"
@@ -184,6 +201,19 @@ function ConversationContent() {
                     {t("recovery.checkSettings")}
                   </Button>
                 )}
+                {loadState.kind === "failed" && !settings && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => {
+                      surfaces.setSettingsTab("diagnostics");
+                      surfaces.setSettingsOpen(true);
+                    }}
+                  >
+                    {t("recovery.details")}
+                  </Button>
+                )}
               </div>
               <div className="composer-dock" aria-hidden="true">
                 <ComposerSurface
@@ -201,8 +231,8 @@ function ConversationContent() {
             <div className="panel-header">
               <strong>{t("terminal.title")}</strong>
               <Button
-                unstyled
-                className="icon-button"
+                variant="ghost-subtle"
+                size="icon"
                 aria-label={t("common.navigation.closePanel")}
                 onClick={() => setTerminalOpen(false)}
               >
@@ -240,14 +270,13 @@ function ActiveConversation() {
     action,
     dark,
     empty,
+    mainPane,
     workspacePanels,
-    mcpWorkspace,
     side,
     fork,
     preview,
     documents,
     panelNavigation,
-    composerWorkspace,
     annotation,
     surfaces,
     tasks,
@@ -258,9 +287,21 @@ function ActiveConversation() {
     setError,
   } = useConversationContext();
   const { project, thread, threadId, library, snapshot, resourceAction } = session;
-  const readOnly = useReadOnly() || session.readOnly;
+  const platformReadOnly = useReadOnly();
+  const readOnly = platformReadOnly || session.readOnly;
   const conversationSubmitReadOnly = useConversationSubmitReadOnly();
   const conversationCreateReadOnly = useConversationCreateReadOnly();
+  const readStatus = services.reads?.status();
+  const canActivatePersisted =
+    services.capabilities?.native === true ||
+    services.capabilities?.mutations === true ||
+    (readStatus?.connection === "ready" &&
+      readStatus.identity.writeMethods?.includes("project.activate") === true);
+  const dormantWritable =
+    !platformReadOnly &&
+    !conversationSubmitReadOnly &&
+    canActivatePersisted &&
+    Boolean(thread && "persistedHistory" in thread && thread.persistedHistory === true);
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
   const { workspaceView } = workspacePanels.view;
   const {
@@ -276,20 +317,146 @@ function ActiveConversation() {
   const { onLink, rememberPanelTrigger } = preview;
   const { openFile, requestReview: setReviewRequest } = documents;
   const { showPanel } = panelNavigation;
-  const { mcpMentionsOpen, setMcpMentionsOpen, appEntries } = composerWorkspace;
   const { openImageAnnotation } = annotation;
   const { viewRefreshing } = startup;
   const { newTask } = navigationCommands;
 
   const { t } = useI18n();
+  const shortcuts = useWorkspaceShortcuts();
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryPinned, setSummaryPinned] = useState(true);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findMatchIndex, setFindMatchIndex] = useState(0);
+  const [findMatches, setFindMatches] = useState<HTMLElement[]>([]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.isComposing || event.defaultPrevented) return;
+      if (matchesWorkspaceShortcut(event, shortcuts.pinSummary)) {
+        event.preventDefault();
+        setSummaryPinned((prev) => {
+          if (!prev) {
+            setSummaryOpen(true);
+            return true;
+          }
+          setSummaryOpen((open) => !open);
+          return prev;
+        });
+        return;
+      }
+      if (!empty && matchesWorkspaceShortcut(event, shortcuts.threadFind)) {
+        event.preventDefault();
+        setFindOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [empty, shortcuts.pinSummary, shortcuts.threadFind]);
+  useEffect(() => {
+    if (!findOpen) {
+      setFindMatches([]);
+      setFindMatchIndex(0);
+      return;
+    }
+    const needle = findQuery.trim().toLowerCase();
+    const root = mainPane.current;
+    if (!needle || !root) {
+      setFindMatches([]);
+      setFindMatchIndex(0);
+      return;
+    }
+    const candidates = Array.from(
+      root.querySelectorAll<HTMLElement>(
+        ".message-column, .turn-body, [data-testid='message-item']",
+      ),
+    ).filter((node) => node.textContent?.toLowerCase().includes(needle));
+    setFindMatches(candidates);
+    setFindMatchIndex(0);
+    candidates[0]?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [findOpen, findQuery, mainPane, threadId]);
+  const jumpFindMatch = (delta: number) => {
+    if (!findMatches.length) return;
+    const next = (findMatchIndex + delta + findMatches.length) % findMatches.length;
+    setFindMatchIndex(next);
+    findMatches[next]?.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
   const pendingSide =
     project && thread ? sideChats.pendingCreation(project.id, thread.id) : undefined;
   const sideError = project && thread ? sideChats.creationError(project.id, thread.id) : undefined;
   if (!project || !thread) return null;
+  const turns = Array.isArray(thread.turns) ? thread.turns : [];
+  const pendingApprovals = Array.isArray(thread.approvals) ? thread.approvals.length : 0;
+  const pendingQuestions = Array.isArray(thread.questions) ? thread.questions.length : 0;
+  const pendingDecisions = pendingApprovals + pendingQuestions;
+  const changedFileCount = turns.reduce((count: number, turn: { files?: unknown[] }) => {
+    return count + (Array.isArray(turn?.files) ? turn.files.length : 0);
+  }, 0);
+  const summaryParts = [
+    pendingDecisions > 0 ? `${pendingDecisions} 项待确认` : null,
+    changedFileCount > 0 ? `${changedFileCount} 个变更文件` : null,
+    turns.length > 0 ? `${turns.length} 轮对话` : null,
+  ].filter(Boolean);
+  const hasSummaryContext = !empty && (pendingDecisions > 0 || changedFileCount > 0);
+  const showPinnedSummary = hasSummaryContext && summaryPinned;
   return (
     <>
-      {thread && "persistedHistory" in thread && thread.persistedHistory === true && (
-        <FeedbackNotice tone="warning" message={t("common.navigation.persistedHistory")} />
+      {!empty && findOpen && (
+        <div className="composer-dock">
+          <ThreadFindBar
+            value={findQuery}
+            onChange={setFindQuery}
+            matchIndex={findMatchIndex}
+            matchCount={findMatches.length}
+            onPrevious={() => jumpFindMatch(-1)}
+            onNext={() => jumpFindMatch(1)}
+            onClose={() => {
+              setFindOpen(false);
+              setFindQuery("");
+            }}
+          />
+        </div>
+      )}
+      {showPinnedSummary && (
+        <div className="composer-dock">
+          <ThreadSummaryPanel
+            title={thread.title || t("chat.summary.currentConversation")}
+            summary={summaryParts.join(" · ")}
+            variant={summaryOpen ? "card" : "compact"}
+            open={summaryOpen}
+            onOpenChange={setSummaryOpen}
+            pinned={summaryPinned}
+            onPinnedChange={setSummaryPinned}
+          >
+            {pendingDecisions > 0 && (
+              <ThreadSummaryItem
+                label={t("chat.summary.pendingDecisions")}
+                meta={`${pendingDecisions}`}
+                tone="attention"
+              />
+            )}
+            {changedFileCount > 0 && (
+              <ThreadSummaryItem
+                label={t("chat.summary.changedFiles")}
+                meta={`${changedFileCount}`}
+                onClick={() => showPanel("changes")}
+              />
+            )}
+            {turns.length > 0 && (
+              <ThreadSummaryItem
+                label={t("chat.summary.turns")}
+                meta={`${turns.length}`}
+                tone="muted"
+              />
+            )}
+          </ThreadSummaryPanel>
+        </div>
+      )}
+      {hasSummaryContext && !summaryPinned && (
+        <div className="composer-dock">
+          <Button type="button" variant="ghost" size="xs" onClick={() => setSummaryPinned(true)}>
+            {t("chat.summary.showPinned", { summary: summaryParts.join(" · ") })}
+          </Button>
+        </div>
       )}
       {empty ? (
         <div className="draft-greeting">
@@ -317,21 +484,16 @@ function ActiveConversation() {
           }
           thread={thread}
           action={action}
-          readOnly={readOnly}
-          interactivePages={
-            !session.readOnly &&
-            !thread.cloud &&
-            (!readOnly || services.capabilities?.pages === true)
-          }
+          readOnly={readOnly && !dormantWritable}
           decisionShown
-          onOpenResult={mcpWorkspace.openResult}
-          resultStates={mcpWorkspace.resultStates}
-          onFork={readOnly || thread.cloud ? undefined : forkFromTurn}
+          onFork={(readOnly && !dormantWritable) || thread.cloud ? undefined : forkFromTurn}
           onAddSelection={
-            !readOnly && !thread.cloud && canStageSelection ? addSelectionToChat : undefined
+            (!readOnly || dormantWritable) && !thread.cloud && canStageSelection
+              ? addSelectionToChat
+              : undefined
           }
           onSideSelection={
-            !readOnly && !thread.cloud && canStageSelection && canCreateSide
+            (!readOnly || dormantWritable) && !thread.cloud && canStageSelection && canCreateSide
               ? openSideSelection
               : undefined
           }
@@ -342,138 +504,248 @@ function ActiveConversation() {
           onReview={(turnId) => {
             rememberPanelTrigger();
             setReviewRequest({ owner: panelOwner, turnId });
-            workspacePanels.selectPanel("改动");
+            workspacePanels.selectPanel("changes");
             workspacePanels.exposePanel();
           }}
           readTurnReview={readTurnReview}
           onAgent={(id) => showPanel(`agent:${id}`)}
         />
       )}
-      {!conversationSubmitReadOnly && !session.readOnly && (!thread.cloud || !readOnly) && (
-        <div className={empty ? "draft-composer" : "active-composer"}>
-          {empty && (
-            <div className="composer-project-bar">
-              <div className="composer-project-leading">
-                <div className="composer-project">
-                  <ProjectFolderIcon />
-                  <span>
-                    {library.projects?.[project.id]?.title ||
-                      (project.projectless
-                        ? thread?.title || t("operations.schedules.newTitle")
-                        : project.root.split("/").pop())}
-                  </span>
+      {!conversationSubmitReadOnly &&
+        (!session.readOnly ||
+          (!platformReadOnly &&
+            "persistedHistory" in thread &&
+            thread.persistedHistory === true)) &&
+        (!thread.cloud || !readOnly) && (
+          <div className={empty ? "draft-composer" : "active-composer"}>
+            {(empty ||
+              (!thread.cloud &&
+                (project.scheduling?.suppressed === true ||
+                  Boolean(project.error || project.state?.error) ||
+                  projectUserState(project).kind === "unavailable"))) && (
+              <div className="composer-project-bar">
+                <div className="composer-project-leading">
+                  <div className="composer-project">
+                    <ProjectFolderIcon />
+                    <span>
+                      {library.projects?.[project.id]?.title ||
+                        (project.projectless
+                          ? thread?.title || t("operations.schedules.newTitle")
+                          : project.root.split("/").pop())}
+                    </span>
+                  </div>
+                  {!platformReadOnly && (
+                    <ComposerWorkspaceContext
+                      project={project}
+                      threadId={thread?.id}
+                      cloud={!!thread.cloud}
+                      action={resourceAction}
+                      backendReady={snapshot.connection?.state === "ready"}
+                    />
+                  )}
                 </div>
-                {!readOnly && (
-                  <ComposerWorkspaceContext
-                    project={project}
-                    threadId={thread?.id}
-                    cloud={!!thread.cloud}
-                    action={resourceAction}
-                    backendReady={snapshot.connection?.state === "ready"}
-                  />
-                )}
               </div>
-            </div>
-          )}
-          {(pendingSide || sideError) && (
-            <FeedbackNotice
-              tone={pendingSide ? "warning" : "error"}
-              requestId={pendingSide?.requestId}
-              message={sideError || t("chat.side.createUnconfirmed")}
-              actions={
-                pendingSide && (
-                  <Button variant="ghost" size="sm" onClick={newSide}>
-                    {t("chat.side.inspectCreation")}
-                  </Button>
-                )
-              }
-            />
-          )}
-          {!thread.cloud && mcpWorkspace.contexts}
-          {!thread.cloud && mcpWorkspace.formsView}
-          {!thread.cloud && mcpMentionsOpen && (
-            <McpMentionsPicker
-              servers={mcpWorkspace.servers}
-              projectId={project.id}
-              threadId={thread.id}
-              action={resourceAction}
-              onClose={() => setMcpMentionsOpen(false)}
-            />
-          )}
-          {thread.cloud ? (
-            <CloudComposer
-              key={`${project.id}:${thread.id}`}
-              project={project}
-              thread={thread}
-              action={resourceAction}
-            />
-          ) : (
-            <Composer
-              surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
-              surfacePlacement={empty ? "home" : "thread"}
-              onAnnotate={openImageAnnotation}
-              key={`${project.id}:${thread.id}`}
-              onMcpMention={() => setMcpMentionsOpen(true)}
-              appEntries={appEntries}
-              conversationReferences={conversationReferences}
-              project={project}
-              thread={thread}
-              executionBlocked={
-                snapshot.connection?.state !== "ready" ||
-                viewRefreshing ||
-                projectExecutionBlocked(snapshot.lifecycle, project.id)
-              }
-              action={action}
-              readAction={resourceAction}
-              onPanel={showPanel}
-              onSide={
-                !readOnly && canCreateSide
-                  ? async (text) => {
-                      await createSide(text);
-                    }
-                  : undefined
-              }
-              onNew={() => {
-                if (!conversationCreateReadOnly) void newTask();
-              }}
-              onOpenTask={(target) => {
-                surfaces.leaveSettings();
-                tasks.openTarget({ ...target, eventId: crypto.randomUUID() });
-              }}
-            />
-          )}
-        </div>
-      )}
+            )}
+            {(pendingSide || sideError) && (
+              <FeedbackNotice
+                tone={pendingSide ? "warning" : "error"}
+                requestId={pendingSide?.requestId}
+                message={sideError || t("chat.side.createUnconfirmed")}
+                actions={
+                  pendingSide && (
+                    <Button variant="ghost" size="sm" onClick={newSide}>
+                      {t("chat.side.inspectCreation")}
+                    </Button>
+                  )
+                }
+              />
+            )}
+            {thread.cloud ? (
+              <CloudComposer
+                key={`${project.id}:${thread.id}`}
+                project={project}
+                thread={thread}
+                action={resourceAction}
+              />
+            ) : (
+              <Composer
+                surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
+                surfacePlacement={empty ? "home" : "thread"}
+                onAnnotate={openImageAnnotation}
+                key={`${project.id}:${thread.id}`}
+                conversationReferences={conversationReferences}
+                project={project}
+                thread={thread}
+                executionBlocked={
+                  snapshot.connection?.state !== "ready" ||
+                  (viewRefreshing &&
+                    (!projectUserState(project).canAct ||
+                      ("persistedHistory" in thread && thread.persistedHistory === true) ||
+                      !!startup.viewFailure)) ||
+                  projectExecutionBlocked(snapshot.lifecycle, project.id)
+                }
+                action={action}
+                readAction={resourceAction}
+                onPanel={showPanel}
+                onSide={
+                  (!readOnly || dormantWritable) && canCreateSide
+                    ? async (text) => {
+                        await createSide(text);
+                      }
+                    : undefined
+                }
+                onNew={() => {
+                  if (!conversationCreateReadOnly) void newTask();
+                }}
+                onOpenTask={(target) => {
+                  surfaces.leaveSettings();
+                  tasks.openTarget({ ...target, eventId: crypto.randomUUID() });
+                }}
+              />
+            )}
+          </div>
+        )}
     </>
   );
 }
 function DraftConversation() {
   const readOnly = useReadOnly();
+  const conversationCreateReadOnly = useConversationCreateReadOnly();
+  const conversationSubmitReadOnly = useConversationSubmitReadOnly();
   const {
     session,
     services,
     action,
+    dark,
     admitting,
     workspacePanels,
     panelNavigation,
     composerWorkspace,
     annotation,
     surfaces,
+    startup,
     navigationCommands,
     conversationReferences,
   } = useConversationContext();
-  const { project, thread, projects, library, snapshot, resourceAction } = session;
+  const { project, thread, projects, library, snapshot, resourceAction, retryRestoration } =
+    session;
   const { workspaceView } = workspacePanels.view;
 
   const { showPanel } = panelNavigation;
-  const { appEntries, worktreeSelection, changeWorktreeSelection } = composerWorkspace;
+  const {
+    worktreeSelection,
+    changeWorktreeSelection,
+    draftEnvironment = "local",
+    changeDraftEnvironment,
+  } = composerWorkspace;
   const { openImageAnnotation } = annotation;
 
   const { newTask, choose, leaveProject, open } = navigationCommands;
   const { setWorktreeSettingsTarget, setSettingsTab, setSettingsOpen } = surfaces;
   const { t } = useI18n();
+  const canSelectEnvironment = Boolean(
+    project &&
+    !project.projectless &&
+    !readOnly &&
+    !conversationCreateReadOnly &&
+    !conversationSubmitReadOnly,
+  );
+  const inCloud = canSelectEnvironment && draftEnvironment === "cloud";
+  const cloudStatus = useCloudConfigStatus(
+    resourceAction,
+    canSelectEnvironment && snapshot.connection?.state === "ready",
+  );
+  const selectEnvironment = (next: "local" | "cloud") => {
+    if (!project || next === draftEnvironment) return;
+    flushComposerDrafts();
+    changeDraftEnvironment?.(project.id, next);
+  };
+  const draftSettings = startup.viewFailure && recoverySettings(startup.viewFailure);
+  const waitForProjectCapabilities = async (
+    initial: NonNullable<typeof project>,
+  ): Promise<NonNullable<typeof project>> => {
+    if (initial.core?.features != null || typeof services.onState !== "function") return initial;
+    return await new Promise<NonNullable<typeof project>>((resolve) => {
+      let settled = false;
+      const finish = (value: NonNullable<typeof project>) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        unsubscribe();
+        resolve(value);
+      };
+      const unsubscribe = services.onState((nextSnapshot) => {
+        const match = nextSnapshot.projects.find((item) => item.id === initial.id);
+        if (match && projectUserState(match).canAct && match.core?.features != null) {
+          finish(match);
+        }
+      });
+      const timer = setTimeout(() => {
+        void services
+          .snapshot()
+          .then((latest) => {
+            const match = latest.projects.find((item) => item.id === initial.id);
+            finish(match ?? initial);
+          })
+          .catch(() => finish(initial));
+      }, 3000);
+    });
+  };
+  const prepareProject =
+    project && (!projectUserState(project).canAct || project.core?.features == null)
+      ? async () => {
+          const pending = session.pendingRestoration();
+          if (pending) await pending.catch(() => {});
+          const current = (await services.snapshot()).projects.find(
+            (item) => item.id === project.id,
+          );
+          if (current?.scheduling?.suppressed === true) {
+            throw new Error("项目已手动停止，请先点击“重新连接项目”再继续，草稿已保留。");
+          }
+          if (current && projectUserState(current).canAct) {
+            return await waitForProjectCapabilities(current);
+          }
+          // 普通草稿唤醒必须保留其他窗口的显式停止意图，绝不隐式传 resumeScheduling: true。
+          await resourceAction("connect", {
+            projectId: project.id,
+          });
+          const refreshed = (await services.snapshot()).projects.find(
+            (item) => item.id === project.id,
+          );
+          if (!refreshed || !projectUserState(refreshed).canAct) {
+            throw new Error("项目尚未连接完成，草稿已保留，请稍后重试。");
+          }
+          return await waitForProjectCapabilities(refreshed);
+        }
+      : undefined;
   return (
     <>
+      {!inCloud && project && !projectUserState(project).canAct && startup.restorationFailed && (
+        <FeedbackNotice
+          tone="error"
+          message={startup.restorationError || t("startup.projectStartFailed")}
+          detail={startup.viewFailure ? rawText(startup.viewFailure) : undefined}
+          actions={
+            <>
+              <Button variant="ghost" size="sm" onClick={() => void retryRestoration()}>
+                {t("recovery.retryView")}
+              </Button>
+              {draftSettings && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSettingsTab(draftSettings);
+                    setSettingsOpen(true);
+                  }}
+                >
+                  {t("recovery.checkSettings")}
+                </Button>
+              )}
+            </>
+          }
+        />
+      )}
       <div className="draft-greeting">
         <ConversationDraftEmptyState
           projectName={
@@ -493,8 +765,9 @@ function DraftConversation() {
               <DropdownMenuTrigger
                 render={
                   <Button
-                    unstyled
-                    className="composer-project"
+                    variant="ghost-subtle"
+                    size="chip"
+                    className="shrink-0"
                     aria-label={
                       project
                         ? t("common.conversation.newInProject", {
@@ -508,7 +781,7 @@ function DraftConversation() {
                     }
                   >
                     {project ? <ProjectFolderIcon /> : <LeaveProjectIcon />}
-                    <span>
+                    <span className="max-w-80 truncate">
                       {project
                         ? library.projects?.[project.id]?.title ||
                           (project.projectless
@@ -519,7 +792,7 @@ function DraftConversation() {
                   </Button>
                 }
               />
-              <DropdownMenuContent align="start" className="project-picker-menu">
+              <DropdownMenuContent align="start" className="gap-0">
                 {projects
                   .filter((p) => !p.projectless)
                   .map((p) => (
@@ -542,16 +815,61 @@ function DraftConversation() {
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+            {canSelectEnvironment && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost-subtle"
+                      size="chip"
+                      className="shrink-0"
+                      aria-label={t("workspace.environment")}
+                      data-testid="draft-environment-trigger"
+                    >
+                      {inCloud ? (
+                        <Cloud className="size-4 shrink-0" aria-hidden="true" />
+                      ) : (
+                        <WorkspaceLocalIcon />
+                      )}
+                      <span>{inCloud ? t("workspace.cloud") : t("workspace.local")}</span>
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="start" className="gap-0">
+                  <DropdownMenuItem
+                    data-testid="draft-environment-local"
+                    onClick={() => selectEnvironment("local")}
+                  >
+                    <WorkspaceLocalIcon />
+                    <span className="flex-1">{t("workspace.local")}</span>
+                    {!inCloud && <Check className="size-3.5 shrink-0" aria-hidden="true" />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    data-testid="draft-environment-cloud"
+                    onClick={() => selectEnvironment("cloud")}
+                  >
+                    <Cloud className="size-4 shrink-0" aria-hidden="true" />
+                    <span className="flex-1">{t("workspace.cloud")}</span>
+                    {cloudStatus.state === "ready" && !cloudStatus.configured && (
+                      <span className="text-foreground-subtle">{t("cloud.unconfiguredTag")}</span>
+                    )}
+                    {inCloud && <Check className="size-3.5 shrink-0" aria-hidden="true" />}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {project && !readOnly && (
               <ComposerWorkspaceContext
                 project={project}
                 showBranch={false}
+                cloud={inCloud}
+                quietConnecting
                 action={resourceAction}
                 backendReady={snapshot.connection?.state === "ready"}
               />
             )}
           </div>
-          {project && (
+          {project && !inCloud && (
             <WorktreeStarter
               key={project.id}
               project={project}
@@ -575,22 +893,42 @@ function DraftConversation() {
           )}
         </div>
         {project ? (
-          <DraftComposer
-            prepareBrowserDraft={session.prepareBrowserDraft}
-            worktree={worktreeSelection}
-            onWorktreeCreated={() => changeWorktreeSelection(project.id, undefined)}
-            appEntries={appEntries}
-            conversationReferences={conversationReferences}
-            surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
-            onAnnotate={openImageAnnotation}
-            key={project.id}
-            project={project}
-            backendReady={snapshot.connection?.state === "ready"}
-            action={action}
-            readAction={resourceAction}
-            onOpen={(pid, id) => open(pid, id, "replace")}
-            onPanel={showPanel}
-          />
+          inCloud ? (
+            <CloudComposer
+              key={`${project.id}:cloud-draft`}
+              project={project}
+              dark={dark}
+              action={resourceAction}
+              onOpen={(pid, id) => open(pid, id, "replace")}
+              cloudConfigured={cloudStatus.configured}
+              cloudStatusChecking={cloudStatus.state === "idle" || cloudStatus.state === "loading"}
+              cloudStatusError={cloudStatus.error}
+              onOpenCloudSettings={() => {
+                setSettingsTab("Cloud");
+                setSettingsOpen(true);
+              }}
+            />
+          ) : (
+            <DraftComposer
+              prepareBrowserDraft={session.prepareBrowserDraft}
+              worktree={worktreeSelection}
+              onWorktreeCreated={() => changeWorktreeSelection(project.id, undefined)}
+              conversationReferences={conversationReferences}
+              surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
+              onAnnotate={openImageAnnotation}
+              key={project.id}
+              project={project}
+              backendReady={snapshot.connection?.state === "ready"}
+              modelCatalogReady={Boolean(
+                project.models?.length || project.core?.features?.conversation,
+              )}
+              prepareProject={prepareProject}
+              action={action}
+              readAction={resourceAction}
+              onOpen={(pid, id) => open(pid, id, "replace")}
+              onPanel={showPanel}
+            />
+          )
         ) : !readOnly ? (
           <ProjectlessDraft
             onAnnotate={openImageAnnotation}

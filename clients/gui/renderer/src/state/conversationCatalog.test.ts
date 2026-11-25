@@ -1,4 +1,5 @@
 import { expect, test } from "vite-plus/test";
+import { setPendingMessage } from "../pendingMessage.js";
 import { conversationCatalog } from "./conversationCatalog.js";
 
 const summaries = [{ id: "named", preview: "读一下 README" }, { id: "blank" }, { id: "titled" }];
@@ -36,4 +37,45 @@ test("a conversation that never got a first message stays out unless it is open"
 test("pending only while a started project is still loading its list", () => {
   const loading = { ...project(true), summariesLoaded: false };
   expect(conversationCatalog([loading], library).every((row) => row.statePending)).toBe(true);
+});
+
+test("cached Host summaries do not flash pending indicators during refresh", () => {
+  const refreshing = { ...project(true), summariesLoaded: false, summariesFreshness: "cached" };
+  expect(conversationCatalog([refreshing], library).some((row) => row.statePending)).toBe(false);
+});
+
+test("newly opened thread uses pending outgoing text before first turn projects", () => {
+  const key = "areal-gui:draft:p:blank";
+  setPendingMessage(key, {
+    text: "帮我检查日志",
+    files: [],
+    previousUserIds: [],
+  });
+  try {
+    const entry = conversationCatalog([project(true)], library, {
+      projectId: "p",
+      threadId: "blank",
+    }).find((row) => row.summary.id === "blank");
+    expect(entry?.title).toBe("帮我检查日志");
+  } finally {
+    setPendingMessage(key);
+  }
+});
+
+test("background running and attention summaries stay visible even when another thread is open", () => {
+  const withActivity = {
+    ...project(true),
+    summaries: [
+      { id: "bg-run", preview: "执行 Python 命令", activity: "working" },
+      { id: "bg-ask", preview: "等待审批", activity: "needsYou" },
+      { id: "other", preview: "当前查看" },
+    ],
+  };
+  const catalog = conversationCatalog([withActivity], library, {
+    projectId: "p",
+    threadId: "other",
+  });
+  expect(catalog.find((row) => row.summary.id === "bg-run")?.running).toBe(true);
+  expect(catalog.find((row) => row.summary.id === "bg-ask")?.attention).toBe(true);
+  expect(catalog.find((row) => row.summary.id === "other")?.running).toBe(false);
 });

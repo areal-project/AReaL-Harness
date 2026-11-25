@@ -1,23 +1,35 @@
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, extname, join, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs";
+import {
+  captureSmokeFailure,
+  createProjectConversation,
+  selectConversation,
+} from "./smoke-navigation.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
+import { openProjectInDesktop, sendReady } from "./support/journey-fixture.mjs";
+import { readCoreThread, withCore } from "./support/core-observation.mjs";
+import { withSmokeDeadline } from "./smoke-deadline.mjs";
 
-// 真实 Renderer、桌面投影和 Core/Runtime；仅外部模型与 preload 传输使用隔离夹具。
+// 真实 Renderer、Host、Core 和 Runtime，模型由隔离 SSE fixture 提供。
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
-const { chromium } = require("playwright-core");
-const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { _electron: electron } = require("playwright-core");
 for (const key of ["NO_PROXY", "no_proxy"]) {
   process.env[key] = [process.env[key], "127.0.0.1", "localhost"].filter(Boolean).join(",");
 }
 const scratch = await makeTempDir("areal-history-");
-const workspace = join(scratch, "workspace");
+const workspace = join(scratch, "demo");
 await mkdir(workspace);
 await mkdir(join(scratch, "user"));
 await writeFile(join(workspace, "fixture.txt"), "Retained history fixture.\n");
@@ -31,10 +43,12 @@ const checks = [],
   requests = [],
   cases = [];
 let activeCase,
-  browser,
+  application,
+  electronPid,
+  originalHost,
+  stopReceipt,
   page,
   passed = false;
-let publishing = Promise.resolve();
 const model = createServer(async (request, response) => {
   try {
     let raw = "";
@@ -45,7 +59,11 @@ const model = createServer(async (request, response) => {
         typeof message.content === "string" &&
         message.content.startsWith("Summarize this session prefix"),
     );
-    requests.push({ case: activeCase.name, summary });
+    const title = body.messages?.[0]?.content?.startsWith(
+      "Generate a concise semantic session title",
+    );
+    assert.ok(activeCase || title, "synthetic model request belongs to a selected scenario");
+    requests.push({ case: activeCase?.name, summary, title: !!title });
     response.writeHead(200, { "Content-Type": "text/event-stream", Connection: "close" });
     const send = (delta, finish_reason = null) =>
       response.write(
@@ -55,6 +73,11 @@ const model = createServer(async (request, response) => {
       send({}, reason);
       response.end("data: [DONE]\n\n");
     };
+    if (title) {
+      send({ content: "History fixture" });
+      finish("stop");
+      return;
+    }
     if (summary) {
       send({ content: "Fixture file inspected. Preserve the exact original task and continue." });
       finish("stop");
@@ -62,6 +85,7 @@ const model = createServer(async (request, response) => {
     }
     const round = ++activeCase.rounds;
     if (round === 1) {
+      await activeCase.observed.promise;
       send({
         content: `${activeCase.name}_EARLY\n${"Original commentary must remain readable. ".repeat(360)}`,
       });
@@ -78,7 +102,13 @@ const model = createServer(async (request, response) => {
       finish("tool_calls");
     } else if (round === 2) {
       send({ content: `${activeCase.name}_PARTIAL` });
-      activeCase.finish = () => finish(activeCase.name === "failed" ? "length" : "stop");
+      activeCase.finish =
+        activeCase.name === "failed"
+          ? () =>
+              response.end(
+                `data: ${JSON.stringify({ error: { type: "invalid_request_error", message: "Compacted history fixture rejected" } })}\n\n`,
+              )
+          : () => finish("stop");
     } else {
       send({ content: `${activeCase.name}_FINAL` });
       finish("stop");
@@ -92,59 +122,24 @@ await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
 const config = join(scratch, "config.toml");
 await writeFile(
   config,
-  `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[limits]\ncontext_window_bytes=8000\ncontext_recent_bytes=256\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`,
+  `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[limits]\ncontext_window_bytes=8000\ncontext_recent_bytes=256\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`,
 );
-const deployment = join(scratch, "desktop.json");
-await writeFile(
-  deployment,
-  JSON.stringify({
-    profiles: [
-      { id: "fixture", revision: "v1", displayName: "Fixture", instructions: "Complete the task" },
-    ],
-  }),
+const env = Object.fromEntries(
+  Object.entries(process.env).filter(
+    ([key]) => !/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) && key !== "ELECTRON_RUN_AS_NODE",
+  ),
 );
-const backend = new CoreBackend({
-  binary,
-  home: join(scratch, "desktop"),
-  harnessHome: join(scratch, "registry"),
-  userHome: join(scratch, "user"),
-  config,
-  desktopConfig: deployment,
-  defaultProfile: { id: "fixture", revision: "v1" },
-  onChange: () => {
-    if (!page || page.isClosed()) return;
-    const snapshot = backend.snapshot();
-    publishing = publishing
-      .then(() =>
-        page.isClosed()
-          ? undefined
-          : page.evaluate((snapshot) => window.applyHistoryState?.(snapshot), snapshot),
-      )
-      .catch((error) => errors.push(error.message));
-  },
+Object.assign(env, {
+  HOME: join(scratch, "user"),
+  AREAL_CORE_BIN: binary,
+  AREAL_GUI_USER_DATA: join(scratch, "electron"),
+  AREAL_CORE_HOME: join(scratch, "core"),
+  AREAL_CORE_USER_HOME: join(scratch, "user"),
+  AREAL_HARNESS_HOME: join(scratch, "configuration"),
+  AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
+  AREAL_CORE_CONFIG: config,
 });
-const dist = join(gui, "renderer/dist");
-const assets = createServer(async (request, response) => {
-  try {
-    const pathname = decodeURIComponent(new URL(request.url, "http://fixture").pathname);
-    const path = resolve(dist, pathname === "/" ? "index.html" : `.${pathname}`);
-    if (!path.startsWith(dist + sep)) throw new Error("invalid asset path");
-    response.setHeader(
-      "Content-Type",
-      {
-        ".html": "text/html",
-        ".js": "text/javascript",
-        ".css": "text/css",
-        ".svg": "image/svg+xml",
-        ".woff2": "font/woff2",
-      }[extname(path)] || "application/octet-stream",
-    );
-    response.end(await readFile(path));
-  } catch {
-    response.writeHead(404).end();
-  }
-});
-await new Promise((resolve) => assets.listen(0, "127.0.0.1", resolve));
+const read = (threadId) => readCoreThread({ binary, env, gui, workspace, threadId });
 async function until(predicate, label) {
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
@@ -152,12 +147,6 @@ async function until(predicate, label) {
     await new Promise((resolve) => setTimeout(resolve, 40));
   }
   throw new Error(`Timeout: ${label}`);
-}
-function observe(project) {
-  project.client.onNotification((method, params) => {
-    if (["areal/context/compacted", "turn/completed"].includes(method))
-      events.push({ method, params });
-  });
 }
 async function assertBubbles(thread) {
   const turnIds = thread.turns.map((turn) => turn.id);
@@ -169,12 +158,12 @@ async function assertBubbles(thread) {
     for (const item of turn.items) {
       if (item.type !== "userMessage" && !(item.type === "agentMessage" && item.text.trim()))
         continue;
-      const row = page.locator(`[data-turn-id="${turn.id}"] [data-side-item-id="${item.id}"]`);
-      await row.waitFor({ state: "attached" });
-      // 终态会由 React effect 收起过程；等其提交后通过真实展开入口检查正文。
+      const turnRow = page.locator(`[data-turn-id="${turn.id}"]`);
+      const row = turnRow.locator(`[data-side-item-id="${item.id}"]`);
+      // 重开终态对话时，过程项要在展开后才挂载。
       await until(async () => {
         if (await row.isVisible()) return true;
-        for (const toggle of await page
+        for (const toggle of await turnRow
           .locator(".turn-progress-summary[aria-expanded=false]")
           .all())
           await toggle.click();
@@ -188,157 +177,198 @@ async function assertBubbles(thread) {
               .map((part) => part.text)
               .join("\n")
           : item.text;
-      assert.equal((await row.locator(".conversation-markdown").textContent()).trim(), text.trim());
+      assert.equal((await row.locator(".conversation-markdown").innerText()).trim(), text.trim());
     }
 }
 console.log("History evidence:", scratch);
 try {
-  await backend.init();
-  const projectId = await backend.addProject(workspace);
-  const project = backend.projects.get(projectId);
-  observe(project);
-  browser = await chromium.launch({
-    headless: true,
-    ...(process.env.AREAL_GUI_TEST_BROWSER
-      ? { executablePath: process.env.AREAL_GUI_TEST_BROWSER }
-      : { channel: "chrome" }),
+  application = await electron.launch({
+    executablePath: require("electron"),
+    args: [
+      join(gui, "app"),
+      ...(process.platform === "darwin" ? ["-ApplePersistenceIgnoreState", "YES"] : []),
+    ],
+    env,
+    timeout: 120000,
   });
-  page = await browser.newPage({
-    viewport: { width: 1440, height: 1000 },
-    serviceWorkers: "block",
-  });
-  const origin = `http://127.0.0.1:${assets.address().port}`;
-  await page.route("**/*", (route) =>
-    new URL(route.request().url()).origin === origin ? route.continue() : route.abort(),
-  );
+  electronPid = application.process().pid;
+  page = await application.firstWindow();
+  page.setDefaultTimeout(30000);
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.exposeFunction("historySnapshot", () => backend.snapshot());
-  await page.exposeFunction("historyCommand", async (name, params) => {
-    try {
-      return { ok: true, value: await backend.command(name, params) };
-    } catch (error) {
-      return { ok: false, error: { message: error.message, code: error.code } };
-    }
-  });
-  await page.addInitScript(() => {
-    window.arealDesktop = {
-      snapshot: () => window.historySnapshot(),
-      command: (name, params) => window.historyCommand(name, params),
-      onState: (listener) => {
-        window.applyHistoryState = listener;
-        return () => {
-          window.applyHistoryState = undefined;
-        };
+  await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
+  originalHost = await readFixtureHost(env);
+  assert.ok(originalHost?.pid > 1);
+  await application.context().addInitScript(() => {
+    const preferences = "areal-gui:application-preferences";
+    localStorage.setItem(
+      preferences,
+      JSON.stringify({
+        ...JSON.parse(localStorage.getItem(preferences) ?? "{}"),
+        locale: "zh-CN",
+        followUp: "steer",
+        nextPromptSuggestions: false,
+      }),
+    );
+    const subscriptions = [];
+    const send = WebSocket.prototype.send;
+    WebSocket.prototype.send = function (bytes) {
+      if (typeof bytes === "string") {
+        try {
+          const request = JSON.parse(bytes);
+          if (request.method === "session.open")
+            subscriptions.push({ socket: this, threadId: request.params.threadId });
+        } catch {}
+      }
+      return send.call(this, bytes);
+    };
+    window.historyTransport = {
+      disconnect(threadId) {
+        const target = subscriptions.findLast((entry) => entry.threadId === threadId);
+        if (!target || target.socket.readyState !== WebSocket.OPEN)
+          throw new Error("Original Renderer Host socket is unavailable");
+        target.socket.close();
+        return subscriptions.length;
       },
-      theme: async () => ({ platform: "darwin", dark: false, id: "light" }),
-      onTheme: () => () => {},
-      presentReady: async () => {},
-      preview: async () => ({}),
+      reconnected(threadId, previous) {
+        const original = subscriptions
+          .slice(0, previous)
+          .findLast((entry) => entry.threadId === threadId);
+        return subscriptions
+          .slice(previous)
+          .some(
+            (entry) =>
+              entry.threadId === threadId &&
+              entry.socket !== original.socket &&
+              entry.socket.readyState === WebSocket.OPEN,
+          );
+      },
     };
   });
-  await page.goto(origin);
-  await page.getByTestId("areal-workbench").waitFor();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]').waitFor();
+  await openProjectInDesktop(application, page, workspace);
+  const workbench = page.getByTestId("areal-workbench");
+  const input = page.getByTestId("chat-input");
+  const send = page.getByTestId("chat-send-button");
   for (const name of ["completed", "interrupted", "failed"]) {
-    activeCase = { name, rounds: 0 };
-    const { threadId } = await backend.command("create", { projectId });
-    await selectConversation(page, threadId);
-    await page.getByTestId("chat-input").fill(`${name}_USER`);
-    await page.getByTestId("chat-send-button").click();
-    await until(() => activeCase.finish, "compaction and partial reply");
-    const current = () => project.model.state.threads[threadId];
-    assert.ok(
-      events.some(
-        (event) => event.method === "areal/context/compacted" && event.params.threadId === threadId,
-      ),
-      "真实 Core 在同一轮内压缩",
-    );
-    await assertBubbles(current());
-    if (name === "completed") {
-      const old = project.client;
-      old.socket.terminate();
+    if (cases.length > 0) await createProjectConversation(page, "demo");
+    await page.getByRole("button", { name: "选择模型", exact: true }).click();
+    await page.getByRole("radio", { name: "fixture", exact: true }).click();
+    activeCase = { name, rounds: 0, observed: Promise.withResolvers() };
+    const previous = await workbench.getAttribute("data-thread-id");
+    await input.fill(`${name}_USER`);
+    await sendReady(page);
+    await send.click();
+    await page.waitForFunction((previous) => {
+      const id = document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId;
+      return id && id !== previous;
+    }, previous);
+    const threadId = await workbench.getAttribute("data-thread-id");
+    await withCore({ binary, env, gui, workspace, threadId }, async (observer) => {
+      observer.onNotification((method, params) => {
+        if (
+          params.threadId === threadId &&
+          ["areal/context/compacted", "turn/completed"].includes(method)
+        )
+          events.push({ method, params });
+      });
+      await observer.request("areal/thread/observe", { threadId });
+      activeCase.observed.resolve();
+      await until(() => activeCase.finish, "compaction and partial reply");
       await until(
-        () => project.client !== old && project.model.state.connected,
-        "observer reconnect",
+        () =>
+          events.some(
+            (event) =>
+              event.method === "areal/context/compacted" && event.params.threadId === threadId,
+          ),
+        "真实 Core 在同一轮内压缩",
       );
-      observe(project);
-      assert.equal(activeCase.rounds, 2, "断线恢复不重发模型请求");
-      await assertBubbles(current());
-      await backend.command("steer", {
-        projectId,
-        threadId,
-        expectedTurnId: current().turns.at(-1).id,
-        text: "completed_STEER",
-      });
-      activeCase.finish();
-    } else if (name === "interrupted") {
-      await backend.command("stop", {
-        projectId,
-        threadId,
-        turnId: current().turns.at(-1).id,
-        requestId: randomUUID(),
-      });
-      activeCase.finish();
-    } else activeCase.finish();
-    await until(() => current().turns.at(-1).status === name, `${name} settlement`);
-    const terminal = events.findLast(
-      (event) => event.method === "turn/completed" && event.params.threadId === threadId,
-    );
-    assert.ok(terminal);
-    assert.equal(
-      terminal.params.turn.items.some(
-        (item) =>
-          item.type === "userMessage" && item.content.some((part) => part.text === `${name}_USER`),
-      ),
-      false,
-      "终态事件确实省略已归档的原始提问",
-    );
-    const authoritative = (
-      await project.client.request("thread/read", { threadId, includeTurns: true })
-    ).thread;
-    assert.deepEqual(
-      JSON.parse(JSON.stringify(current().turns)),
-      authoritative.turns,
-      "事件投影与完整冷历史回取一致",
-    );
-    await assertBubbles(current());
-    await page.screenshot({ path: join(scratch, `${name}.png`), animations: "disabled" });
-    cases.push({ name, threadId, turns: authoritative.turns });
+      await page.getByText(`${name}_PARTIAL`, { exact: true }).waitFor();
+      const original = await read(threadId);
+      await assertBubbles(original);
+      if (name === "completed") {
+        const count = await page.evaluate((id) => window.historyTransport.disconnect(id), threadId);
+        await page.waitForFunction(
+          ({ id, count }) => window.historyTransport.reconnected(id, count),
+          { id: threadId, count },
+        );
+        assert.equal(activeCase.rounds, 2, "断线恢复不重发模型请求");
+        await assertBubbles(original);
+        await input.fill("completed_STEER");
+        await send.click();
+        await until(
+          async () =>
+            (await read(threadId)).turns
+              .at(-1)
+              ?.items.some(
+                (item) =>
+                  item.type === "userMessage" &&
+                  item.content.some((part) => part.text === "completed_STEER"),
+              ),
+          "同一轮次接收调整方向",
+        );
+        activeCase.finish();
+      } else if (name === "interrupted") {
+        await page.getByRole("button", { name: "暂停执行", exact: true }).click();
+      } else activeCase.finish();
+      await until(
+        async () => (await read(threadId)).turns.at(-1)?.status === name,
+        `${name} settlement`,
+      );
+      await until(
+        () =>
+          events.some(
+            (event) => event.method === "turn/completed" && event.params.threadId === threadId,
+          ),
+        "原 Core 终态事件",
+      );
+      const terminal = events.findLast(
+        (event) => event.method === "turn/completed" && event.params.threadId === threadId,
+      );
+      assert.equal(
+        terminal.params.turn.items.some(
+          (item) =>
+            item.type === "userMessage" &&
+            item.content.some((part) => part.text === `${name}_USER`),
+        ),
+        false,
+        "终态事件确实省略已归档的原始提问",
+      );
+      const authoritative = await read(threadId);
+      assert.equal(authoritative.turns.at(-1).id, original.turns.at(-1).id);
+      await assertBubbles(authoritative);
+      await page.screenshot({ path: join(scratch, `${name}.png`), animations: "disabled" });
+      cases.push({ name, threadId, turns: authoritative.turns });
+    });
     checks.push(
       `${name}: real compaction, user/agent text, same-turn input, and authoritative history agree`,
     );
   }
   for (const value of cases) {
     await selectConversation(page, value.threadId);
-    await backend.command("open", { projectId, threadId: value.threadId });
-    await assertBubbles({ turns: value.turns });
+    await assertBubbles(value);
   }
   const continued = cases[0];
   await selectConversation(page, continued.threadId);
   activeCase = { name: "followup", rounds: 2 };
-  await page.getByTestId("chat-input").fill("FOLLOWUP_USER");
-  await page.getByTestId("chat-send-button").click();
-  const conversation = () => project.model.state.threads[continued.threadId];
-  await until(
-    () => conversation().turns.length === 2 && conversation().turns.at(-1).status === "completed",
-    "a new turn preserves the compacted previous turn",
-  );
-  assert.deepEqual(JSON.parse(JSON.stringify(conversation().turns[0])), continued.turns[0]);
-  const full = (
-    await project.client.request("thread/read", {
-      threadId: continued.threadId,
-      includeTurns: true,
-    })
-  ).thread;
-  assert.deepEqual(JSON.parse(JSON.stringify(conversation().turns)), full.turns);
+  await input.fill("FOLLOWUP_USER");
+  await sendReady(page);
+  await send.click();
+  await until(async () => {
+    const thread = await read(continued.threadId);
+    return thread.turns.length === 2 && thread.turns.at(-1).status === "completed";
+  }, "a new turn preserves the compacted previous turn");
+  const full = await read(continued.threadId);
+  assert.deepEqual(full.turns[0], continued.turns[0]);
   continued.turns = full.turns;
   await assertBubbles(continued);
   checks.push("a new user/agent turn retains the complete prior compacted turn");
-  await page.reload();
-  await page.getByTestId("areal-workbench").waitFor();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]').waitFor();
   await selectConversation(page, continued.threadId);
   await assertBubbles(continued);
   checks.push(
-    "switching conversations, observer reconnect, authoritative reopen, and renderer reload preserve every bubble",
+    "switching conversations, Host reconnect, authoritative reopen, and renderer reload preserve every bubble",
   );
   assert.deepEqual(errors, []);
   assert.equal(
@@ -353,35 +383,55 @@ try {
   if (page) await captureSmokeFailure(page, scratch, error);
   process.exitCode = 1;
 } finally {
-  await publishing;
-  await browser?.close();
-  for (const project of backend.projects.values()) {
+  activeCase?.observed?.resolve();
+  if (application) {
     try {
-      await project.client?.request("areal/server/drain", { strategy: "cancel", timeoutMs: 10000 });
+      await withSmokeDeadline(
+        "history quit confirmation",
+        () =>
+          application.evaluate(({ dialog }) => {
+            dialog.showMessageBox = async () => ({ response: 1 });
+          }),
+        5000,
+      );
     } catch (error) {
-      errors.push(`drain: ${error.message}`);
+      errors.push(`quit confirmation: ${error.message}`);
+    }
+    try {
+      await closeSmokeApplication(application, 60000);
+    } catch (error) {
+      errors.push(`Electron cleanup: ${error.message}`);
     }
   }
-  await backend.shutdown().catch((error) => errors.push(`shutdown: ${error.message}`));
+  try {
+    originalHost ??= await readFixtureHost(env);
+    if (originalHost)
+      stopReceipt = await settleFixtureHostAfterQuit(binary, env, scratch, {
+        host: originalHost,
+        pid: electronPid,
+      });
+    else await assertApplicationStopped(binary, env, { pid: electronPid });
+  } catch (error) {
+    errors.push(`cleanup: ${error.message}`);
+  }
   if (errors.length) {
     passed = false;
     process.exitCode = 1;
   }
   model.closeAllConnections();
-  assets.closeAllConnections();
-  await Promise.all([
-    new Promise((resolve) => model.close(resolve)),
-    new Promise((resolve) => assets.close(resolve)),
-  ]);
+  await new Promise((resolve) => model.close(resolve));
   const manifest = {
     passed,
     binary,
     binarySha256,
+    electronPid: electronPid ?? null,
+    hostPid: originalHost?.pid ?? null,
     scope:
-      "built React renderer in Chrome + real desktop CoreBackend/Core/Runtime; deterministic SSE model; preload transport fixture, no Electron IPC or installation acceptance",
+      "built React renderer in Electron and real Rust Host/Core/Runtime with a deterministic local SSE model",
     checks,
     errors,
     requests,
+    stopReceipt: stopReceipt?.requestId ?? null,
   };
   await writeFile(join(scratch, "manifest.json"), JSON.stringify(manifest, null, 2));
   await writeFile(join(scratch, "history.json"), JSON.stringify({ events, cases }, null, 2));

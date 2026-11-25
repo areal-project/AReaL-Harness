@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { createRequire } from "node:module";
 import { createIdentity, identityId, secureChannel } from "../packages/remote/src/channel.mjs";
 import { createRemoteWire } from "../packages/remote/src/wire.mjs";
-import { parseRemoteConfig } from "@areal/workbench-service/desktop/core/remote-config.cjs";
 import { nativeRelayHostFixture as hostFixture, waitFor } from "./remote-relay-fixture.mjs";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
@@ -84,7 +83,6 @@ for (const clientKind of [undefined, "web", "ios", "android"]) {
     assert.equal(Object.hasOwn(grant, "clientKind"), clientKind !== undefined);
     assert.deepEqual(grant.capabilities, ["observe", "review"]);
     assert.equal(remote.state().deviceGrants[0].clientKind, clientKind);
-    assert.deepEqual(parseRemoteConfig(await f.persisted()).deviceGrants[0], grant);
 
     client.socket.terminate();
     await waitFor(
@@ -146,23 +144,4 @@ test("unknown hello client kinds fail before invitation consumption or persisten
     preset: "Observer",
   });
   assert.equal((await next(valid.messages)).event, "ready");
-});
-
-test("stored grants reject invalid client kinds and accept legacy absence", () => {
-  const grant = {
-    devicePeerId: "peer",
-    displayName: "Device",
-    projectIds: ["project"],
-    capabilities: ["observe"],
-    revision: 1,
-    status: "active",
-  };
-  assert.equal(parseRemoteConfig({ deviceGrants: [grant] }).deviceGrants[0], grant);
-  for (const clientKind of ["web", "ios", "android"])
-    assert.equal(
-      parseRemoteConfig({ deviceGrants: [{ ...grant, clientKind }] }).deviceGrants[0].clientKind,
-      clientKind,
-    );
-  for (const clientKind of ["desktop", "", null, 1, {}])
-    assert.throws(() => parseRemoteConfig({ deviceGrants: [{ ...grant, clientKind }] }));
 });

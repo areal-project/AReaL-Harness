@@ -143,24 +143,9 @@ try {
     };
     window.bugReports = {};
     window.failSave = true;
-    let projectionListener,
-      sequence = 0;
-    const projection = (requestId) => ({
-      ...(requestId === undefined ? {} : { requestId }),
-      frame: {
-        projection: 1,
-        stream: "bug-report-fixture",
-        sequence: ++sequence,
-        kind: "full",
-        snapshot: structuredClone(window.fixtureSnapshot),
-      },
-    });
     window.arealDesktop = {
-      onProjection: (listener) => {
-        projectionListener = listener;
-        return () => {};
-      },
-      requestProjection: (requestId) => projectionListener(projection(requestId)),
+      nativeState: async () => structuredClone(window.fixtureSnapshot),
+      onNativeState: () => () => {},
       theme: async () => ({ platform: "darwin", dark: false, id: "light" }),
       onTheme: (listener) => {
         window.setFixtureTheme = listener;
@@ -172,8 +157,6 @@ try {
       onPreviewEvent: () => () => {},
       onUpdate: () => () => {},
       onNotificationOpen: () => () => {},
-      onMcpAppDeepLink: () => () => {},
-      onMcpAppEvent: () => () => {},
       presentReady: async () => {},
       preview: async () => ({}),
       command: async (name, params) => {

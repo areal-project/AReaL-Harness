@@ -1,0 +1,456 @@
+//! GUI 首次登记沿 Host 的既有启动输入与资源物化器准备，不启动 Node 或 Core。
+use super::{Host, library_store, workbench_route, workbench_utility};
+use crate::{
+    LaunchInputs, ProjectRegistration, ProjectSource, SchedulePreparation, builtin_skills, launch,
+    schedule_resources,
+};
+use anyhow::{Context, Result, ensure};
+use areal_local_service::{LocalArgs, storage};
+use serde_json::{Value, json};
+use std::{
+    collections::BTreeMap,
+    fs,
+    io::Read,
+    os::unix::fs::OpenOptionsExt,
+    path::{Path, PathBuf},
+};
+
+fn launch_path(host: &Host, project: &ProjectRegistration) -> PathBuf {
+    host.home
+        .join("host/launch")
+        .join(storage::digest(project.project_id.as_bytes()))
+        .join("inputs.json")
+}
+
+pub(super) async fn initialize(
+    host: &Host,
+    source: &str,
+    project: &ProjectRegistration,
+) -> Result<()> {
+    let gate = host.gate(&project.project_id)?;
+    let _initial = gate.write().await;
+    host.admission()?;
+    let path = launch_path(host, project);
+    if storage::read_optional::<LaunchInputs>(&path)?.is_some() {
+        return Ok(());
+    }
+    let options = initial_options(host, source).await?;
+    let inputs = prepare(host, source, project, &options).await?;
+    ensure!(self::options(host, source)? == options, "RESYNC_REQUIRED");
+    launch::write_initial(&host.home, project, &inputs)
+}
+
+pub(super) async fn missing_inputs(
+    host: &Host,
+    project: &ProjectRegistration,
+) -> Result<LaunchInputs> {
+    if !matches!(project.source, ProjectSource::Gui { .. }) {
+        return Err(crate::wire::error(
+            "configurationConflict",
+            "first activation requires launchInputs",
+        ));
+    }
+    let source = host
+        .migration
+        .credential_source(project)?
+        .context("GUI_SOURCE_PENDING")?;
+    let original = initial_options(host, &source).await?;
+    let prepared = prepare(host, &source, project, &original).await?;
+    ensure!(options(host, &source)? == original, "RESYNC_REQUIRED");
+    Ok(prepared)
+}
+
+pub(super) fn options(host: &Host, source: &str) -> Result<Value> {
+    host.schedules
+        .connections
+        .frontend_launch_options(source)
+        .map(Ok)
+        .unwrap_or_else(|| host.gateway.workbench.utility_options(source))
+}
+
+async fn initial_options(host: &Host, source: &str) -> Result<Value> {
+    let mut changes = host.changes.subscribe();
+    // 来源可先于Main附件公开；首次启动等待同来源的配置事件，不扩大到其它后台。
+    tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        loop {
+            host.admission()?;
+            host.migration.source_profile(source)?;
+            if let Ok(options) = options(host, source) {
+                return Ok::<_, anyhow::Error>(options);
+            }
+            changes.changed().await.context("GUI_SOURCE_PENDING")?;
+        }
+    })
+    .await
+    .map_err(|_| crate::wire::error("GUI_SOURCE_PENDING", "原生启动配置尚未就绪"))?
+}
+
+pub(super) fn managed(host: &Host, options: &Value) -> Result<bool> {
+    let Some(path) = options["desktopConfig"].as_str() else {
+        return Ok(true);
+    };
+    let requested = Path::new(path);
+    ensure!(requested.is_absolute(), "INVALID_PARAMS");
+    let source = host
+        .bin
+        .join("../../clients/gui/packages/workbench/assets/desktop-profile.json")
+        .canonicalize()
+        .ok();
+    let packaged = host
+        .bin
+        .join("../../app.asar")
+        .canonicalize()
+        .ok()
+        .map(|path| path.join("node_modules/@areal/workbench/assets/desktop-profile.json"));
+    Ok(source.as_deref() == Some(requested) || packaged.as_deref() == Some(requested))
+}
+
+/// 工作树复制资源到自身路径；技能按版本身份、钩子与证书按内容比较。
+pub(super) fn same_inputs(left: &LaunchInputs, right: &LaunchInputs) -> Result<bool> {
+    fn identity(inputs: &LaunchInputs) -> Result<Value> {
+        let mut value = serde_json::to_value(inputs)?;
+        if let Some(path) = &inputs.deployment_path {
+            let mut deployment: Value = storage::read(path)?;
+            if let Some(skills) = deployment.get_mut("skills").and_then(Value::as_array_mut) {
+                for skill in skills {
+                    // 同一 id/revision 在启动器中复制成不可变版本；实体路径不是逻辑版本身份。
+                    skill
+                        .as_object_mut()
+                        .context("invalid deployment skill")?
+                        .remove("root");
+                }
+            }
+            value["deploymentPath"] = deployment.clone();
+            if inputs.options.desktop_config.as_ref() == Some(path) {
+                value["options"]["desktop_config"] = deployment;
+            }
+        }
+        for name in [
+            "AREAL_HARNESS_TOOL_EXTENSIONS",
+            "SSL_CERT_FILE",
+            "NODE_EXTRA_CA_CERTS",
+            "REQUESTS_CA_BUNDLE",
+            "CURL_CA_BUNDLE",
+        ] {
+            if let Some(path) = inputs.environment.get(name) {
+                value["environment"][name] = json!(storage::digest(&fs::read(path)?));
+            }
+        }
+        let names: std::collections::BTreeSet<&str> =
+            inputs.credential_names.iter().map(String::as_str).collect();
+        value["credentialNames"] = json!(names);
+        Ok(value)
+    }
+    Ok(identity(left)? == identity(right)?)
+}
+
+/// 候选输入只写入不可变资源文件；运行中代际的 inputs.json 由既有重启回执提交。
+pub(super) async fn refresh_inputs(
+    host: &Host,
+    project: &ProjectRegistration,
+) -> Result<Option<LaunchInputs>> {
+    if !matches!(project.source, ProjectSource::Gui { .. }) {
+        return Ok(None);
+    }
+    let saved: Option<LaunchInputs> = storage::read_optional(&launch_path(host, project))?;
+    if saved
+        .as_ref()
+        .is_some_and(|input| input.schedule_preparation.is_none())
+    {
+        return Ok(None);
+    }
+    let source = host
+        .migration
+        .credential_source(project)?
+        .context("GUI_SOURCE_PENDING")?;
+    let options = self::options(host, &source)?;
+    let mut candidate = prepare(host, &source, project, &options).await?;
+    if matches!(
+        candidate.schedule_preparation,
+        Some(SchedulePreparation::External { .. })
+    ) && let Some(external) = &candidate.deployment_path
+    {
+        // 外部部署是用户输入；刷新与启动共用同一份私有快照格式。
+        let snapshot = launch::snapshot_external_deployment(
+            external,
+            launch_path(host, project).parent().unwrap(),
+        )?;
+        candidate.options.desktop_config = Some(snapshot.clone());
+        candidate.deployment_path = Some(snapshot);
+    }
+    if let Some(saved) = &saved {
+        candidate.options.scratch = saved.options.scratch.clone();
+        for name in saved
+            .credential_names
+            .iter()
+            .filter(|name| name.starts_with("AREAL_CREDENTIAL_"))
+        {
+            if !candidate.credential_names.contains(name) {
+                candidate.credential_names.push(name.clone());
+            }
+        }
+    }
+    // ensure_generation 会并入同来源的环境变量凭据名；候选输入保持同集合，避免无意义重启后误判 RESYNC_REQUIRED。
+    let _ = host.gateway.workbench.project_environment_credentials(
+        project,
+        Some(&source),
+        &mut candidate.credential_names,
+    );
+    ensure!(self::options(host, &source)? == options, "RESYNC_REQUIRED");
+    ensure!(
+        !candidate.options.history_only,
+        "GUI execution configuration unavailable; history remains readable"
+    );
+    Ok(Some(candidate))
+}
+
+fn hooks(home: &Path, options: &Value) -> Result<Value> {
+    let config = areal_config::load_service_config(&workbench_utility::inputs(options)?)?.0;
+    let external = config.tool_extensions_file;
+    let path = external
+        .clone()
+        .unwrap_or_else(|| home.join("tool-extensions.json"));
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(&path);
+    let bytes = match file {
+        Ok(file) => {
+            ensure!(
+                file.metadata()?.is_file(),
+                "tool extensions must be a regular file"
+            );
+            let mut bytes = Vec::new();
+            file.take(1024 * 1024 + 1).read_to_end(&mut bytes)?;
+            ensure!(bytes.len() <= 1024 * 1024, "tool extensions exceed limit");
+            bytes
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && external.is_none() => {
+            storage::write_bytes(&path, b"{}")?;
+            b"{}".to_vec()
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let value: areal_engine::tools::ToolExtensions = serde_json::from_slice(&bytes)?;
+    value.validate()?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
+fn prepare_tool_extensions(
+    home: &Path,
+    directory: &Path,
+    options: &Value,
+    args: &mut LocalArgs,
+    environment: &mut BTreeMap<String, String>,
+) -> Result<()> {
+    let hook_value = match hooks(home, options) {
+        Ok(value) => value,
+        Err(error) => {
+            super::execution_preparation::trace_failure("gui.prepare.hooks", &error);
+            args.history_only = true;
+            eprintln!("Host GUI hook preparation unavailable; using history-only Core");
+            json!({})
+        }
+    };
+    let extensions = directory.join(format!(
+        "tool-extensions-{}.json",
+        storage::digest(&serde_json::to_vec(&hook_value)?)
+    ));
+    storage::write(&extensions, &hook_value)?;
+    environment.insert(
+        "AREAL_HARNESS_TOOL_EXTENSIONS".into(),
+        extensions.to_string_lossy().into_owned(),
+    );
+    Ok(())
+}
+
+async fn network_environment(
+    host: &Host,
+    project: &ProjectRegistration,
+    source: &str,
+) -> Result<BTreeMap<String, String>> {
+    let network = host.gateway.workbench.model_network(host, source).await?;
+    crate::network::launch_environment(network, launch_path(host, project).parent().unwrap())
+}
+
+pub(super) async fn refresh_saved_configuration(
+    host: &Host,
+    project: &ProjectRegistration,
+    inputs: &mut LaunchInputs,
+) -> Result<()> {
+    if !matches!(project.source, ProjectSource::Gui { .. }) || inputs.schedule_preparation.is_none()
+    {
+        return Ok(());
+    }
+    let source = host
+        .migration
+        .credential_source(project)?
+        .context("GUI_SOURCE_PENDING")?;
+    let options = self::options(host, &source)?;
+    let home = library_store::source_home(host, &source)?;
+    let alias = workbench_route::backend_project_alias(host, &source, &project.project_id)?;
+    let directory = home.join(alias);
+    storage::private_dir(&directory)?;
+    prepare_tool_extensions(
+        &home,
+        &directory,
+        &options,
+        &mut inputs.options,
+        &mut inputs.environment,
+    )?;
+    let network_key = |key: &str| {
+        areal_config::PROXY_ENV_VARS.contains(&key) || areal_config::TLS_ENV_VARS.contains(&key)
+    };
+    inputs.environment.retain(|key, _| !network_key(key));
+    match network_environment(host, project, &source).await {
+        Ok(network) => inputs.environment.extend(network),
+        Err(_) => {
+            inputs.options.history_only = true;
+            eprintln!("Host GUI network preparation unavailable; using history-only Core");
+        }
+    }
+    Ok(())
+}
+
+async fn prepare(
+    host: &Host,
+    source: &str,
+    project: &ProjectRegistration,
+    options: &Value,
+) -> Result<LaunchInputs> {
+    let home = library_store::source_home(host, source)?;
+    let alias = workbench_route::backend_project_alias(host, source, &project.project_id)?;
+    let directory = home.join(&alias);
+    storage::private_dir(&directory)?;
+    let scratch = directory.join("scratch");
+    storage::private_dir(&scratch)?;
+    let config = workbench_utility::inputs(options)?;
+    let mut environment: BTreeMap<String, String> = std::env::vars()
+        .filter(|(key, _)| launch::allowed_environment(key))
+        .collect();
+    // 配置根沿 LaunchInputs 单独绑定，不能混入继承环境；秘密由 ensure_inner 注入。
+    let config_home = options["configHome"]
+        .as_str()
+        .map(PathBuf::from)
+        .or_else(|| {
+            config
+                .env
+                .get(std::ffi::OsStr::new("AREAL_HARNESS_HOME"))
+                .map(PathBuf::from)
+        })
+        .or_else(|| config.homedir.as_ref().map(|home| home.join(".areal")))
+        .context("GUI configuration home missing")?;
+    let mut args = LocalArgs {
+        workspace: Some(project.workspace.clone()),
+        data_dir: Some(project.data_dir.clone()),
+        scratch: Some(scratch),
+        config: config.config_file.clone(),
+        allow_write: true,
+        allow_network: false,
+        allow_concurrent_writes: options["desktopProcesses"] == true,
+        desktop_process_timeout_ms: (options["desktopProcesses"] == true).then_some(86400000),
+        sandbox_profile: options["sandboxProfile"].as_str().map(str::to_owned),
+        workgroup_policy: options["workgroupPolicy"].as_str().map(PathBuf::from),
+        workgroup_toolchain: options["workgroupToolchain"].as_str().map(PathBuf::from),
+        ..Default::default()
+    };
+    environment.retain(|key, _| {
+        !areal_config::PROXY_ENV_VARS.contains(&key.as_str())
+            && !areal_config::TLS_ENV_VARS.contains(&key.as_str())
+    });
+    match network_environment(host, project, source).await {
+        Ok(network) => environment.extend(network),
+        Err(error) => {
+            super::execution_preparation::trace_failure("gui.prepare.network", &error);
+            args.history_only = true;
+            eprintln!("Host GUI network preparation unavailable; using history-only Core");
+        }
+    }
+    prepare_tool_extensions(&home, &directory, options, &mut args, &mut environment)?;
+    let is_managed = managed(host, options)?;
+    let builtin_profile: Value = serde_json::from_str(include_str!(
+        "../../../clients/gui/packages/workbench/assets/desktop-profile.json"
+    ))?;
+    let default_profile=options.get("defaultProfile").cloned().unwrap_or_else(||json!({"id":builtin_profile["profiles"][0]["id"],"revision":builtin_profile["profiles"][0]["revision"]}));
+    let preparation = if is_managed {
+        SchedulePreparation::Managed {
+            resource_state_path: home.join("resources.json"),
+            user_managed_skills_root: home.join("resources/user/skills"),
+            project_managed_skills_root: home.join("resources").join(&alias).join("skills"),
+            project_resource_scope: alias.clone(),
+            default_profile,
+        }
+    } else {
+        SchedulePreparation::External {
+            default_profile: options.get("defaultProfile").cloned(),
+        }
+    };
+    let names = areal_config::load_service_config(&config)
+        .ok()
+        .map(|(config, _)| {
+            config
+                .model
+                .api_key_env
+                .into_iter()
+                .chain(
+                    config
+                        .model_catalog
+                        .into_iter()
+                        .filter_map(|provider| provider.api_key_env),
+                )
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut inputs = LaunchInputs {
+        workspace: project.workspace.clone(),
+        cwd: project.workspace.clone(),
+        config_home,
+        homedir: config.homedir.clone(),
+        config_path: config.config_file,
+        deployment_path: None,
+        schedule_preparation: Some(preparation),
+        environment,
+        credential_names: names,
+        options: args,
+    };
+    let deployment = (|| -> Result<PathBuf> {
+        if !is_managed {
+            return options["desktopConfig"]
+                .as_str()
+                .map(PathBuf::from)
+                .context("external deployment missing");
+        }
+        let builtin = builtin_skills::materialize(&home)?;
+        let seed = home.join(format!("{alias}-desktop.json"));
+        if !seed.try_exists()? {
+            let mut value = builtin_profile;
+            value["skills"] = json!([{"id":builtin_skills::ID,"revision":builtin.revision,"root":builtin.root,"metadata":{"name":builtin.metadata.name,"description":builtin.metadata.description}}]);
+            storage::write(&seed, &value)?;
+        }
+        let saved: Option<LaunchInputs> = storage::read_optional(&launch_path(host, project))?;
+        inputs.deployment_path = saved
+            .filter(|input| {
+                matches!(
+                    input.schedule_preparation,
+                    Some(SchedulePreparation::Managed { .. })
+                )
+            })
+            .and_then(|input| input.deployment_path)
+            .or(Some(seed));
+        Ok(schedule_resources::materialize(&host.home, project, &inputs)?.deployment_path)
+    })();
+    match deployment {
+        Ok(path) => {
+            inputs.deployment_path = Some(path.clone());
+            inputs.options.desktop_config = Some(path);
+        }
+        Err(error) => {
+            super::execution_preparation::trace_failure("gui.prepare.resources", &error);
+            inputs.options.history_only = true;
+            inputs.deployment_path = None;
+            eprintln!("Host GUI resource preparation unavailable; using history-only Core");
+        }
+    }
+    launch::validate(&inputs, project)?;
+    Ok(inputs)
+}

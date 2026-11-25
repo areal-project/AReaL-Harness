@@ -14,7 +14,7 @@ import {
   ActivityRowStatus,
   ActivityRowText,
   ImageDisclosure,
-} from "@areal/ui/experimental";
+} from "@areal/ui/compositions";
 import "@areal/ui/conversation.css";
 import { Collapsible } from "@base-ui/react/collapsible";
 import { AgentAvatar, agentName, agentTask, spawnedAgent } from "./AgentIdentity.js";
@@ -27,11 +27,80 @@ import { verifiedFileReceipts } from "./TurnFileSummary.js";
 import { DiffViewer } from "./components/ui/diff-viewer.js";
 import { MessageActions } from "./MessageActions.js";
 import { SentAttachment } from "./MessageAttachment.js";
-import type { McpResultSource, McpResultState } from "./mcp-app-services.js";
 import type { Action, Data } from "./services.js";
 /** 文件和目录只显示末段名称；完整路径放在悬停提示里。 */
 function fileName(path: string): string {
   return path.replace(/\/+$/, "").split("/").at(-1) || path;
+}
+
+const FILE_TOOLS = new Set([
+  "fs_create",
+  "fs_write",
+  "fs_apply_patch",
+  "fs_apply_patches",
+  "fs_read",
+]);
+
+/** 文件类工具展开时展示可读代码与摘要回执，避免直接把转义 JSON 和内部字段摊给用户。 */
+function formatFileToolRecord(
+  item: Data,
+  running: boolean,
+): { heading: string; argsText: string; resultText: string } | null {
+  if (!FILE_TOOLS.has(item.tool)) return null;
+  const args = item.arguments && typeof item.arguments === "object" ? item.arguments : null;
+  const rawPath = typeof args?.path === "string" ? args.path : "";
+  const heading = rawPath || item.tool;
+
+  let argsText: string;
+  if ((item.tool === "fs_create" || item.tool === "fs_write") && typeof args?.text === "string") {
+    argsText = args.text;
+  } else if (
+    (item.tool === "fs_apply_patch" || item.tool === "fs_apply_patches") &&
+    typeof args?.patch === "string"
+  ) {
+    argsText = args.patch;
+  } else if (item.tool === "fs_read" && rawPath) {
+    const start = Number.isSafeInteger(args?.startLine) ? args.startLine : null;
+    const end = Number.isSafeInteger(args?.endLine) ? args.endLine : null;
+    argsText = start != null && end != null ? `${rawPath}（第 ${start}-${end} 行）` : rawPath;
+  } else {
+    argsText = JSON.stringify(item.arguments, null, 2);
+  }
+
+  const rawResult = recordItems(item.contentItems)
+    .map((c: Data) => c.text ?? "")
+    .join("\n");
+  let resultText = rawResult || (running ? "等待工具输出…" : "无文本输出");
+  if (rawResult) {
+    try {
+      const parsed = JSON.parse(rawResult);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof parsed.path === "string" &&
+        parsed.path.startsWith("workspace://repo/") &&
+        Number.isSafeInteger(parsed.size)
+      ) {
+        const relPath = parsed.path.slice("workspace://repo/".length);
+        if (item.tool === "fs_read" && typeof parsed.text === "string") {
+          resultText = parsed.text;
+        } else {
+          const verb =
+            item.tool === "fs_create"
+              ? "已创建"
+              : item.tool === "fs_write"
+                ? "已写入"
+                : item.tool === "fs_read"
+                  ? "已读取"
+                  : "已更新";
+          resultText = `${verb} ${relPath}（${parsed.size} 字节）`;
+        }
+      }
+    } catch {
+      // 非 JSON 回执保持原始文本展示。
+    }
+  }
+  return { heading, argsText, resultText };
 }
 
 export function ToolEvent({
@@ -45,8 +114,6 @@ export function ToolEvent({
   action,
   projectId,
   threadId,
-  onOpenResult,
-  resultState,
   onLoadDetails,
   detailsLoading,
   detailsError,
@@ -56,8 +123,6 @@ export function ToolEvent({
   detailsLoading?: boolean;
   detailsError?: string;
   mediaGeneration?: string;
-  onOpenResult?: (source: McpResultSource) => Promise<void>;
-  resultState?: McpResultState;
   /** Accepted for host compatibility; running rows stay static (CONV-STATUS-01). */
   animate?: boolean;
   item: Data;
@@ -198,22 +263,6 @@ export function ToolEvent({
       active = false;
     };
   }, [turnId, item.id, file?.path, readOnly, readTurnReview]);
-  useEffect(() => {
-    if (resultState?.message) {
-      setHasOpened(true);
-      setOpen(true);
-    }
-  }, [resultState?.message]);
-  const eligibleResult =
-    onOpenResult &&
-    projectId &&
-    threadId &&
-    turnId &&
-    item.execution?.interactiveResult === true &&
-    item.status === "completed" &&
-    item.success === true &&
-    item.execution?.outcome === "succeeded" &&
-    item.execution?.backend === "mcp";
   const current = review?.itemId === item.id ? review : undefined;
   const mediaSource = turnId
     ? {
@@ -231,10 +280,12 @@ export function ToolEvent({
       data-tool-status={view.status}
     >
       {childId ? (
-        <div className="agent-spawn-row agent-event-row" data-agent-event="started">
+        <div className="agent-spawn-row agent-event-row group" data-agent-event="started">
           <Button
-            variant="ghost"
-            className="agent-spawn-link"
+            variant="inline-link"
+            size="none"
+            align="start"
+            className="min-w-0 flex-1 gap-[var(--spacing-inline)]"
             aria-label={t("chat.agent.openConversation", { id: childId })}
             title={childTitle}
             onClick={() => onAgent?.(childId)}
@@ -244,8 +295,10 @@ export function ToolEvent({
             <span className="agent-spawn-status">{t("chat.agent.started")}</span>
           </Button>
           <Button
-            variant="ghost"
-            className="agent-spawn-record"
+            variant="ghost-subtle"
+            size="icon-xs"
+            revealOnGroupHover
+            className="ml-auto"
             aria-label={t("chat.activity.rawRecord")}
             aria-expanded={open}
             aria-controls={recordId}
@@ -261,10 +314,16 @@ export function ToolEvent({
       ) : settlements.length ? (
         <div className="agent-event-list">
           {settlements.map(({ threadId: id, label }, index) => (
-            <div key={id} className="agent-spawn-row agent-event-row" data-agent-event="settled">
+            <div
+              key={id}
+              className="agent-spawn-row agent-event-row group"
+              data-agent-event="settled"
+            >
               <Button
-                variant="ghost"
-                className="agent-spawn-link"
+                variant="inline-link"
+                size="none"
+                align="start"
+                className="min-w-0 flex-1 gap-[var(--spacing-inline)]"
                 aria-label={t("chat.agent.openConversation", { id })}
                 title={settledTitle(id)}
                 onClick={() => onAgent?.(id)}
@@ -275,8 +334,10 @@ export function ToolEvent({
               </Button>
               {index === 0 && (
                 <Button
-                  variant="ghost"
-                  className="agent-spawn-record"
+                  variant="ghost-subtle"
+                  size="icon-xs"
+                  revealOnGroupHover
+                  className="ml-auto"
                   aria-label={t("chat.activity.rawRecord")}
                   aria-expanded={open}
                   aria-controls={recordId}
@@ -293,7 +354,7 @@ export function ToolEvent({
           ))}
         </div>
       ) : images.length && action && projectId && threadId ? (
-        <ActivityRow className="tool-summary-row tool-image-row">
+        <ActivityRow variant="image">
           <ImageDisclosure
             label={t("chat.tool.images", { count: images.length })}
             state="available"
@@ -313,10 +374,10 @@ export function ToolEvent({
             </div>
           </ImageDisclosure>
           <Button
-            unstyled
-            data-slot={undefined}
             type="button"
-            className="agent-spawn-record"
+            variant="ghost-subtle"
+            size="icon-xs"
+            className="ml-auto"
             aria-label={t("chat.activity.rawRecord")}
             aria-expanded={open}
             aria-controls={recordId}
@@ -326,15 +387,13 @@ export function ToolEvent({
           </Button>
         </ActivityRow>
       ) : file ? (
-        <ActivityRow
-          className="tool-summary-row tool-file-row"
-          icon={<ActivityIcon kind={readOnly ? "read" : "edit"} />}
-        >
+        <ActivityRow variant="file" icon={<ActivityIcon kind={readOnly ? "read" : "edit"} />}>
           <span className="areal-activity-row-action">{toolActionText(item, "done", t)}</span>
           <ActivityRowHint hint={file.path}>
             <Button
-              variant="ghost"
-              className="tool-file-link"
+              variant="inline-link"
+              size="none"
+              className="block min-w-0 max-w-full truncate"
               aria-label={t("chat.activity.openFile", { path: file.path })}
               onClick={() => onFile?.(file.path)}
             >
@@ -343,8 +402,9 @@ export function ToolEvent({
           </ActivityRowHint>
           {current && !current.error && (
             <Button
-              variant="ghost"
-              className="tool-file-diff-toggle"
+              variant="ghost-subtle"
+              size="none"
+              className="gap-[calc(var(--spacing-inline)/2)]"
               aria-label="查看本次文件更改"
               aria-expanded={diffOpen}
               aria-controls={diffId}
@@ -367,8 +427,9 @@ export function ToolEvent({
             </TitleTooltip>
           )}
           <Button
-            variant="ghost"
-            className="tool-file-record"
+            variant="ghost-subtle"
+            size="icon-xs"
+            className="shrink-0"
             aria-label={t("chat.activity.rawRecord")}
             title={t("chat.activity.rawRecord")}
             aria-expanded={open}
@@ -381,7 +442,6 @@ export function ToolEvent({
       ) : (
         <ActivityRowButton
           type="submit"
-          className="tool-summary-row"
           aria-expanded={open}
           onClick={toggle}
           icon={<ActivityIcon kind={view.icon} />}
@@ -411,31 +471,18 @@ export function ToolEvent({
           <ActivityRowChevron open={open} />
         </ActivityRowButton>
       )}
-      {eligibleResult && (
-        <Button
-          variant="ghost"
-          disabled={resultState?.opening}
-          onClick={() => void onOpenResult({ projectId, threadId, turnId, itemId: item.id })}
-        >
-          {resultState?.opening ? t("operations.openingResult") : t("operations.openResult")}
-        </Button>
-      )}
       {imageError && (
         <p role="status" className="tool-result tool-failed">
           {imageError}
-        </p>
-      )}
-      {resultState?.message && (
-        <p role="status" className="notice">
-          {resultState.message}
         </p>
       )}
       {file && diffOpen && current && !current.error && (
         <div className="tool-file-diff" id={diffId} role="region" aria-label="本次文件更改">
           <div className="tool-file-diff-header">
             <Button
-              variant="ghost"
-              className="tool-file-link"
+              variant="inline-link"
+              size="none"
+              className="block min-w-0 max-w-full truncate"
               aria-label={`打开 ${file.path}`}
               title={file.path}
               onClick={() => onFile?.(file.path)}
@@ -493,40 +540,51 @@ export function ToolEvent({
           ) : isCommand ? (
             <CommandDetails item={item} />
           ) : (
-            <div
-              className="tool-event-body"
-              id={recordId}
-              role={file ? "region" : undefined}
-              aria-label={file ? "工具原始记录" : undefined}
-            >
-              <div className="tool-event-heading tool-record-heading">
-                <span>{item.tool}</span>
-                <ToolCallDuration item={item} />
-              </div>
-              <pre aria-label="工具参数">{JSON.stringify(item.arguments, null, 2)}</pre>
-              <pre aria-label="工具结果">
-                {recordItems(item.contentItems)
-                  .map((c: Data) => c.text ?? "")
-                  .join("\n") || (view.running ? "等待工具输出…" : "无文本输出")}
-              </pre>
-              {!images.length &&
-                action &&
-                projectId &&
-                threadId &&
-                recordItems(item.contentItems)
-                  .filter((c: Data) => c.type === "arealMedia" && c.modality === "image")
-                  .map((c: Data) => (
-                    <SentAttachment
-                      mediaSource={mediaSource}
-                      key={c.media.uri}
-                      part={{ type: "image", uri: c.media.uri, name: "页面截图" }}
-                      projectId={projectId}
-                      threadId={threadId}
-                      action={action}
-                    />
-                  ))}
-              {item.execution?.exitCode != null && <small>退出码 {item.execution.exitCode}</small>}
-            </div>
+            (() => {
+              const fileRecord = formatFileToolRecord(item, view.running);
+              return (
+                <div
+                  className="tool-event-body"
+                  id={recordId}
+                  role={file ? "region" : undefined}
+                  aria-label={file ? "工具原始记录" : undefined}
+                >
+                  <div className="tool-event-heading tool-record-heading">
+                    <span>{fileRecord ? fileRecord.heading : item.tool}</span>
+                    <ToolCallDuration item={item} />
+                  </div>
+                  <pre aria-label="工具参数">
+                    {fileRecord ? fileRecord.argsText : JSON.stringify(item.arguments, null, 2)}
+                  </pre>
+                  <pre aria-label="工具结果">
+                    {fileRecord
+                      ? fileRecord.resultText
+                      : recordItems(item.contentItems)
+                          .map((c: Data) => c.text ?? "")
+                          .join("\n") || (view.running ? "等待工具输出…" : "无文本输出")}
+                  </pre>
+                  {!images.length &&
+                    action &&
+                    projectId &&
+                    threadId &&
+                    recordItems(item.contentItems)
+                      .filter((c: Data) => c.type === "arealMedia" && c.modality === "image")
+                      .map((c: Data) => (
+                        <SentAttachment
+                          mediaSource={mediaSource}
+                          key={c.media.uri}
+                          part={{ type: "image", uri: c.media.uri, name: "页面截图" }}
+                          projectId={projectId}
+                          threadId={threadId}
+                          action={action}
+                        />
+                      ))}
+                  {item.execution?.exitCode != null && (
+                    <small>退出码 {item.execution.exitCode}</small>
+                  )}
+                </div>
+              );
+            })()
           ))}
       </Collapsible.Panel>
       {open && action && projectId && threadId && item.execution?.resultSnapshot?.uri && (

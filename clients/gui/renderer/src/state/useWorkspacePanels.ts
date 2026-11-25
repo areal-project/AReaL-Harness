@@ -26,7 +26,6 @@ export function useWorkspacePanels() {
   const [fileLocation, setFileLocation] = useState<FileLocation>();
   const panelViews = useRef(new Map<string, PanelView>());
   const activePanelOwner = useRef("");
-  const mcpPendingReveal = useRef<{ tab: string; owner: string } | null>(null);
   const commands = useMemo(() => {
     const revealSide = (tab: SideChatTab, narrow: boolean) => {
       const owner = `${tab.projectId}:${tab.parentId}`;
@@ -84,7 +83,7 @@ export function useWorkspacePanels() {
           ),
           panel:
             view.panel === tab.id || parseSideResourceTab(view.panel)?.childId === tab.childId
-              ? "功能"
+              ? "launcher"
               : view.panel,
         });
       if (activePanelOwner.current === owner) {
@@ -93,7 +92,7 @@ export function useWorkspacePanels() {
         );
         setPanel((current) =>
           current === tab.id || parseSideResourceTab(current)?.childId === tab.childId
-            ? "功能"
+            ? "launcher"
             : current,
         );
       }
@@ -110,17 +109,17 @@ export function useWorkspacePanels() {
         setPanel("");
       },
       retainSelectedTab(name: string) {
-        if (name && name !== "功能")
+        if (name && name !== "launcher")
           setPanelTabs((tabs) => (tabs.includes(name) ? tabs : [...tabs, name]));
       },
       showFiles() {
         setWorkspaceView((mode) => (mode === "split" ? mode : "panel"));
         setFilesOpen(true);
-        setPanel("文件");
+        setPanel("files");
       },
       closeFiles() {
         setFilesOpen(false);
-        setPanel((current) => (current === "文件" ? "功能" : current));
+        setPanel((current) => (current === "files" ? "launcher" : current));
       },
       toggleFiles: () => setFilesOpen((current) => !current),
       revealFile(location: FileLocation) {
@@ -147,33 +146,13 @@ export function useWorkspacePanels() {
       },
       removeTerminalTab: (id: string) => setPanelTabs((tabs) => tabs.filter((tab) => tab !== id)),
       dismissTerminal: () =>
-        setPanel((current) => (isTerminalTab(current) || current === "终端" ? "功能" : current)),
+        setPanel((current) =>
+          isTerminalTab(current) || current === "terminal" ? "launcher" : current,
+        ),
       revealSide,
       openSideResource,
       removeSideResource,
       removeSide,
-      revealApp(tab: string, owner: { projectId: string; threadId: string }) {
-        if (activePanelOwner.current !== `${owner.projectId}:${owner.threadId}`) {
-          mcpPendingReveal.current = { tab, owner: `${owner.projectId}:${owner.threadId}` };
-          return false;
-        }
-        setWorkspaceView("split");
-        setPanelTabs((tabs) => (tabs.includes(tab) ? tabs : [...tabs, tab]));
-        setPanel(tab);
-        return true;
-      },
-      removeApp(tab: string) {
-        for (const [owner, view] of panelViews.current)
-          panelViews.current.set(owner, {
-            ...view,
-            tabs: view.tabs.filter((item) => item !== tab),
-            panel: view.panel === tab ? "" : view.panel,
-            lastPanel: view.lastPanel === tab ? undefined : view.lastPanel,
-          });
-        if (mcpPendingReveal.current?.tab === tab) mcpPendingReveal.current = null;
-        setPanelTabs((tabs) => tabs.filter((item) => item !== tab));
-        setPanel((current) => (current === tab ? "" : current));
-      },
       reconcileBrowser(
         panelOwner: string,
         browserWorkspace: {
@@ -186,7 +165,7 @@ export function useWorkspacePanels() {
         const ids = browserWorkspace.pages.map((page) => browserTabId(page.pageId));
         setPanelTabs((tabs) => {
           const next = [
-            ...tabs.filter((id) => id !== "预览" && (!isBrowserTab(id) || ids.includes(id))),
+            ...tabs.filter((id) => id !== "preview" && (!isBrowserTab(id) || ids.includes(id))),
             ...ids.filter((id) => !tabs.includes(id)),
           ];
           return next.length === tabs.length && next.every((id, index) => id === tabs[index])
@@ -199,7 +178,7 @@ export function useWorkspacePanels() {
           const selected = workspace.selectedPageId;
           // Native popups and other Main-side selection changes share the same strip.
           if (selected && ids.includes(browserTabId(selected))) return browserTabId(selected);
-          return ids.includes(current) ? current : "功能";
+          return ids.includes(current) ? current : "launcher";
         });
       },
       reconcileTerminals(ids: string[]) {
@@ -226,24 +205,20 @@ export function useWorkspacePanels() {
         activePanelOwner.current = panelOwner;
         setWorkspaceView("split");
         const remembered = panelViews.current.get(panelOwner);
-        const appReveal =
-          mcpPendingReveal.current?.owner === panelOwner ? mcpPendingReveal.current.tab : null;
-        if (appReveal) mcpPendingReveal.current = null;
         // Only the terminal owner can supply live IDs; the view cache owns no PTY.
         setPanelTabs([
           ...new Set([
-            ...(remembered?.tabs.filter((id) => id !== "任务资源" && !isTerminalTab(id)) ?? []),
+            ...(remembered?.tabs.filter((id) => id !== "task-resources" && !isTerminalTab(id)) ??
+              []),
             ...ids,
-            ...(appReveal ? [appReveal] : []),
           ]),
         ]);
         setPanel(
-          appReveal ??
-            (remembered &&
-            remembered.panel !== "任务资源" &&
+          remembered &&
+            remembered.panel !== "task-resources" &&
             (!isTerminalTab(remembered.panel) || ids.includes(remembered.panel))
-              ? remembered.panel
-              : ""),
+            ? remembered.panel
+            : "",
         );
         setFilesOpen(remembered?.filesOpen ?? false);
         setRevealedFile(remembered?.revealedFile ?? "");
@@ -281,7 +256,9 @@ export function useWorkspacePanels() {
     restoreLastPanel(owner: string) {
       const last = panelViews.current.get(owner)?.lastPanel;
       setPanel(
-        last && (last === "功能" || panelTabs.includes(last)) ? last : (panelTabs.at(-1) ?? "功能"),
+        last && (last === "launcher" || panelTabs.includes(last))
+          ? last
+          : (panelTabs.at(-1) ?? "launcher"),
       );
     },
   };

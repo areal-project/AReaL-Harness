@@ -1,11 +1,11 @@
 .areal-toast-viewport {
   position: fixed;
-  top: calc(var(--shell-bar-height, 44px) + 12px);
+  top: calc(var(--shell-bar-height, var(--height-toolbar)) + var(--spacing-field));
   left: 50%;
   transform: translateX(-50%);
   z-index: 100;
   width: max-content;
-  max-width: min(480px, calc(100vw - 32px));
+  max-width: min(calc(var(--spacing-control-lg) * 12), calc(100vw - var(--spacing-panel) * 2));
   pointer-events: none;
 }
 .areal-notification-toast {
@@ -14,7 +14,7 @@
   align-items: center;
   gap: var(--spacing-inline);
   min-width: 0;
-  padding: 8px 10px;
+  padding: var(--spacing-inline) var(--spacing-field);
   pointer-events: auto;
   border: 1px solid color-mix(in oklab, var(--toast-tone) 45%, var(--color-border));
   border-radius: var(--radius-control);
@@ -39,21 +39,35 @@
 }
 .areal-toast-icon {
   flex: none;
-  width: 1rem;
-  height: 1rem;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
 }
 .areal-notification-toast > button {
   flex: none;
   color: inherit;
 }
+.areal-notification-toast[data-exiting="true"] {
+  pointer-events: none;
+  animation: areal-toast-exit var(--motion-fast) var(--ease-standard) forwards;
+}
 @keyframes areal-toast-enter {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(calc(var(--spacing-inline) / -2));
   }
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+@keyframes areal-toast-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(calc(var(--spacing-inline) / -2));
   }
 }
 @media (prefers-reduced-motion: reduce) {

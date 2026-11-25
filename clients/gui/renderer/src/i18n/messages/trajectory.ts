@@ -46,7 +46,7 @@ export const trajectoryMessages = {
   "trace.incompleteTime": { "zh-CN": "耗时未完整记录", en: "Duration incompletely recorded" },
   "trace.unconfirmed": { "zh-CN": "状态待确认", en: "State unconfirmed" },
   "trace.completed": { "zh-CN": "已完成", en: "Completed" },
-  "trace.cancelled": { "zh-CN": "已取消", en: "Cancelled" },
+  "trace.cancelled": { "zh-CN": "已取消", en: "Canceled" },
   "trace.queue": { "zh-CN": "排队", en: "Queue" },
   "trace.execution": { "zh-CN": "执行", en: "Execution" },
   "trace.subagents": { "zh-CN": "子代理", en: "Subagents" },

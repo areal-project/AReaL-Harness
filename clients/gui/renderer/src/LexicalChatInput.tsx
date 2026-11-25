@@ -60,6 +60,7 @@ import {
   COMMAND_PRIORITY_HIGH,
   KEY_ENTER_COMMAND,
   KEY_TAB_COMMAND,
+  SKIP_DOM_SELECTION_TAG,
   type EditorState,
   type LexicalEditor,
 } from "lexical";
@@ -87,6 +88,7 @@ export interface ChatComposerPasteEvent {
 }
 
 export interface LexicalChatInputHandle {
+  blur: () => void;
   clear: () => void;
   focus: () => void;
   getEditorState: () => EditorState;
@@ -136,14 +138,18 @@ function replaceEditorText(editor: LexicalEditor, text: string) {
   editor.update(() => replacePlainTextRoot(text), { tag: PROGRAMMATIC_UPDATE_TAG });
 }
 
-function replaceEditorTextWithMentions(editor: LexicalEditor, text: string) {
+function replaceEditorTextWithMentions(editor: LexicalEditor, text: string, preserveFocus = false) {
   editor.update(
     () => {
       const paragraph = $createPromptParagraph(text);
       $getRoot().clear().append(paragraph);
       paragraph.selectEnd();
     },
-    { tag: PROGRAMMATIC_UPDATE_TAG },
+    {
+      tag: preserveFocus
+        ? [PROGRAMMATIC_UPDATE_TAG, SKIP_DOM_SELECTION_TAG]
+        : PROGRAMMATIC_UPDATE_TAG,
+    },
   );
 }
 
@@ -710,7 +716,13 @@ function KeyboardPlugin({
  * `prevEditorState.isEmpty()` 直接跳过，父组件的 input 状态拿不到首字符，发送按钮和输入内容会错位。
  * 这里改成自己监听 update，只在序列化后的 markdown 真正变化时同步，首字符输入也能稳定回传。
  */
-function TextContentPlugin({ onChange }: { onChange?: (text: string) => void }) {
+function TextContentPlugin({
+  onChange,
+  touchInput,
+}: {
+  onChange?: (text: string) => void;
+  touchInput: boolean;
+}) {
   const [editor] = useLexicalComposerContext();
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -747,9 +759,13 @@ function TextContentPlugin({ onChange }: { onChange?: (text: string) => void }) 
       rootElement?.addEventListener("compositionend", handleCompositionEnd);
     });
     const unregisterUpdate = editor.registerUpdateListener(
-      ({ dirtyElements, dirtyLeaves, editorState, prevEditorState }) => {
+      ({ dirtyElements, dirtyLeaves, editorState, prevEditorState, tags }) => {
         reader.invalidate(prevEditorState, dirtyElements.keys());
         reader.invalidate(editorState, dirtyElements.keys());
+        if (touchInput && tags.has(SKIP_DOM_SELECTION_TAG)) {
+          previousText = reader.read(editorState);
+          return;
+        }
         // 组词中间态由 Lexical/输入法即时展示，不序列化、保存草稿或刷新外层 Composer。
         if (dirtyElements.size || dirtyLeaves.size) publish(editorState);
       },
@@ -763,7 +779,7 @@ function TextContentPlugin({ onChange }: { onChange?: (text: string) => void }) 
         ?.removeEventListener("compositionstart", handleCompositionStart, true);
       editor.getRootElement()?.removeEventListener("compositionend", handleCompositionEnd);
     };
-  }, [editor]);
+  }, [editor, touchInput]);
 
   return null;
 }
@@ -1151,8 +1167,10 @@ function insertEditorMention(
 
 function EditorApiPlugin({
   editorApiRef,
+  touchInput,
 }: {
   editorApiRef?: React.MutableRefObject<LexicalChatInputHandle | null>;
+  touchInput: boolean;
 }) {
   const [editor] = useLexicalComposerContext();
 
@@ -1162,6 +1180,9 @@ function EditorApiPlugin({
     }
 
     editorApiRef.current = {
+      blur: () => {
+        if (editor.getRootElement() === document.activeElement) editor.blur();
+      },
       clear: () => resetEditor(editor),
       focus: () => editor.focus(),
       getEditorState: () => editor.getEditorState(),
@@ -1180,7 +1201,7 @@ function EditorApiPlugin({
       prependMentionIfMissing: (mention) => prependEditorMentionIfMissing(editor, mention),
       setMention: (mention, trailingText) =>
         replaceEditorWithMention(editor, mention, trailingText),
-      setText: (text: string) => replaceEditorTextWithMentions(editor, text),
+      setText: (text: string) => replaceEditorTextWithMentions(editor, text, touchInput),
       setTextWithPluginMentions: (text: string) => replaceEditorTextWithMentions(editor, text),
       setEditorStateJson: (editorStateJson: string) =>
         replaceEditorStateJson(editor, editorStateJson),
@@ -1196,7 +1217,7 @@ function EditorApiPlugin({
     return () => {
       editorApiRef.current = null;
     };
-  }, [editor, editorApiRef]);
+  }, [editor, editorApiRef, touchInput]);
 
   return null;
 }
@@ -1350,12 +1371,12 @@ export function LexicalChatInput({
   const handleSubmit = useCallback(
     (text: string) => {
       const submitResult = onSubmit(text);
-      requestAnimationFrame(() => {
-        editorApiRef?.current?.focus();
-      });
+      if (!touchInput) {
+        requestAnimationFrame(() => editorApiRef?.current?.focus());
+      }
       return submitResult;
     },
-    [editorApiRef, onSubmit],
+    [editorApiRef, onSubmit, touchInput],
   );
   // Lexical 的 ContentEditable props 是一个互斥联合类型，
   // aria-placeholder 一旦出现就要求 placeholder 同时存在。
@@ -1414,7 +1435,7 @@ export function LexicalChatInput({
           <PromptClipboardPlugin />
           <PromptMentionTooltipPlugin workspacePath={workspacePath} />
           <PluginMentionMetadataPlugin catalog={pluginMentionCatalog} />
-          <TextContentPlugin onChange={onChange} />
+          <TextContentPlugin onChange={onChange} touchInput={touchInput} />
           <KeyboardPlugin
             onSubmit={handleSubmit}
             onModifiedSubmit={onModifiedSubmit}
@@ -1426,7 +1447,7 @@ export function LexicalChatInput({
           <PromptHistoryPlugin entries={promptHistory} disabled={disabled} />
           <EditablePlugin editable={!disabled} />
           <E2ELexicalInputBridgePlugin inputTestId={inputTestId} />
-          <EditorApiPlugin editorApiRef={editorApiRef} />
+          <EditorApiPlugin editorApiRef={editorApiRef} touchInput={touchInput} />
           <LeadingChineseSlashAliasPlugin disabled={disabled} />
           <PasteCapturePlugin disabled={disabled} onPaste={onPaste} />
         </div>

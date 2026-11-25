@@ -34,6 +34,15 @@
   display: contents;
 }
 .draft-pane:has(.worktree-creation-preview, .draft-message-preview)
+  .composer-dock
+  > :not([hidden]) {
+  /* composer-dock 用 display: contents 拆层重排时，子项仍须继承阅读列宽与左右内边距，避免发送瞬间输入框撑满整窗。 */
+  width: 100%;
+  max-width: var(--thread-reading-width, var(--reading-width-expanded));
+  margin-inline: auto;
+  padding-inline: var(--spacing-field);
+}
+.draft-pane:has(.worktree-creation-preview, .draft-message-preview)
   :is(.worktree-creation-preview, .draft-message-preview) {
   flex: 1;
   min-height: 0;
@@ -42,13 +51,26 @@
 }
 .draft-pane:has(.worktree-creation-preview, .draft-message-preview) .composer-input-stack {
   order: 2;
-  margin-bottom: var(--spacing-field);
+  padding-bottom: var(--spacing-field);
+}
+@container composer-column (max-width: 820px) {
+  .draft-pane:has(.worktree-creation-preview, .draft-message-preview)
+    .composer-dock
+    > :not([hidden]) {
+    max-width: var(--reading-width-compact);
+  }
 }
 
-/* 新建会话预览与正式消息共用阅读起点，避免创建回执到达时再次向上跳动。 */
+/* 新建会话预览与正式消息共用阅读起点和停靠几何，避免创建回执到达时跳动。 */
 .conversation-pane.draft-pane:has(.draft-message-preview) {
   padding-top: 0;
 }
+.draft-pane:has(.draft-message-preview) .composer-project-bar {
+  display: none;
+}
 .draft-pane:has(.draft-message-preview) .draft-message-preview {
   padding-top: var(--message-reading-inset);
+}
+.draft-pane:has(.draft-message-preview) .composer-input-stack {
+  padding-top: var(--spacing-inline);
 }

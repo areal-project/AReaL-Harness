@@ -15,7 +15,7 @@ export const conversationMessages = {
   "chat.submission.context": { "zh-CN": "附加的上下文", en: "Attached context" },
   "chat.activity.action": {
     "zh-CN":
-      "{tense, select, running {正在} done {已} other {}}{verb, select, read {读取} edit {编辑} create {创建} search {搜索} list {列出} command {运行} wait {等待} skillRead {读取技能} planRead {读取计划} readProcess {读取进程输出} terminateProcess {停止进程} browser {使用浏览器} agentSpawn {创建子智能体} agentWait {等待子智能体} image {查看图片} other {调用 {name}}}",
+      "{tense, select, running {正在} done {已} other {}}{verb, select, read {读取} edit {编辑} create {创建} search {搜索} list {列出} command {运行} wait {等待} skillRead {读取 Skills} planRead {读取计划} readProcess {读取进程输出} terminateProcess {停止进程} browser {使用浏览器} agentSpawn {创建子代理} agentWait {等待子代理} image {查看图片} other {调用 {name}}}",
     en: "{tense, select, running {{verb, select, read {Reading} edit {Editing} create {Creating} search {Searching} list {Listing} command {Running} wait {Waiting} skillRead {Reading skill} planRead {Reading plan} readProcess {Reading process output} terminateProcess {Stopping process} browser {Using browser} agentSpawn {Creating subagent} agentWait {Waiting for subagent} image {Viewing image} other {Calling {name}}}} other {{verb, select, read {Read} edit {Edited} create {Created} search {Searched} list {Listed} command {Ran} wait {Waited} skillRead {Read skill} planRead {Read plan} readProcess {Read process output} terminateProcess {Stopped process} browser {Used browser} agentSpawn {Created subagent} agentWait {Waited for subagent} image {Viewed image} other {Called {name}}}}}",
   },
   "chat.activity.run.explore": {
@@ -107,5 +107,45 @@ export const conversationMessages = {
   "chat.queue.pausedByUser": {
     "zh-CN": "你已暂停队列。",
     en: "You paused the queue.",
+  },
+  "chat.questions.submittedSummary": {
+    "zh-CN": "已提交 {count} 项回答，等待继续执行",
+    en: "Submitted {count} answers, waiting to continue",
+  },
+  "chat.composer.pendingRequests": {
+    "zh-CN": "待处理请求",
+    en: "Pending requests",
+  },
+  "chat.draft.promptPrefix": {
+    "zh-CN": "你想让我们在",
+    en: "What should we build in",
+  },
+  "chat.draft.promptSuffix": {
+    "zh-CN": "中构建什么？",
+    en: "?",
+  },
+  "chat.draft.promptGeneric": {
+    "zh-CN": "你想构建什么？",
+    en: "What would you like to build?",
+  },
+  "chat.summary.currentConversation": {
+    "zh-CN": "当前会话",
+    en: "Current conversation",
+  },
+  "chat.summary.pendingDecisions": {
+    "zh-CN": "待处理确认",
+    en: "Pending confirmations",
+  },
+  "chat.summary.changedFiles": {
+    "zh-CN": "本会话变更文件",
+    en: "Changed files",
+  },
+  "chat.summary.turns": {
+    "zh-CN": "对话轮次",
+    en: "Conversation turns",
+  },
+  "chat.summary.showPinned": {
+    "zh-CN": "显示置顶摘要 · {summary}",
+    en: "Show pinned summary · {summary}",
   },
 } as const;

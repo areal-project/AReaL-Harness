@@ -128,6 +128,8 @@ Chat cards bind the Task identity and receipt from an actual successful tool res
 
 Absolute-time and interval previews for historical task-draft conversations use the `timeZone` saved when the draft started. Calendar rules retain their own time zone. Public `task/schedule/preview` continues to use UTC for non-calendar previews. Display time zones do not change execution instants.
 
+An edit to a saved calendar task's timing requires a complete `scheduleV2`. Core rejects proposals that provide only the legacy `schedule.at` and keeps the saved rule.
+
 `task/delete` uses the existing cancellation settlement path and persists a `deletedAt` UTC Unix seconds tombstone. It sets `cancelled=true` and `nextRunAt=null`, rejecting later updates, enabling, and run-now. Success confirms durable deletion intent. A nonterminal Run or unsettled worker keeps the deletion pending and its history reachable. Tasks, Channels, Runs, and original receipts are retained. Tombstones still count toward the 1024-Task limit. `task/list` and `task/read` include tombstones; active catalogs may hide them only after all execution settles. Restore and physical purge are unsupported.
 
 `sourceThreadId` and `deletedAt` are optional. Old snapshots default to no source and no deletion. The v5 Task ledger stores these fields without a migration or inferred source relation. Older binaries that ignore the tombstone field still honor the existing cancelled state. Deleting or archiving the source Thread does not cancel its Tasks.

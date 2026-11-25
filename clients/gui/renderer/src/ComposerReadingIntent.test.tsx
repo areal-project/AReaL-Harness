@@ -22,6 +22,7 @@ const observed = vi.hoisted(() => {
   return {
     submit: undefined as ((value: string) => unknown) | undefined,
     modifiedSubmit: undefined as ((value: string) => unknown) | undefined,
+    reconcile: undefined as (() => void) | undefined,
     approve: undefined as (() => void) | undefined,
     composer: undefined as ComponentProps<typeof ConversationComposer> | undefined,
   };
@@ -35,18 +36,30 @@ vi.mock("./ConversationComposer.js", () => ({
     observed.composer = props;
     observed.submit = props.onSubmit;
     observed.modifiedSubmit = props.onModifiedSubmit;
-    return props.topContent;
+    return createElement("div", null, props.topContent, props.leadingActions);
   },
 }));
 vi.mock("./components/ui/button.js", () => ({
   Button: (props: { children?: unknown; onClick?: () => void }) => {
+    if (props.children === "recovery.checkOriginal") observed.reconcile = props.onClick;
     if (props.children === "批准并执行") observed.approve = props.onClick;
     return null;
   },
 }));
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 
-function fixture(plan = false, file = false, running = false, empty = false, web = false) {
+function fixture(
+  plan = false,
+  file = false,
+  running = false,
+  empty = false,
+  web = false,
+  persisted = false,
+  disconnected = false,
+  localExecutionReady: boolean | undefined = undefined,
+  hostState: string | undefined = undefined,
+  suppressed = false,
+) {
   const projectId = crypto.randomUUID();
   const key = `areal-gui:draft:${projectId}:thread`;
   const owner = JSON.stringify([projectId, "thread", false]);
@@ -54,6 +67,7 @@ function fixture(plan = false, file = false, running = false, empty = false, web
   const config = { revision: 1, options: planModeOptions(plan) };
   const thread = {
     id: "thread",
+    ...(persisted ? { persistedHistory: true } : {}),
     turns: empty
       ? []
       : [
@@ -77,11 +91,19 @@ function fixture(plan = false, file = false, running = false, empty = false, web
       project: {
         id: projectId,
         root: "/preview",
+        localExecutionReady,
+        ...(suppressed ? { scheduling: { suppressed: true } } : {}),
         ...(web ? { desktopCapabilities: { currentCommands: false } } : {}),
         models: [],
         pending: [],
         configurations: { thread: config },
-        state: { connected: true, threads: { thread }, interactions: {}, queues: {} },
+        state: {
+          connected: !persisted && !disconnected,
+          ...(hostState ? { hostState } : {}),
+          threads: { thread },
+          interactions: {},
+          queues: {},
+        },
       },
       thread,
       action: action as Action,
@@ -100,10 +122,97 @@ function fixture(plan = false, file = false, running = false, empty = false, web
     );
   };
   render();
-  return { key, owner, action, render, thread };
+  return {
+    key,
+    owner,
+    action,
+    render,
+    thread,
+    setLocalExecutionReady: (value: boolean) => {
+      localExecutionReady = value;
+    },
+  };
 }
 
 describe("Composer reading intent across unknown boundaries", () => {
+  it.each([false, true])(
+    "allows editing an unknown draft with disconnected=%s",
+    async (disconnected) => {
+      const f = fixture(false, false, false, false, false, false, disconnected);
+      localStorage.setItem(`${f.key}:pending`, "original-request");
+      f.render();
+      expect(observed.composer?.disabled).toBe(false);
+      expect(observed.composer?.submitDisabled).toBe(true);
+      observed.submit!("next draft");
+      expect(f.action).not.toHaveBeenCalled();
+      f.action.mockResolvedValue({ outcomes: {} });
+      if (disconnected) {
+        localStorage.removeItem(`${f.key}:pending`);
+        readingViews.delete(f.owner);
+        return;
+      }
+      observed.reconcile!();
+      await vi.waitFor(() =>
+        expect(f.action).toHaveBeenCalledExactlyOnceWith("reconcile", {
+          projectId: JSON.parse(f.owner)[0],
+          requestId: "original-request",
+        }),
+      );
+      localStorage.removeItem(`${f.key}:pending`);
+      readingViews.delete(f.owner);
+    },
+  );
+  it("preserves draft but blocks submit until the local execution owner is ready", async () => {
+    const f = fixture(false, false, false, false, false, true, false, false);
+    expect(observed.composer?.disabled).toBe(false);
+    expect(observed.composer?.submitDisabled).toBe(true);
+    observed.submit!("continue");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(f.action).not.toHaveBeenCalled();
+    f.setLocalExecutionReady(true);
+    f.render();
+    observed.submit!("continue");
+    await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+    expect(f.action.mock.calls[0][0]).toBe("send");
+    readingViews.delete(f.owner);
+  });
+  it("allows on-demand submit during idle hibernation even while localExecutionReady is false, but blocks when explicitly stopped", async () => {
+    const hibernated = fixture(false, false, false, false, false, true, false, false, "stopped");
+    expect(observed.composer?.disabled).toBe(false);
+    observed.submit!("wake on send");
+    await vi.waitFor(() => expect(hibernated.action).toHaveBeenCalledOnce());
+    expect(hibernated.action.mock.calls[0][0]).toBe("send");
+    await vi.waitFor(() => expect(sending.has(hibernated.key)).toBe(false));
+    readingViews.delete(hibernated.owner);
+
+    const suppressed = fixture(
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      "stopped",
+      true,
+    );
+    expect(observed.composer?.disabled).toBe(false);
+    expect(observed.composer?.submitDisabled).toBe(true);
+    observed.submit!("blocked while suppressed");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(suppressed.action).not.toHaveBeenCalled();
+    readingViews.delete(suppressed.owner);
+  });
+  it("allows drafting and submitting from persisted history without claiming a live connection", async () => {
+    const f = fixture(false, false, false, false, false, true);
+    expect(observed.composer?.disabled).toBe(false);
+    observed.submit!("wake and continue");
+    await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+    expect(f.action.mock.calls[0][0]).toBe("send");
+    await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+    readingViews.delete(f.owner);
+  });
   it.each(["upload", "configure", "send"] as const)(
     "keeps intent only when %s reaches send",
     async (boundary) => {

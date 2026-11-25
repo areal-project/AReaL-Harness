@@ -1,8 +1,8 @@
-import { useI18n } from "./i18n/IntlProvider.js";
+import { useEffect, useState } from "react";
+import { useI18n, type MessageId } from "./i18n/IntlProvider.js";
 import type { PendingMessage } from "./pendingMessage.js";
 import { parsePromptConversationSelections } from "./conversationSelectionReference.js";
 import { ConversationSelectionReferences } from "./ConversationSelectionReferences.js";
-import { stripGenUiModelContext } from "@areal/gen-ui/contract";
 import { Box } from "lucide-react";
 import { MessageResponse } from "./components/ai-elements/message.js";
 import { formatSkillMentionDisplayLabel } from "./mentions/mentionMarkdown.js";
@@ -88,7 +88,7 @@ export function UserMessageBody({
   onOpenFileLink?: (path: string) => void;
   fileReferenceRoot?: string;
 }) {
-  const selection = parsePromptConversationSelections(stripGenUiModelContext(children));
+  const selection = parsePromptConversationSelections(children);
   const { text, skills } = projectUserMessage(selection.visibleContent);
   const markdown = (
     <MessageResponse
@@ -124,12 +124,37 @@ export function PendingMessageView({
   message,
   fileReferenceRoot,
   theme = "light",
+  status,
 }: {
   message: PendingMessage;
   fileReferenceRoot?: string;
   theme?: "light" | "dark";
+  status?: MessageId;
 }) {
   const { t } = useI18n();
+  const [now, setNow] = useState(() => Date.now());
+  const ticking = message.startedAt != null && message.elapsedSeconds == null;
+  useEffect(() => {
+    if (!ticking) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [ticking, message.startedAt]);
+  const elapsed =
+    message.elapsedSeconds ??
+    (message.startedAt != null
+      ? Math.max(0, Math.floor((now - message.startedAt) / 1000))
+      : undefined);
+  const statusId =
+    status ??
+    message.status ??
+    (message.starting ? "chat.submission.starting" : "chat.submission.sending");
+  const statusLabel =
+    statusId === "cloud.startingSandbox" && elapsed != null && elapsed > 0
+      ? t("cloud.startingSandboxElapsed", { seconds: elapsed })
+      : statusId === "cloud.sandboxReadySending" && elapsed != null
+        ? t("cloud.sandboxReadySending", { seconds: elapsed })
+        : t(statusId);
   return (
     <section className="pending-message" data-testid="pending-message" aria-busy="true">
       <div className="user-message">
@@ -142,7 +167,13 @@ export function PendingMessageView({
             </div>
           )}
           {(message.text || !message.files.length) && (
-            <div className="user-bubble whitespace-pre-wrap break-words">
+            <div
+              className={
+                message.text
+                  ? "user-bubble break-words"
+                  : "user-bubble whitespace-pre-wrap break-words"
+              }
+            >
               {message.text ? (
                 <UserMessageBody theme={theme} fileReferenceRoot={fileReferenceRoot}>
                   {message.text}
@@ -156,8 +187,8 @@ export function PendingMessageView({
         </div>
       </div>
       <div className="turn-activity">
-        <p className="execution-status" role="status">
-          {t(message.starting ? "chat.submission.starting" : "chat.submission.sending")}
+        <p className="execution-status tabular-nums" role="status">
+          {statusLabel}
         </p>
       </div>
     </section>

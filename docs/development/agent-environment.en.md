@@ -32,7 +32,7 @@ Runs the same command on the base commit and the working tree and lists only cas
 
 ## Size
 
-`make check-rust-size` (part of `make check-changed`) caps Rust product files at 1500 lines. The 27 files already over it are recorded in `scripts/check-rust-size-baseline.json` and may not grow past the recorded size; after splitting, run `python3 scripts/check-rust-size.py --write`. GUI line budgets are checked by `gui-health`.
+`make check-rust-size` (part of `make check-changed`) emits an `AGENT_OPTIMIZATION_SIGNAL` for Rust product files above the 1500-line guideline or growing relative to the observation snapshot. It is an Agent refactoring signal rather than a failing gate. `scripts/check-rust-size-baseline.json` is only a growth reference; after splitting or reducing files, run `python3 scripts/check-rust-size.py --write` to refresh the snapshot. GUI line budgets are checked by `gui-health`.
 
 ## Verification layers
 
@@ -63,6 +63,6 @@ Not covered in the cloud; run before a release:
 3. Auto-update: check, download, apply, recover resources after failure.
 4. Real-data upgrade: upgrade a copy of local data; projects, history and Arena config survive.
 5. Phone pairing: scan to pair, relay connection, push.
-6. Computer control: accessibility and screen-recording permission requests, use after grant, prompt after revoke.
+6. Embedded browser: verify the page preview, one-time approval, and an actual `browser_v1` call in the original session.
 7. Screenshots: shortcut, permission, screenshot into a conversation.
 8. Command-line tool install, deep links, notification click-through.

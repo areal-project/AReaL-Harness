@@ -4,7 +4,7 @@ const { execFile, execFileSync } = require("node:child_process");
 const { createHash } = require("node:crypto");
 const { lstatSync, readFileSync, realpathSync, statSync } = require("node:fs");
 const { isAbsolute, join, sep } = require("node:path");
-const { resolveCoreBinary } = require("@areal/workbench-service/desktop/core/bundle.cjs");
+const { resolveCoreBinary } = require("@areal/workbench/node/bundle");
 const { promisify } = require("node:util");
 const execFileAsync = promisify(execFile);
 
@@ -57,7 +57,7 @@ async function commandAsync(binary, args, env) {
 /** 仅 CLI 校验过的活动空间可影响原生启动路径。
  * @param {import('electron').App} app
  * @param {NodeJS.ProcessEnv} env
- * @param {typeof import('@areal/workbench-service/desktop/core/bundle.cjs').resolveCoreBinary} [resolveBinary]
+ * @param {typeof import('@areal/workbench/node/bundle').resolveCoreBinary} [resolveBinary]
  */
 function selectActiveSpace(app, env, resolveBinary = resolveCoreBinary) {
   const test = env.AREAL_SPACES_TEST_ROOT

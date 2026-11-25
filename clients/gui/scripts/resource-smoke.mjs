@@ -406,7 +406,7 @@ export async function verifyResourceSlice({
   await button("展开侧边面板").focus();
   await page.keyboard.press("Enter");
   await page.getByTestId("workspace-file-preview").waitFor();
-  await button("新聊天").click();
+  await button("新会话").click();
   await page.waitForFunction(
     () => document.querySelector('[data-testid="areal-workbench"]').dataset.threadId === "",
   );

@@ -1,4 +1,4 @@
-import { SidePaneFrame } from "@areal/ui/experimental";
+import { SidePaneFrame } from "@areal/ui/compositions";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { useLayoutEffect, useRef, useState, type ReactNode, type PointerEvent } from "react";
 import { SideChatIcon as MessageCircle, SearchIcon as Search } from "../interfaceIcons.js";
@@ -39,6 +39,29 @@ import { SortableSidePaneTabTrigger } from "./SidePaneTabTrigger.js";
 import { isBrowserTab } from "./useBrowserWorkspace.js";
 import { SidePaneLauncher } from "./SidePaneLauncher.js";
 import type { WorkspaceSidePaneTab, RecentClosedSidePaneTab } from "./sidePaneModel.js";
+
+export const SIDE_PANE_TITLES: Record<string, string> = {
+  changes: "审查",
+  files: "文件",
+  terminal: "终端",
+  preview: "浏览器",
+  "side-chat": "侧边聊天",
+  "side-chat-history": "历史旁路讨论",
+  subagents: "子代理",
+  context: "上下文",
+  processes: "进程",
+  plan: "执行计划",
+  permissions: "已保存授权",
+  workgroups: "工作组",
+  "edit-goal": "编辑目标",
+  trajectory: "调用轨迹",
+  subtasks: "子任务",
+  usage: "用量",
+  queue: "队列",
+  settings: "设置",
+  "task-resources": "任务资源",
+  "image-annotation": "图片标注",
+};
 
 export function SidePane({
   workspaceKey,
@@ -131,9 +154,7 @@ export function SidePane({
         id: name,
         title: name.startsWith("file:")
           ? name.slice(5).split("/").pop()!
-          : (({ 改动: "审查", 预览: "浏览器", 旁路讨论: "侧边聊天" } as Record<string, string>)[
-              name
-            ] ?? name),
+          : (SIDE_PANE_TITLES[name] ?? name),
         openedAt: Date.now(),
         ownerTaskId,
         workspaceKey,
@@ -224,7 +245,7 @@ export function SidePane({
       ? [
           {
             id: "side",
-            panel: "旁路讨论",
+            panel: "side-chat",
             label: t(sideCreationUnconfirmed ? "chat.side.inspectCreation" : "chat.side.title"),
             shortcut: "",
             icon: MessageCircle,
@@ -234,39 +255,39 @@ export function SidePane({
       : []),
     {
       id: "review",
-      panel: "改动",
+      panel: "changes",
       label: "审查",
       shortcut: mac ? "⌃⇧G" : "Ctrl+Shift+G",
       icon: ReviewPanelIcon,
-      onOpen: () => onSelect("改动"),
+      onOpen: () => onSelect("changes"),
     },
     ...(ownerTaskId
       ? [
           {
             id: "terminal",
-            panel: "终端",
+            panel: "terminal",
             label: "终端",
             shortcut: mac ? "⌃`" : "Ctrl+`",
             icon: TerminalPanelIcon,
-            onOpen: () => onSelect("终端"),
+            onOpen: () => onSelect("terminal"),
           },
         ]
       : []),
     {
       id: "browser",
-      panel: "预览",
+      panel: "preview",
       label: "浏览器",
       shortcut: mac ? "⌘T" : "Ctrl+T",
       icon: BrowserPanelIcon,
-      onOpen: () => onSelect("预览"),
+      onOpen: () => onSelect("preview"),
     },
     {
       id: "files",
-      panel: "文件",
+      panel: "files",
       label: "文件",
       shortcut: mac ? "⌘P" : "Ctrl+P",
       icon: FilesPanelIcon,
-      onOpen: () => onSelect("文件"),
+      onOpen: () => onSelect("files"),
     },
   ].filter(
     (item) =>
@@ -279,7 +300,8 @@ export function SidePane({
     <SidePaneFrame
       ref={panel}
       data-open={Boolean(active)}
-      style={{ flexBasis: `${width}%`, display: active ? undefined : "none" }}
+      open={Boolean(active)}
+      widthPercent={width}
     >
       <div
         className="side-pane-resize"
@@ -313,74 +335,80 @@ export function SidePane({
       <div className="side-pane-tabbar">
         {fullView && workspaceView.navigation}
         {transient ? (
-          <strong className="flex-1 px-3 text-ui-sm">{active}</strong>
+          <strong className="flex-1 px-3 text-ui-sm">
+            {titleFor?.(active) ?? SIDE_PANE_TITLES[active] ?? active}
+          </strong>
         ) : (
-          <Tabs
-            value={conversationActive ? "__conversation" : active}
-            onValueChange={(id) =>
-              id === "__conversation" ? workspaceView?.onChange("conversation") : onSelect(id)
-            }
+          <div
             className="side-pane-tabs-root"
             style={{ width: Math.max(0, tabs.length * 240 - 2 + (fullView ? 220 : 0)) }}
           >
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={({ active, over }) => {
-                if (over && active.id !== over.id)
-                  onChange(
-                    arrayMove(
-                      names,
-                      names.indexOf(String(active.id)),
-                      names.indexOf(String(over.id)),
-                    ),
-                  );
-              }}
+            <Tabs
+              value={conversationActive ? "__conversation" : active}
+              onValueChange={(id) =>
+                id === "__conversation" ? workspaceView?.onChange("conversation") : onSelect(id)
+              }
+              className="min-w-0 flex-1"
             >
-              <SortableContext items={names} strategy={horizontalListSortingStrategy}>
-                <TabsList
-                  variant="line"
-                  className="side-pane-tabs-scroll"
-                  aria-label="侧边面板标签"
-                >
-                  {fullView && (
-                    <TabsTrigger
-                      value="__conversation"
-                      className="side-pane-conversation-tab"
-                      aria-label={workspaceView.title}
-                    >
-                      <MessageCircle className="size-4 shrink-0" />
-                      <span className="truncate">{workspaceView.title}</span>
-                    </TabsTrigger>
-                  )}
-                  {fullView && workspaceView.actions}
-                  {tabs.map((tab) => (
-                    <SortableSidePaneTabTrigger
-                      key={tab.id}
-                      tab={tab}
-                      title={tab.title}
-                      closeTabLabel={`关闭 ${tab.title} 标签`}
-                      closeTabMenuLabel="关闭标签页"
-                      closeOtherTabsLabel="关闭其他标签页"
-                      closeAllTabsLabel="关闭所有标签页"
-                      diffBadgeLabel="改动"
-                      isActive={!conversationActive && active === tab.id}
-                      isPreview={tab.id === previewTabId}
-                      onDoubleClick={() => {
-                        onKeepTab?.(tab.id);
-                        workspaceView?.onChange(fullView ? "split" : "panel");
-                      }}
-                      onKeepTab={onKeepTab}
-                      onCloseTab={close}
-                      onCloseOtherTabs={closeGroup}
-                      onCloseAllTabs={() => closeGroup()}
-                      canCloseOtherTabs={tabs.length > 1}
-                    />
-                  ))}
-                </TabsList>
-              </SortableContext>
-            </DndContext>
-          </Tabs>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={({ active, over }) => {
+                  if (over && active.id !== over.id)
+                    onChange(
+                      arrayMove(
+                        names,
+                        names.indexOf(String(active.id)),
+                        names.indexOf(String(over.id)),
+                      ),
+                    );
+                }}
+              >
+                <SortableContext items={names} strategy={horizontalListSortingStrategy}>
+                  <TabsList
+                    variant="strip"
+                    className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+                    aria-label="侧边面板标签"
+                  >
+                    {fullView && (
+                      <TabsTrigger
+                        value="__conversation"
+                        className="max-w-52 shrink-0"
+                        aria-label={workspaceView.title}
+                      >
+                        <MessageCircle className="size-4 shrink-0" />
+                        <span className="truncate">{workspaceView.title}</span>
+                      </TabsTrigger>
+                    )}
+                    {fullView && workspaceView.actions}
+                    {tabs.map((tab) => (
+                      <SortableSidePaneTabTrigger
+                        key={tab.id}
+                        tab={tab}
+                        title={tab.title}
+                        closeTabLabel={`关闭 ${tab.title} 标签`}
+                        closeTabMenuLabel="关闭标签页"
+                        closeOtherTabsLabel="关闭其他标签页"
+                        closeAllTabsLabel="关闭所有标签页"
+                        diffBadgeLabel="改动"
+                        isActive={!conversationActive && active === tab.id}
+                        isPreview={tab.id === previewTabId}
+                        onDoubleClick={() => {
+                          onKeepTab?.(tab.id);
+                          workspaceView?.onChange(fullView ? "split" : "panel");
+                        }}
+                        onKeepTab={onKeepTab}
+                        onCloseTab={close}
+                        onCloseOtherTabs={closeGroup}
+                        onCloseAllTabs={() => closeGroup()}
+                        canCloseOtherTabs={tabs.length > 1}
+                      />
+                    ))}
+                  </TabsList>
+                </SortableContext>
+              </DndContext>
+            </Tabs>
+          </div>
         )}
         {!transient && tabs.length > 0 && (
           <DropdownMenu>
@@ -470,8 +498,10 @@ export function SidePane({
       <SidePaneFrame.Layout data-file-preview={active.startsWith("file:") || undefined}>
         <SidePaneFrame.Content
           fullHeight={
-            active === "功能" ||
-            ["预览", "终端", "改动", "文件", "旁路讨论", "图片标注"].includes(active) ||
+            active === "launcher" ||
+            ["preview", "terminal", "changes", "files", "side-chat", "image-annotation"].includes(
+              active,
+            ) ||
             active.startsWith("file:") ||
             active.startsWith("terminal:") ||
             active.startsWith("side:") ||
@@ -496,7 +526,7 @@ export function SidePane({
           ))}
           {active &&
             !retainedPanels.some((pane) => pane.visible) &&
-            (active === "功能" ? <SidePaneLauncher items={items} /> : render(active))}
+            (active === "launcher" ? <SidePaneLauncher items={items} /> : render(active))}
         </SidePaneFrame.Content>
         {auxiliary && (
           <SidePaneFrame.Auxiliary aria-label="文件列表">{auxiliary}</SidePaneFrame.Auxiliary>

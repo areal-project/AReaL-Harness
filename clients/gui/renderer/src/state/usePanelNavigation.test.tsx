@@ -7,7 +7,7 @@ vi.hoisted(() => vi.stubGlobal("window", new EventTarget()));
 vi.mock("../i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 afterEach(() => vi.unstubAllGlobals());
 
-function fixture(settings: readonly string[]) {
+function fixture(settings: readonly string[] | undefined, initialReleased = true, desktop = false) {
   const page = new EventTarget();
   vi.stubGlobal("window", page);
   vi.stubGlobal("document", { querySelector: () => null });
@@ -19,7 +19,7 @@ function fixture(settings: readonly string[]) {
     navigation = usePanelNavigation(
       {
         readOnly: true,
-        services: { capabilities: { mutations: false, native: false, settings } },
+        services: { capabilities: { mutations: desktop, native: desktop, settings } },
       } as Args[0],
       { view: { panel: "", workspaceView: "" }, selectPanel } as unknown as Args[1],
       {} as Args[2],
@@ -34,7 +34,7 @@ function fixture(settings: readonly string[]) {
         },
       } as Args[4],
       {} as Args[5],
-      true,
+      initialReleased,
       "bottom",
       { current: null },
     );
@@ -46,17 +46,17 @@ function fixture(settings: readonly string[]) {
 }
 
 it("opens an authorized settings page without granting session mutations", () => {
-  const f = fixture(["模型服务"]);
-  f.navigation.showPanel("进程");
-  f.navigation.showPanel("会话配置");
+  const f = fixture(["providers"]);
+  f.navigation.showPanel("processes");
+  f.navigation.showPanel("session");
   expect(f.state.open).toBe(false);
   expect(f.selectPanel).not.toHaveBeenCalled();
-  f.navigation.showPanel("设置");
-  expect(f.state).toEqual({ open: true, tab: "模型服务" });
+  f.navigation.showPanel("settings");
+  expect(f.state).toEqual({ open: true, tab: "providers" });
 });
 
 it.each([false, true])("settings shortcut follows the same domain grant: %s", (allowed) => {
-  const f = fixture(allowed ? ["模型服务"] : []);
+  const f = fixture(allowed ? ["providers"] : []);
   const unsubscribe = f.navigation.subscribeShortcuts();
   const event = new Event("keydown", { cancelable: true });
   Object.assign(event, { key: ",", ctrlKey: true, metaKey: false, altKey: false, shiftKey: false });
@@ -68,6 +68,58 @@ it.each([false, true])("settings shortcut follows the same domain grant: %s", (a
 
 it("an observe-only client cannot open settings through the button handler", () => {
   const f = fixture([]);
-  f.navigation.showPanel("设置");
+  f.navigation.showPanel("settings");
   expect(f.state).toEqual({ open: false, tab: "" });
+});
+
+it.each(["direct", "panel", "shortcut"])(
+  "opens recovery settings before startup releases via %s",
+  (entry) => {
+    const f = fixture(["providers"], false);
+    if (entry === "direct") f.navigation.openSettings("providers");
+    else if (entry === "panel") f.navigation.showPanel("settings");
+    else {
+      const unsubscribe = f.navigation.subscribeShortcuts();
+      const event = new Event("keydown", { cancelable: true });
+      Object.assign(event, {
+        key: ",",
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+      });
+      f.page.dispatchEvent(event);
+      unsubscribe();
+    }
+    expect(f.state).toEqual({ open: true, tab: "providers" });
+    expect(f.selectPanel).not.toHaveBeenCalled();
+  },
+);
+
+it("does not grant settings or execution panels during failed startup", () => {
+  const f = fixture([], false);
+  f.navigation.openSettings("providers");
+  f.navigation.showPanel("processes");
+  expect(f.state.open).toBe(false);
+  expect(f.selectPanel).not.toHaveBeenCalled();
+});
+it("a persisted desktop conversation still allows application settings", () => {
+  const f = fixture(undefined, true, true);
+  f.navigation.showPanel("settings");
+  expect(f.state).toEqual({ open: true, tab: "providers" });
+  f.navigation.openSettings("general");
+  expect(f.state.tab).toBe("general");
+  f.navigation.showPanel("processes");
+  expect(f.selectPanel).not.toHaveBeenCalled();
+});
+
+it("a persisted desktop conversation still accepts the settings shortcut", () => {
+  const f = fixture(undefined, true, true);
+  const unsubscribe = f.navigation.subscribeShortcuts();
+  const event = new Event("keydown", { cancelable: true });
+  Object.assign(event, { key: ",", ctrlKey: true, metaKey: false, altKey: false, shiftKey: false });
+  f.page.dispatchEvent(event);
+  expect(f.state.open).toBe(true);
+  expect(event.defaultPrevented).toBe(true);
+  unsubscribe();
 });

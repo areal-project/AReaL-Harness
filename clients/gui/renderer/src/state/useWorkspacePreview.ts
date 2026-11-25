@@ -46,7 +46,7 @@ export function useWorkspacePreview(
       if (!isBrowserTab(panel)) rememberPanelTrigger();
       if (services.capabilities?.native === false) {
         workspacePanels.exposePanel();
-        workspacePanels.selectPanel("预览");
+        workspacePanels.selectPanel("preview");
         openingBrowser.current = null;
         return;
       }

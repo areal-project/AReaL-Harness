@@ -15,7 +15,6 @@ impl Engine {
         for bundle in request.bundles {
             let definition = match bundle {
                 DesktopToolBundle::Browser => areal_protocol::desktop::browser_v1_tool(),
-                DesktopToolBundle::Computer => areal_protocol::desktop::computer_v1_tool(),
             };
             if definitions
                 .iter()

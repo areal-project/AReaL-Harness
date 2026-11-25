@@ -37,8 +37,8 @@ export const timelineMessages = {
     en: "You paused this turn",
   },
   "chat.timeline.interruption.coreRecovery": {
-    "zh-CN": "Core 恢复时中断了本轮执行",
-    en: "This turn was interrupted during Core recovery",
+    "zh-CN": "后台服务恢复时中断了本轮执行",
+    en: "This turn was interrupted during background service recovery",
   },
   "chat.timeline.interruption.other": {
     "zh-CN": "本轮执行已中断",

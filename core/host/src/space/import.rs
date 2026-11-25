@@ -17,7 +17,7 @@ fn inputs(home: &std::path::Path) -> areal_config::ConfigInputs {
         ..Default::default()
     }
 }
-fn candidate(id: &str, value: Value) -> Result<ProviderConfig> {
+fn candidate(id: &str, source_id: &str, value: Value) -> Result<ProviderConfig> {
     let protocol = match value["protocol"].as_str() {
         Some("responses") => "responses",
         Some("chatCompletions") => "chat-completions",
@@ -28,7 +28,7 @@ fn candidate(id: &str, value: Value) -> Result<ProviderConfig> {
     } else {
         "/chat/completions"
     };
-    serde_json::from_value(json!({"id":id,"name":value["name"],"endpoint":format!("{}{}",value["baseUrl"].as_str().context("INVALID_PARAMS")?.trim_end_matches('/'),suffix),"protocol":protocol,"enabled":false,"models":value["models"],"parameters":value["parameters"]})).map_err(Into::into)
+    serde_json::from_value(json!({"id":id,"name":value["name"],"endpoint":format!("{}{}",value["baseUrl"].as_str().context("INVALID_PARAMS")?.trim_end_matches('/'),suffix),"protocol":protocol,"enabled":false,"apiKeyEnv":format!("AREAL_CREDENTIAL_{source_id}"),"models":value["models"],"parameters":value["parameters"]})).map_err(Into::into)
 }
 fn public(request: &str, provider: &str, digest: &str, state: &str) -> Value {
     json!({"requestId":request,"providerId":provider,"templateDigest":digest,"state":state})
@@ -39,7 +39,11 @@ fn confirmed(home: &std::path::Path, record: &Operation) -> Result<bool> {
     };
     let provider: ProviderConfig = serde_json::from_value(value.clone())?;
     ensure!(
-        !provider.enabled && provider.api_key_env.is_none(),
+        !provider.enabled
+            && provider
+                .api_key_env
+                .as_deref()
+                .is_some_and(|name| name.starts_with("AREAL_CREDENTIAL_")),
         "invalid import evidence"
     );
     let current = areal_config::models::read(&inputs(home), &[])?;
@@ -131,7 +135,7 @@ impl Host {
             "requestConflict"
         );
         let template = template()?;
-        let provider = candidate(&target, template)?;
+        let provider = candidate(&target, &input.provider_id, template)?;
         let current = areal_config::models::read(&inputs(&self.home), &[])?;
         ensure!(
             !current.data.iter().any(|row| row.id == target),
@@ -217,7 +221,10 @@ mod tests {
         let config = areal_config::models::read(&inputs(&host.home), &[]).unwrap();
         assert_eq!(config.data.len(), 1);
         assert!(!config.data[0].enabled);
-        assert!(config.data[0].api_key_env.is_none());
+        assert_eq!(
+            config.data[0].api_key_env.as_deref(),
+            Some("AREAL_CREDENTIAL_old")
+        );
         assert_eq!(apply(&host, &id), result);
         let mut changed = request(&id);
         changed.template_digest = "f".repeat(64);
@@ -253,7 +260,7 @@ mod tests {
         let (digest, _) = host
             .accepted(&id, "recovery.importProvider", &input, "")
             .unwrap();
-        let provider = candidate(&target, template()).unwrap();
+        let provider = candidate(&target, "old", template()).unwrap();
         let mut op = host.receipt(&id).unwrap().unwrap();
         op.evidence = json!({"provider":provider});
         op.receipt["providerId"] = json!(target);

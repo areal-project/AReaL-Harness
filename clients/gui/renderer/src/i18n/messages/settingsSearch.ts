@@ -34,12 +34,12 @@ export const settingsSearchMessages = {
     en: "Tool hooks, Hook, Apply configuration",
   },
   "settings.search.models": {
-    "zh-CN": "模型、供应商、API Key、密钥、Base URL、API 格式、ChatGPT 订阅、默认模型",
-    en: "Models, Providers, API key, Base URL, API format, ChatGPT subscription, Default model",
+    "zh-CN": "模型、供应商、API Key、密钥、Base URL、API 格式、ChatGPT 订阅",
+    en: "Models, Providers, API key, Base URL, API format, ChatGPT subscription",
   },
   "settings.search.session": {
-    "zh-CN": "新会话、默认模型、会话模型、权限、安全、指令、会话技能、模型参数、温度",
-    en: "New session, Default model, Session model, Permissions, Safety, Instructions, Session skills, Model parameters, Temperature",
+    "zh-CN": "权限、安全、指令、会话技能、模型参数、温度",
+    en: "Permissions, Safety, Instructions, Session skills, Model parameters, Temperature",
   },
   "settings.search.cloud": {
     "zh-CN": "云端连接、后端地址、Token",
@@ -52,5 +52,9 @@ export const settingsSearchMessages = {
   "settings.search.mobile": {
     "zh-CN": "手机、配对、Relay、中继、设备",
     en: "Phone, Pairing, Relay, Devices",
+  },
+  "settings.search.labs": {
+    "zh-CN": "Labs、实验功能、Bot",
+    en: "Labs, Experimental features, Bots",
   },
 } as const;

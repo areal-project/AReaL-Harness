@@ -35,7 +35,7 @@
   position: absolute;
   box-sizing: border-box;
   border: calc(var(--border-width-default) * 2) solid var(--color-foreground);
-  background: color-mix(in srgb, var(--color-foreground) 16%, transparent);
+  background: var(--color-annotation-selected-surface);
   pointer-events: none;
 }
 .browser-region-annotation label {
@@ -116,7 +116,7 @@
   max-width: calc(100% - var(--icon-size-control));
   margin: auto;
   padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
-  border-radius: var(--radius-compact-row);
+  border-radius: var(--radius-compact);
   background: var(--color-popover);
   font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
@@ -129,7 +129,7 @@
   right: var(--spacing-inline);
   z-index: 6;
   padding: calc(var(--spacing-inline) * 3 / 4);
-  border-radius: var(--radius-attachment);
+  border-radius: var(--radius-control);
   border: var(--border-width-default) solid var(--color-border);
   background: var(--color-popover);
   font-size: var(--text-ui-xs);
@@ -142,7 +142,7 @@
   color: var(--color-foreground-subtle);
 }
 .browser-annotation-attachments > span {
-  font-size: var(--text-fixed-metadata);
+  font-size: var(--text-ui-xs);
 }
 .browser-annotation-attachment-card {
   display: flex;
@@ -175,7 +175,7 @@
 .browser-annotation-attachment-card small {
   display: block;
   margin-top: calc(var(--spacing-inline) / 2);
-  font-size: var(--text-fixed-metadata);
+  font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -188,7 +188,7 @@
 .browser-annotation-attachment-card pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: var(--text-fixed-metadata);
+  font-size: var(--text-ui-xs);
 }
 
 .browser-annotation-attachment-card [data-message-attachment="image"] {

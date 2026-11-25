@@ -1,17 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { beginSessionLoad } from "@areal/client";
 import { currentErrorText } from "../errors/currentErrorText.js";
+import { getPendingMessage, subscribePendingMessages } from "../pendingMessage.js";
 import {
   recoveryMessage,
-  sameRecoveryOwner,
+  sameRestorationOwner,
   type RecoveryFailure,
-  type RecoveryOwner,
+  type RestorationOwner,
 } from "../recoveryPresentation.js";
 import { call, type Action, type PlatformServices, type Snapshot } from "../services.js";
 import { conversationCatalog } from "./conversationCatalog.js";
+import { markRendererStartup } from "./startupTiming.js";
+import { isProjectHibernated } from "./userStates.js";
 type InitialLocation =
   | { kind: "automatic" | "projectless" }
   | { kind: "project"; projectId: string; threadId: string };
-type RestorationOwner = RecoveryOwner;
 type RestorationState = RestorationOwner & {
   pending: boolean;
   error: string;
@@ -22,7 +25,56 @@ type RestorationAttempt = RestorationOwner & {
   operation: "connect" | "open";
   pending: boolean;
   promise: Promise<void>;
+  connectService?: boolean;
+  resumeScheduling?: boolean;
+  forceConnect?: boolean;
+  prewarmDeferred?: "verification" | "successor";
+  failure?: RecoveryFailure;
 };
+
+function isProjectCoreUnavailable(failure: unknown) {
+  const error = failure as RecoveryFailure | null;
+  return (
+    error?.code === "CORE_UNAVAILABLE" ||
+    error?.code === "scheduleHostUnavailable" ||
+    error?.message === "Project Core unavailable" // raw-error-ok: 旧读客户端在本地目录缺代次时返回此错误
+  );
+}
+
+function readHostOwner(reads: PlatformServices["reads"]) {
+  const connection = reads?.status();
+  return connection?.connection === "ready" &&
+    connection.identity.hostId &&
+    connection.identity.hostGeneration
+    ? {
+        hostGeneration: JSON.stringify([
+          connection.identity.hostId,
+          connection.identity.hostGeneration,
+        ]),
+        connectionId: connection.identity.connectionId,
+      }
+    : { hostGeneration: undefined, connectionId: undefined };
+}
+
+function conversationProject(project: Snapshot["projects"][number] | undefined, threadId: string) {
+  const execution =
+    project?.state?.threads[threadId] ??
+    project?.summaries?.find((summary: { id: string }) => summary.id === threadId);
+  return project && (execution?.executionRoot || execution?.worktree?.directory)
+    ? {
+        ...project,
+        logicalRoot: project.root,
+        root: execution.executionRoot ?? execution.worktree.directory,
+        core: { ...project.core, ...execution.executionCore },
+        state: {
+          ...project.state,
+          connected: execution.executionConnected ?? project.state?.connected,
+          hostState: execution.executionHostState ?? project.state?.hostState,
+        },
+        error: execution.executionError ?? project.error,
+      }
+    : project;
+}
 
 export function useSessionNavigation(
   services: PlatformServices,
@@ -34,6 +86,8 @@ export function useSessionNavigation(
     projects: [],
     connection: { state: "connecting" },
   });
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
   const [restoration, setRestoration] = useState<RestorationState>();
   const restorationAttempt = useRef<RestorationAttempt | undefined>(undefined);
   const [selectedProject, setSelectedProject] = useState<string>();
@@ -88,41 +142,37 @@ export function useSessionNavigation(
         }),
     [snapshot.projects, library],
   );
+  const readActivePendingTitle = () =>
+    projectId && threadId
+      ? getPendingMessage(`areal-gui:draft:${projectId}:${threadId}`)?.text
+      : undefined;
+  const activePendingTitle = useSyncExternalStore(
+    subscribePendingMessages,
+    readActivePendingTitle,
+    readActivePendingTitle,
+  );
   const summaries = useMemo(
     () => conversationCatalog(projects, library, { projectId, threadId }),
-    [projects, library, projectId, threadId],
+    [projects, library, projectId, threadId, activePendingTitle],
   );
   // Sidebar visibility must not change the owner of an explicitly opened resource.
   const logicalProject = noProject
     ? undefined
     : (snapshot.projects.find((p) => p.id === projectId) ??
       (snapshot.connection?.state === "ready" ? projects.find((p) => !p.projectless) : undefined));
-  const executionThread =
-    logicalProject?.state?.threads[threadId] ??
-    logicalProject?.summaries?.find((summary: { id: string }) => summary.id === threadId);
-  const project =
-    logicalProject && (executionThread?.executionRoot || executionThread?.worktree?.directory)
-      ? {
-          ...logicalProject,
-          logicalRoot: logicalProject.root,
-          root: executionThread.executionRoot ?? executionThread.worktree.directory,
-          core: { ...logicalProject.core, ...executionThread.executionCore },
-          state: {
-            ...logicalProject.state,
-            connected: executionThread.executionConnected ?? logicalProject.state?.connected,
-            hostState: executionThread.executionHostState ?? logicalProject.state?.hostState,
-          },
-          error: executionThread.executionError ?? logicalProject.error,
-        }
-      : logicalProject;
+  const project = conversationProject(logicalProject, threadId);
   const thread = project?.state?.threads[threadId];
+  const hostOwner = readHostOwner(services.reads);
+  const prewarmReady = services.reads?.canPrewarm?.() !== false;
   const restorationOwner: RestorationOwner = {
     projectId: project?.id ?? "",
     threadId,
     connectionGeneration: project?.core?.connectionGeneration ?? 0,
+    ...hostOwner,
   };
+  const pendingSelection = useRef<RestorationOwner | undefined>(undefined);
   const selectedRestoration = useRef(restorationOwner);
-  selectedRestoration.current = restorationOwner;
+  selectedRestoration.current = pendingSelection.current ?? restorationOwner;
   const selectionReady = selectedProject === (project?.id ?? "");
   // Resource pages own their loading, validation and recovery feedback.
   const resourceAction: Action = useCallback<Action>(
@@ -150,7 +200,8 @@ export function useSessionNavigation(
       resourceBrowsing.current ||
       !project?.id ||
       threadId ||
-      snapshot.connection?.state !== "ready"
+      snapshot.connection?.state !== "ready" ||
+      isProjectHibernated(project)
     )
       return;
     void resourceAction("connect", { projectId: project.id }).catch(() => {});
@@ -199,13 +250,20 @@ export function useSessionNavigation(
     (
       owner: RestorationOwner,
       operation: "connect" | "open",
-      options: { connectService?: boolean; resumeScheduling?: boolean } = {},
+      options: {
+        connectService?: boolean;
+        resumeScheduling?: boolean;
+        forceConnect?: boolean;
+      } = {},
     ) => {
       const previous = restorationAttempt.current;
       if (
-        sameRecoveryOwner(previous, owner) &&
+        sameRestorationOwner(previous, owner) &&
         previous?.operation === operation &&
-        previous.pending
+        previous.pending &&
+        (!options.connectService || previous.connectService) &&
+        (!options.resumeScheduling || previous.resumeScheduling) &&
+        (!options.forceConnect || previous.forceConnect)
       )
         return previous.promise;
       const attempt: RestorationAttempt = {
@@ -213,70 +271,197 @@ export function useSessionNavigation(
         operation,
         pending: true,
         promise: Promise.resolve(),
+        connectService: options.connectService,
+        resumeScheduling: options.resumeScheduling,
+        forceConnect: options.forceConnect,
       };
       restorationAttempt.current = attempt;
       setRestoration((previous) =>
-        sameRecoveryOwner(previous, owner) && previous
+        sameRestorationOwner(previous, owner) && previous
           ? { ...previous, pending: true }
           : { ...owner, pending: true, error: "" },
       );
       const current = () =>
         restorationAttempt.current === attempt &&
-        sameRecoveryOwner(selectedRestoration.current, owner);
+        sameRestorationOwner(selectedRestoration.current, owner) &&
+        sameRestorationOwner({ ...owner, ...readHostOwner(services.reads) }, owner);
       attempt.promise = (async () => {
+        markRendererStartup("restore_start", { operation });
         try {
           if (services.recoverPersistedHistory) {
             await services.recoverPersistedHistory(null);
             if (restorationAttempt.current !== attempt) return;
           }
+          if (options.connectService) {
+            await resourceAction("connectService", {});
+            if (!current()) return;
+          }
           if (services.reads && !services.recoverPersistedHistory) {
-            // Host 读取不启动项目；GUI 和网页都先由后台连接，再打开历史订阅。
-            const target = restorationProjects.current.find((item) => item.id === owner.projectId);
+            // 停止的项目先读持久化历史；执行连接继续核验凭据，不挡住历史首屏。
+            const target = conversationProject(
+              restorationProjects.current.find((item) => item.id === owner.projectId),
+              owner.threadId,
+            );
             let persisted = false;
+            let persistedRead = false;
             let connectError: unknown;
-            if (operation === "connect" && !target?.state?.connected) {
-              const connection = services.reads.status();
-              const canReadPersisted =
-                !!owner.threadId &&
-                !options.resumeScheduling &&
-                connection.connection === "ready" &&
-                connection.identity.persistedHistory === true;
+            const targetSession = owner.threadId
+              ? { projectId: owner.projectId, threadId: owner.threadId }
+              : null;
+            let needsConnect =
+              operation === "connect" &&
+              (!target?.state?.connected || options.forceConnect) &&
+              !target?.state?.threads?.[owner.threadId ?? ""]?.cloud &&
+              !target?.summaries?.find((summary: { id: string }) => summary.id === owner.threadId)
+                ?.cloud;
+            let opened = false;
+            let liveReadFailure: unknown;
+            const connection = services.reads.status();
+            const canReadPersisted =
+              !!targetSession &&
+              connection.connection === "ready" &&
+              connection.identity.persistedHistory === true;
+            const reads = services.reads;
+            const tryLiveRead = async () => {
               try {
-                if (canReadPersisted && services.capabilities?.mutations === false)
-                  persisted = true;
-                else
-                  await resourceAction("connect", {
+                await reads.selectSession(targetSession);
+                opened = true;
+              } catch (error) {
+                if (!isProjectCoreUnavailable(error)) throw error;
+                liveReadFailure = error;
+              }
+            };
+            if (!needsConnect && targetSession && operation === "open") {
+              await tryLiveRead();
+              if (!current()) return;
+              if (!opened) {
+                await reads.refreshProjects?.();
+                if (!current()) return;
+                if (!canReadPersisted) await tryLiveRead();
+                if (!current()) return;
+                needsConnect = !opened;
+              }
+            }
+            if (needsConnect) {
+              if (canReadPersisted) {
+                try {
+                  await services.reads.selectSession({
                     projectId: owner.projectId,
-                    ...(options.resumeScheduling ? { resumeScheduling: true } : {}),
+                    threadId: owner.threadId,
+                    persisted: true,
                   });
+                  persisted = true;
+                  persistedRead = true;
+                } catch (error) {
+                  const code = (error as RecoveryFailure)?.code;
+                  if (code !== "PERSISTED_HISTORY_UNAVAILABLE" && code !== "RESOURCE_BUSY")
+                    throw error;
+                  if (code === "RESOURCE_BUSY" && current()) {
+                    // Core 可能已重新持有 Store，先核对实时读取，避免重复启动。
+                    await reads.refreshProjects?.();
+                    if (!current()) return;
+                    await tryLiveRead();
+                  }
+                }
+                if (!current()) return;
+                // 本机桌面显示历史后继续恢复执行，避免发送入口又等待实时配置。
+                // 只读网页仍停在持久化历史，不为阅读启动项目。
+                if (persisted) {
+                  markRendererStartup("restore_persisted_done");
+                  setRestoration({ ...owner, pending: false, error: "" });
+                  if (
+                    services.capabilities?.native !== true ||
+                    services.capabilities?.mutations === false ||
+                    services.capabilities?.conversationSubmit === false
+                  )
+                    return;
+                  if (services.reads.canPrewarm?.() === false) {
+                    attempt.prewarmDeferred = "verification";
+                    return;
+                  }
+                }
+              }
+            }
+            if (needsConnect && (!opened || options.resumeScheduling)) {
+              if (
+                liveReadFailure &&
+                (services.capabilities?.mutations === false ||
+                  services.reads.canPrewarm?.() === false)
+              )
+                throw liveReadFailure;
+              try {
+                await resourceAction("connect", {
+                  projectId: owner.projectId,
+                  ...(owner.threadId ? { threadId: owner.threadId } : {}),
+                  ...(options.resumeScheduling ? { resumeScheduling: true } : {}),
+                });
+                if (!current()) return;
+                markRendererStartup("restore_connect_done");
+                persisted = false;
               } catch (error) {
                 const failure = error as RecoveryFailure;
-                if (
-                  !canReadPersisted ||
+                const unresolved =
                   failure?.submissionUnknown ||
                   failure?.outcome?.kind === "admitted" ||
                   failure?.outcome?.kind === "unconfirmed" ||
+                  failure?.recovery?.kind === "queryOriginal";
+                // 已读到历史时，Host 停止只挡住后台预启动。主动恢复与未知结果仍按原路径处理。
+                if (
+                  persisted &&
+                  !options.resumeScheduling &&
+                  failure?.code === "stopInProgress" &&
+                  failure.recovery?.kind !== "needsUser" &&
+                  !unresolved
+                ) {
+                  attempt.prewarmDeferred = "successor";
+                  return;
+                }
+                // 持久化历史已渲染成功时，后台静默预热的瞬态 pending/blocked 不应升级为“无法加载对话”红条；
+                // 共享客户端会在项目就绪后自动升级实时阅读，发送消息时仍按需激活并在输入区反馈。
+                if (
+                  persisted &&
+                  !options.resumeScheduling &&
+                  !options.forceConnect &&
+                  (failure?.code === "ACTIVATION_PENDING" ||
+                    failure?.code === "ACTIVATION_BLOCKED") &&
+                  failure.recovery?.kind !== "needsUser" &&
+                  !unresolved
+                ) {
+                  return;
+                }
+                if (
+                  !canReadPersisted ||
+                  options.resumeScheduling ||
+                  unresolved ||
                   !["migrationBlocked", "MIGRATION_PENDING"].includes(String(failure?.code))
                 )
                   throw error;
                 connectError = error;
                 persisted = true;
               }
+              if (owner.threadId && !persisted) {
+                // 启动回执与目录事件走不同通道；实时读取前从 Host 取得新的项目代次。
+                await services.reads.refreshProjects?.();
+                if (!current()) return;
+              }
             }
-            try {
-              await services.reads.selectSession(
-                owner.threadId
-                  ? {
-                      projectId: owner.projectId,
-                      threadId: owner.threadId,
-                      ...(persisted ? { persisted: true } : {}),
-                    }
-                  : null,
-              );
-            } catch (error) {
-              throw connectError ?? error;
+            if (!opened && !(persistedRead && persisted)) {
+              try {
+                await services.reads.selectSession(
+                  targetSession && persisted
+                    ? { ...targetSession, persisted: true }
+                    : targetSession,
+                );
+              } catch (error) {
+                if (!targetSession || !persistedRead || !isProjectCoreUnavailable(error))
+                  throw connectError ?? error;
+                if (!current()) return;
+                persisted = true;
+                await services.reads.selectSession({ ...targetSession, persisted: true });
+              }
             }
             if (current()) {
+              markRendererStartup("restore_done", { persisted });
               setRestoration({ ...owner, pending: false, error: "" });
               if (owner.threadId && !persisted && services.capabilities?.mutations !== false)
                 void resourceAction("library", {
@@ -287,10 +472,6 @@ export function useSessionNavigation(
                 }).catch(() => {});
             }
             return;
-          }
-          if (options.connectService) {
-            await resourceAction("connectService", {});
-            if (!current()) return;
           }
           const target = restorationProjects.current.find((item) => item.id === owner.projectId);
           const cloud = target?.state?.threads?.[owner.threadId]?.cloud;
@@ -335,6 +516,7 @@ export function useSessionNavigation(
             }
           }
           if (current()) {
+            attempt.failure = failure;
             setRestoration({
               ...owner,
               pending: false,
@@ -369,6 +551,10 @@ export function useSessionNavigation(
   };
   const synchronizeSelection = () => {
     if (snapshot.connection?.state !== "ready" || selectionReady) return;
+    markRendererStartup("selection_ready", {
+      hasProject: !!project?.id,
+      hasThread: !!localStorage.getItem(`areal-gui:thread:${project?.id ?? ""}`),
+    });
     setSelectedProject(project?.id ?? "");
     if (!project?.id) {
       setProjectId("");
@@ -390,43 +576,115 @@ export function useSessionNavigation(
     )
       return;
     const previous = restorationAttempt.current;
-    const owner = {
-      projectId: project.id,
-      threadId,
-      connectionGeneration: project.core?.connectionGeneration ?? 0,
-    };
-    if (!project.state?.connected && sameRecoveryOwner(previous, owner)) return;
+    const owner = restorationOwner;
+    const sameOwner = sameRestorationOwner(previous, owner);
+    // 同一 Host 连接内的空闲休眠不主动唤醒 Core；Host 或 socket 换代后须重新建立当前 owner 的恢复结果。
+    if (
+      isProjectHibernated(project) &&
+      previous &&
+      previous.projectId === owner.projectId &&
+      previous.threadId === owner.threadId &&
+      previous.hostGeneration === owner.hostGeneration &&
+      previous.connectionId === owner.connectionId &&
+      !previous.prewarmDeferred &&
+      !previous.failure &&
+      (!owner.threadId || Boolean(thread))
+    )
+      return;
+    // 只补做等候交接的预热；运行中的持久化读取仍由 Host 客户端升级。
+    if (thread && "persistedHistory" in thread && thread.persistedHistory === true) {
+      if (
+        services.reads?.canPrewarm?.() === false ||
+        !previous?.prewarmDeferred ||
+        (previous.prewarmDeferred === "successor" &&
+          previous.hostGeneration === owner.hostGeneration) ||
+        previous.projectId !== owner.projectId ||
+        previous.threadId !== owner.threadId
+      )
+        return;
+    } else if (!project.state?.connected && sameOwner) return;
     if (project.observationErrors?.[threadId]?.connectionGeneration === owner.connectionGeneration)
       return;
     void restoreConversation(owner, project.state?.connected ? "open" : "connect");
   };
-  const retryRestoration = async () => {
+  const retryRestoration = async (options?: { resumeScheduling?: boolean }) => {
     if (!project) return;
-    await restoreConversation(restorationOwner, project.state?.connected ? "open" : "connect", {
-      connectService: snapshot.connection?.state !== "ready",
-      resumeScheduling: true,
-    });
+    const forceConnect = isProjectCoreUnavailable(
+      restoration?.failure ?? restorationAttempt.current?.failure,
+    );
+    const suppressed = project.scheduling?.suppressed === true;
+    const resumeScheduling = options?.resumeScheduling === true;
+    // 普通“重试加载对话”不得隐式解除用户手动停止；显式恢复调度须经明确动作触发。
+    const allowConnect = resumeScheduling || !suppressed;
+    await restoreConversation(
+      restorationOwner,
+      (!project.state?.connected || forceConnect) && allowConnect ? "connect" : "open",
+      {
+        connectService: snapshot.connection?.state !== "ready",
+        resumeScheduling,
+        forceConnect: forceConnect && allowConnect,
+      },
+    );
   };
-  const selectConversation = async (pid: string, id: string) => {
+  const selectConversation = async (
+    pid: string,
+    id: string,
+    options?: { waitForReady?: boolean },
+  ) => {
+    beginSessionLoad(id);
+    const logicalBefore = snapshotRef.current.projects.find((item) => item.id === pid);
+    const target = conversationProject(logicalBefore, id);
+    const owner = {
+      projectId: pid,
+      threadId: id,
+      connectionGeneration: target?.core?.connectionGeneration ?? 0,
+      ...readHostOwner(services.reads),
+    };
+    pendingSelection.current = options?.waitForReady ? owner : undefined;
+    selectedRestoration.current = owner;
+    // 草稿首次发送切到新对话时，先等待本机 Host 完成 session 读取再切换 threadId，
+    // 让草稿预览直接一步落到活跃会话，避免中间闪现空白 loading 骨架输入框。
+    const expectedServiceGeneration = logicalBefore?.core?.serviceGeneration;
+    if (
+      options?.waitForReady &&
+      services.reads &&
+      services.reads.status().connection === "ready" &&
+      target?.state?.connected &&
+      !target.state?.threads?.[id]
+    ) {
+      await restoreConversation(owner, "open").catch(() => {});
+      const currentHost = readHostOwner(services.reads);
+      const logicalAfter = snapshotRef.current.projects.find((item) => item.id === pid);
+      if (
+        pendingSelection.current !== owner ||
+        !sameRestorationOwner(selectedRestoration.current, owner) ||
+        services.reads.status().connection !== "ready" ||
+        currentHost.hostGeneration !== owner.hostGeneration ||
+        currentHost.connectionId !== owner.connectionId ||
+        (expectedServiceGeneration !== undefined &&
+          logicalAfter?.core?.serviceGeneration !== undefined &&
+          logicalAfter.core.serviceGeneration !== expectedServiceGeneration)
+      )
+        return;
+      pendingSelection.current = undefined;
+      setNoProject(false);
+      setProjectId(pid);
+      setThreadId(id);
+      localStorage.setItem(`areal-gui:thread:${pid}`, id);
+      return;
+    }
+    pendingSelection.current = undefined;
     setNoProject(false);
     setProjectId(pid);
     setThreadId(id);
     localStorage.setItem(`areal-gui:thread:${pid}`, id);
-    const target = snapshot.projects.find((item) => item.id === pid);
-    const owner = {
-      projectId: pid,
-      threadId: id,
-      connectionGeneration:
-        target?.state?.threads?.[id]?.executionCore?.connectionGeneration ??
-        target?.summaries?.find((summary: { id: string }) => summary.id === id)?.executionCore
-          ?.connectionGeneration ??
-        target?.core?.connectionGeneration ??
-        0,
-    };
-    selectedRestoration.current = owner;
+    // 选择保留到下次握手；离线时不向旧 Host 发起打开或预热。
+    if (services.reads && services.reads.status().connection !== "ready") return;
     await restoreConversation(owner, target?.state?.connected ? "open" : "connect");
   };
   const selectDraft = (pid: string | undefined) => {
+    pendingSelection.current = undefined;
+    beginSessionLoad("");
     if (services.recoverPersistedHistory) {
       restorationAttempt.current = undefined;
       void services.recoverPersistedHistory(null).catch(() => {});
@@ -457,6 +715,7 @@ export function useSessionNavigation(
     workspaceHistory,
     restoration,
     restorationOwner,
+    prewarmReady,
     selectionReady,
     resourceAction,
     contextualFileOpen,
@@ -470,15 +729,18 @@ export function useSessionNavigation(
     selectConversation,
     selectDraft,
     dispose: () => {
+      pendingSelection.current = undefined;
       restorationAttempt.current = undefined;
     },
     pendingRestoration: () =>
       restorationAttempt.current?.pending ? restorationAttempt.current.promise : undefined,
     selectProject(pid: string) {
+      pendingSelection.current = undefined;
       setNoProject(false);
       setProjectId(pid);
     },
     beginChosenProject(pid: string) {
+      pendingSelection.current = undefined;
       setNoProject(false);
       setProjectId(pid);
       setThreadId("");

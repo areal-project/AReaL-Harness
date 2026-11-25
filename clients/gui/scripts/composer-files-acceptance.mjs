@@ -671,7 +671,7 @@ export async function runComposerFilesAcceptance({
     async () => page.evaluate(() => globalThis.filesListCompleted),
     "delayed privileged workspace listing completed",
   );
-  await page.getByText("正在核对工作区引用…", { exact: true }).waitFor({ state: "hidden" });
+  await page.getByText("正在确认工作区引用…", { exact: true }).waitFor({ state: "hidden" });
   assert.equal(await input().textContent(), "FILES_STALE_DRAFT");
   await input().fill("");
   checks.push(
@@ -735,7 +735,7 @@ export async function runComposerFilesAcceptance({
     async () => page.evaluate(() => globalThis.filesListCompleted),
     "delayed privileged workspace listing completed",
   );
-  await page.getByText("正在核对工作区引用…", { exact: true }).waitFor({ state: "hidden" });
+  await page.getByText("正在确认工作区引用…", { exact: true }).waitFor({ state: "hidden" });
   assert.equal(await input().textContent(), "FILES_NORMAL_DRAFT");
   checks.push(
     "canceling queue edit invalidates its pending directory reference and preserves the restored normal draft",
@@ -806,8 +806,26 @@ export async function runComposerFilesAcceptance({
   await selectConversation(page, fork.threadId);
   await send("FILES_FORK_REPLAY");
   assert(users(received.at(-1)).some((text) => text.includes(original)));
+  const forkTurnsBeforeCrossThread = (await readCoreThread(fork.threadId)).turns.length;
+  const receivedBeforeCrossThread = received.length;
   const crossThread = await page.evaluate(
-    async (params) => window.arealDesktop.command("send", params),
+    async (params) => {
+      const observer = globalThis[Symbol.for("areal.host.read")];
+      if (typeof observer?.call === "function") {
+        try {
+          return { ok: true, value: await observer.call("send", params) };
+        } catch (error) {
+          return {
+            ok: false,
+            error: {
+              code: error?.code ?? "internalError",
+              message: error?.message ?? String(error),
+            },
+          };
+        }
+      }
+      return window.arealDesktop.command("send", params);
+    },
     {
       projectId: pid,
       threadId: fork.threadId,
@@ -816,7 +834,17 @@ export async function runComposerFilesAcceptance({
     },
   );
   assert.equal(crossThread.ok, false);
-  assert.match(crossThread.error.message, /belong|upload/);
+  assert.equal(crossThread.error.code, "INVALID_PARAMS", JSON.stringify(crossThread.error));
+  assert.equal(
+    (await readCoreThread(fork.threadId)).turns.length,
+    forkTurnsBeforeCrossThread,
+    "cross-thread upload rejection must not create a turn",
+  );
+  assert.equal(
+    received.length,
+    receivedBeforeCrossThread,
+    "cross-thread upload rejection must not reach the model",
+  );
   checks.push(
     "frozen fork replays text File without File capability; submitting another thread's upload still fails",
   );
@@ -1001,14 +1029,100 @@ export async function runComposerFilesAcceptance({
   });
   try {
     await createProjectConversation(page, "workspace");
-    // 执行工作树使用同一启动配置；此前直接写入源 Core 的测试供应商不会随之复制。
-    await configureModel({ providerId: "fixture", modelId: "fixture" });
-    await button("新会话工作区").click();
     const worktreeToggle = page.getByRole("switch", {
       name: "在新工作树中工作",
       exact: true,
     });
-    await until(async () => !(await worktreeToggle.isDisabled()), "upload worktree options ready");
+    await page.evaluate(() => {
+      const selector = 'button[aria-label="新会话工作区"]';
+      const ids = new WeakMap();
+      let nextId = 0;
+      const id = (element) => {
+        if (!element) return null;
+        if (!ids.has(element)) ids.set(element, ++nextId);
+        return ids.get(element);
+      };
+      const identify = (element) => {
+        if (!(element instanceof Element)) return null;
+        if (element.closest(selector)) return "worktree-trigger";
+        if (element.closest(".worktree-picker")) return "worktree-picker";
+        if (element.closest('[data-testid="composer-model-trigger"]')) return "model-trigger";
+        if (element.closest(".composer-model-menu")) return "model-menu";
+        if (element.closest('[data-testid="chat-input"]')) return "chat-input";
+        return element.tagName;
+      };
+      const events = [];
+      const record = (type, target, extra = {}) => {
+        const trigger = document.querySelector(selector);
+        if (events.length < 200)
+          events.push({
+            time: performance.now(),
+            type,
+            target: identify(target),
+            triggerId: id(trigger),
+            expanded: trigger?.getAttribute("aria-expanded") ?? null,
+            focus: identify(document.activeElement),
+            ...extra,
+          });
+      };
+      const listener = (event) => record(event.type, event.target);
+      const types = ["focusin", "focusout", "pointerdown", "click", "keydown"];
+      for (const type of types) document.addEventListener(type, listener, true);
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.type === "attributes" && mutation.target.matches(selector))
+            record("expanded", mutation.target, {
+              changedTriggerId: id(mutation.target),
+              previousExpanded: mutation.oldValue,
+            });
+          for (const [kind, nodes] of [
+            ["removed", mutation.removedNodes],
+            ["added", mutation.addedNodes],
+          ])
+            for (const node of nodes) {
+              if (!(node instanceof Element)) continue;
+              const trigger = node.matches(selector) ? node : node.querySelector(selector);
+              if (trigger) record(kind, trigger, { changedTriggerId: id(trigger) });
+            }
+        }
+      });
+      observer.observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeOldValue: true,
+        attributeFilter: ["aria-expanded"],
+      });
+      record("start", document.activeElement);
+      globalThis.worktreePickerDiagnostic = {
+        events,
+        stop: () => {
+          observer.disconnect();
+          for (const type of types) document.removeEventListener(type, listener, true);
+        },
+      };
+    });
+    try {
+      // 执行工作树使用同一启动配置；此前直接写入源 Core 的测试供应商不会随之复制。
+      await configureModel({ providerId: "fixture", modelId: "fixture" });
+      await button("新会话工作区").click();
+      await until(
+        async () => !(await worktreeToggle.isDisabled()),
+        "upload worktree options ready",
+      );
+    } catch (error) {
+      const events = await page
+        .evaluate(() => globalThis.worktreePickerDiagnostic.events)
+        .catch(() => null);
+      if (events)
+        await writeFile(
+          join(scratch, "files-worktree-picker-events.json"),
+          JSON.stringify(events, null, 2),
+        ).catch((cause) => console.error("worktree picker diagnostic write failed", cause));
+      throw error;
+    } finally {
+      await page.evaluate(() => globalThis.worktreePickerDiagnostic.stop()).catch(() => {});
+    }
     if ((await worktreeToggle.getAttribute("aria-checked")) !== "true")
       await worktreeToggle.click();
     await page.keyboard.press("Escape");
@@ -1129,15 +1243,19 @@ export async function runComposerFilesAcceptance({
       await until(async () => {
         const snapshot = await state();
         const activeThreadId = await activeId();
-        const outcome = Object.values(project(snapshot).outcomes ?? {}).find(
-          (entry) => entry.remote?.commandId === heldSend.requestId,
-        );
+        const outcome =
+          project(snapshot).outcomes?.[heldSend.requestId] ??
+          Object.values(project(snapshot).outcomes ?? {}).find(
+            (entry) => entry.remote?.commandId === heldSend.requestId,
+          );
         const authoritative = await readCoreThread(uploadThreadId, uploadWorkspace);
         return (
           activeThreadId === uploadThreadId &&
           !project(snapshot).pending.length &&
           outcome?.accepted === true &&
-          outcome.remote?.target?.threadId === uploadThreadId &&
+          (outcome.threadId === uploadThreadId ||
+            outcome.operation?.target?.threadId === uploadThreadId ||
+            outcome.remote?.target?.threadId === uploadThreadId) &&
           authoritative.turns.some(
             (turn) =>
               turn.status === "completed" &&

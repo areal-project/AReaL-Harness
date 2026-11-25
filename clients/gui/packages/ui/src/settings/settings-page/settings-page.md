@@ -2,7 +2,7 @@
 id: settings-page
 title: SettingsPage
 summary: 设置页面的唯一纵向滚动区、居中内容列与可选标题。
-status: experimental
+status: stable
 entry: compositions
 layer: settings
 category: settings
@@ -34,7 +34,7 @@ related: ["settings-section", "settings-group-card"]
 
 ### 设置控件与反馈
 
-`R-SETTINGSPAGE-008` 本节是新增、修改和评审客户端 UI 必须遵循的约束。设置页通过外框表达功能分组，行内展示简短名称和当前状态，控件按交互语义选择；不能只统一圆角而保留错误的交互。
+`R-SETTINGSPAGE-008` 本节是新增、修改和评审客户端 UI 必须遵循的约束。设置页通过外框表达功能分组，行内展示简短名称和当前状态，控件按交互语义选择；不能只统一圆角而保留错误的交互。**检查：**`clients/gui/packages/ui/src/settings/settings-page/settings-page.test.tsx`
 
 #### 按功能分组并保持对齐
 
@@ -49,9 +49,9 @@ related: ["settings-section", "settings-group-card"]
 | `R-SETTINGSPAGE-013` 三个及以上候选值中选择一个 | 下拉按钮与菜单 | 复用 `Select`；收起时显示当前值和右侧小箭头，展开后显示候选项与选中标记；不把选项摊成一排按钮 |
 | `R-SETTINGSPAGE-014` 两个互斥值中选择一个 | 并排的两个选项 | 复用 `SettingsSegmentedTabs`，如“底部 / 右侧”；全部可见，选中项高亮，不再套下拉菜单 |
 
-`R-SETTINGSPAGE-015` 设置行默认使用 `Switch` 的 default 尺寸（`SettingsSwitch` 同样默认）；三项及以上沿用 `SettingsSelect` 当前公共 sm 变体；具体尺寸、形状由组件决定，页面不得自行改档。尺寸与水平留白归公共实现，不在页面覆盖。
+`R-SETTINGSPAGE-015` 设置行默认使用 `Switch` 的 default 尺寸（`SettingsSwitch` 同样默认）；三项及以上沿用 `SettingsSelect` 当前公共 sm 变体；具体尺寸、形状由组件决定，页面不得自行改档。尺寸与水平留白归公共实现，不在页面覆盖。**检查：**`clients/gui/packages/ui/src/settings/settings-page/settings-page.test.tsx`
 
-`R-SETTINGSPAGE-016` 此处“多项选择”指多个候选值的单选，不等于一次选择多个值。真正允许多值选择时沿用支持复选语义的现有控件，不能假装成单选菜单。导航 Tab 与设置值选择也不能混为一谈。
+`R-SETTINGSPAGE-016` 此处“多项选择”指多个候选值的单选，不等于一次选择多个值。真正允许多值选择时沿用支持复选语义的现有控件，不能假装成单选菜单。导航 Tab 与设置值选择也不能混为一谈。**检查：**`clients/gui/packages/ui/src/settings/settings-page/settings-page.test.tsx`
 
 值、动作、导航与步骤的区分统一见[控件选择](../../../../../../../design/components/controls.md)。本表维护 GUI 的具体映射；关闭服务、清理资源等操作继续绑定已有确认与拒绝入口。
 
@@ -63,4 +63,4 @@ related: ["settings-section", "settings-group-card"]
 
 ## 生产上下文
 
-`R-BASE-009` 设置组合必须包含生产 SettingsPage 上下文。孤立 SettingsGroupCard 的库默认与挂载页面的变体可能不同；预览应复用实际组合，避免用 preview CSS 模拟生产上下文。
+`R-BASE-009` 设置组合必须包含生产 SettingsPage 上下文。孤立 SettingsGroupCard 的库默认与挂载页面的变体可能不同；预览应复用实际组合，避免用 preview CSS 模拟生产上下文。**检查：**`clients/gui/packages/ui/src/settings/settings-page/settings-page.test.tsx`

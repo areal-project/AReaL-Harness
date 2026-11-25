@@ -228,7 +228,7 @@ try {
     assert.ok((await time.getAttribute("aria-label")).includes("2026"));
     for (const [state, expected] of [
       ["paused", "你暂停了本轮执行"],
-      ["recovery", "Core 恢复时中断了本轮执行"],
+      ["recovery", "后台服务恢复时中断了本轮执行"],
       ["waiting", "正在等待重试"],
       ["recovered", "重试后已恢复"],
       ["exhausted", "回复未完成"],

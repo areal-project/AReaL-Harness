@@ -2,8 +2,8 @@
 id: notification-toast
 title: NotificationToast
 summary: 顶部短时提示，以颜色和图标区分信息、成功、警告与错误。
-status: experimental
-entry: experimental
+status: stable
+entry: index
 layer: core
 category: feedback
 aliases: ["短时等级提示"]
@@ -23,6 +23,10 @@ related: ["button"]
 ## 状态
 
 info/success/warning/error；正常计时、悬停或键盘聚焦暂停、手动关闭、自动关闭。
+
+## 规则
+
+`R-NOTIFICATIONTOAST-002` 尺寸、颜色与出入场动效只引用 Token，宿主不覆盖 `.areal-notification-toast`、`.areal-toast-icon`、`.areal-toast-actions` 内部样式。**为什么：**保证全局短时提示在亮暗主题与不同宿主页面中视觉和退场节奏一致。**推广：**需要新样式维度时给组件加 Token 或部件。**检查：**`clients/gui/design-system/verified-components.json`
 
 ## 示例
 

@@ -56,24 +56,8 @@
     "path": "clients/gui/design-system/content-system.md",
     "role": "maintainer",
     "status": "active",
-    "nonNormative": [
-      "0b3d55291ea17a89ec58938adccaa09c2a358e0ba49001b89600ba3bfd6117ae",
-      "6149f3f68cf609876c065edfbe2013a511b10bae2605eb57876e4df37e7f1650",
-      "ad9f3e08e3a18445e2686e80dd00641525b7f8599f4bd3f364690716719f42a0",
-      "c3da1a3a79e4d7c4d7f37ca2b7a80afc725403cbdb1d6683f7c207310e6f1614",
-      "c43888c5ca5af715415b7e1146c7c7075b4abcb04db2e2117fc53425ecec4cb4",
-      "d87e9762ad4bded445743ebe3c1990e8addf1af61f6e9958de4cf38e4fe42761",
-      "0dc1572ff7c86db161629fb3c8f59295413e5efd3cd3ab9aff15129fe9be34be",
-      "3787995016a7b91e30f22da67df4ce8df20c5ef2de5746c2ae80c29350d5037d"
-    ],
+    "nonNormative": ["3787995016a7b91e30f22da67df4ce8df20c5ef2de5746c2ae80c29350d5037d"],
     "nonNormativeNotes": {
-      "0b3d55291ea17a89ec58938adccaa09c2a358e0ba49001b89600ba3bfd6117ae": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
-      "6149f3f68cf609876c065edfbe2013a511b10bae2605eb57876e4df37e7f1650": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
-      "ad9f3e08e3a18445e2686e80dd00641525b7f8599f4bd3f364690716719f42a0": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
-      "c3da1a3a79e4d7c4d7f37ca2b7a80afc725403cbdb1d6683f7c207310e6f1614": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
-      "c43888c5ca5af715415b7e1146c7c7075b4abcb04db2e2117fc53425ecec4cb4": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
-      "d87e9762ad4bded445743ebe3c1990e8addf1af61f6e9958de4cf38e4fe42761": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
-      "0dc1572ff7c86db161629fb3c8f59295413e5efd3cd3ab9aff15129fe9be34be": "导航或已有生成实例的说明，事实由链接所有者定义",
       "3787995016a7b91e30f22da67df4ce8df20c5ef2de5746c2ae80c29350d5037d": "导航或已有生成实例的说明，事实由链接所有者定义"
     }
   },
@@ -233,11 +217,7 @@
   {
     "path": "clients/gui/packages/ui/src/components/button/button.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["2d5870931de9f3aabb564e3f05b4e5838552ead593c5617a0fda91ba7755ba17"],
-    "nonNormativeNotes": {
-      "2d5870931de9f3aabb564e3f05b4e5838552ead593c5617a0fda91ba7755ba17": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/components/card/card.md",
@@ -277,11 +257,7 @@
   {
     "path": "clients/gui/packages/ui/src/components/disclosure/disclosure.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["0c4505a254c2c24cc2f4d2d7812a5a56e672b164d1fd010693111b3421a0f870"],
-    "nonNormativeNotes": {
-      "0c4505a254c2c24cc2f4d2d7812a5a56e672b164d1fd010693111b3421a0f870": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/components/dropdown-menu/dropdown-menu.md",
@@ -361,11 +337,7 @@
   {
     "path": "clients/gui/packages/ui/src/conversation/activity-group/activity-group.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["788d50409774c8d55a3bfb5a93b4cd493a66a466f1ed9036f86a6aafc07ed878"],
-    "nonNormativeNotes": {
-      "788d50409774c8d55a3bfb5a93b4cd493a66a466f1ed9036f86a6aafc07ed878": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/conversation/activity-row/activity-row.md",
@@ -390,11 +362,7 @@
   {
     "path": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["5ad16944f48c72e46f063809cb074f49f75693f7d78e3212bc9c3b8c9e97d846"],
-    "nonNormativeNotes": {
-      "5ad16944f48c72e46f063809cb074f49f75693f7d78e3212bc9c3b8c9e97d846": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md",
@@ -409,11 +377,7 @@
   {
     "path": "clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["d7c05df231d52e5047233c0ce70baf4162b767a4659e4d771c75c99e0b60952a"],
-    "nonNormativeNotes": {
-      "d7c05df231d52e5047233c0ce70baf4162b767a4659e4d771c75c99e0b60952a": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/conversation/markdown-blockquote/markdown-blockquote.md",
@@ -456,31 +420,24 @@
     "status": "active"
   },
   {
+    "path": "clients/gui/packages/ui/src/conversation/thread-summary-panel/thread-summary-panel.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
     "path": "clients/gui/packages/ui/src/conversation/subagent-panel/subagent-panel.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["1eed7359eced0ee969dae0372e6b9572d9d88fb79185548c703b128012838514"],
-    "nonNormativeNotes": {
-      "1eed7359eced0ee969dae0372e6b9572d9d88fb79185548c703b128012838514": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/conversation/task-context/task-context.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["9a3fe44c264b3433cf25d66e3bd6ecc5c4340aecbbafcb82a20789057c6fb825"],
-    "nonNormativeNotes": {
-      "9a3fe44c264b3433cf25d66e3bd6ecc5c4340aecbbafcb82a20789057c6fb825": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/conversation/thinking-status/thinking-status.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["e49d0df435a47246e82a86af7d1e05bd896d51282c2f246f1ddcc52c55ca1fcc"],
-    "nonNormativeNotes": {
-      "e49d0df435a47246e82a86af7d1e05bd896d51282c2f246f1ddcc52c55ca1fcc": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/generated/tokens.md",
@@ -500,11 +457,7 @@
   {
     "path": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md",
     "role": "consumer",
-    "status": "active",
-    "nonNormative": ["6cd99d64cc92e808f1746d9a5d24c2016cc64a14ffbd7c1aafa59245fd61897c"],
-    "nonNormativeNotes": {
-      "6cd99d64cc92e808f1746d9a5d24c2016cc64a14ffbd7c1aafa59245fd61897c": "导航或已有生成实例的说明，事实由链接所有者定义"
-    }
+    "status": "active"
   },
   {
     "path": "clients/gui/packages/ui/src/settings/settings-row/settings-row.md",
@@ -1017,6 +970,66 @@
   {
     "path": "design/spec/quality.md",
     "role": "cross-product",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/components/kbd/kbd.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/components/badge/badge.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/components/callout/callout.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/conversation/composer-request-stack/composer-request-stack.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/conversation/worked-for-divider/worked-for-divider.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/conversation/thread-find-bar/thread-find-bar.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/workbench/popover-sidebar/popover-sidebar.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/workbench/automation-template-dialog/automation-template-dialog.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/settings/shortcut-capture/shortcut-capture.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/components/empty-state/empty-state.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/components/confirm-dialog/confirm-dialog.md",
+    "role": "consumer",
+    "status": "active"
+  },
+  {
+    "path": "clients/gui/packages/ui/src/components/sheet/sheet.md",
+    "role": "consumer",
     "status": "active"
   }
 ]

@@ -1,5 +1,13 @@
-import { Input, Textarea } from "@areal/ui";
-import { useLayoutEffect, useRef, useState } from "react";
+import {
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea,
+} from "@areal/ui";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import type { RegionDraft } from "./BrowserRegionAnnotation.js";
 import "./BrowserStyleTrial.css";
@@ -52,7 +60,8 @@ export function BrowserStyleTrial({
 }) {
   const [property, setProperty] = useState<string>("color");
   const [value, setValue] = useState("");
-  const field = useRef<HTMLSelectElement>(null);
+  const field = useRef<HTMLButtonElement>(null);
+  const propertyId = useId();
   const focused = useRef(false);
   useLayoutEffect(() => {
     if (!busy && !focused.current && field.current) {
@@ -90,20 +99,28 @@ export function BrowserStyleTrial({
       )}
       {!draft.after && (
         <div className="browser-style-trial-fields">
-          <label>
+          <label htmlFor={propertyId}>
             属性
-            <select
-              ref={field}
+            <Select
               value={property}
               disabled={busy || draft.stale}
-              onChange={(event) => setProperty(event.target.value)}
+              onValueChange={(next) => {
+                if (next) setProperty(next);
+              }}
             >
-              {choices.map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger ref={field} id={propertyId}>
+                <SelectValue>
+                  {choices.find(([key]) => key === property)?.[1] ?? property}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {choices.map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <label>
             试改值

@@ -1,0 +1,42 @@
+.areal-popover-sidebar-host {
+  position: relative;
+  width: 0;
+  flex: none;
+  z-index: var(--layer-popover);
+}
+
+.areal-popover-sidebar-edge {
+  position: fixed;
+  top: var(--height-toolbar);
+  bottom: var(--spacing-inline);
+  left: 0;
+  width: var(--spacing-inline);
+}
+
+.areal-popover-sidebar-panel {
+  position: fixed;
+  top: calc(var(--height-toolbar) + var(--spacing-inline));
+  bottom: var(--spacing-inline);
+  left: var(--spacing-inline);
+  width: var(--sidebar-default-width);
+  max-width: calc(100vw - var(--spacing-section));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-popover);
+  box-shadow: var(--shadow-overlay);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(calc(var(--spacing-inline) * -1));
+  transition:
+    opacity var(--motion-normal) var(--ease-standard),
+    transform var(--motion-normal) var(--ease-standard);
+}
+
+.areal-popover-sidebar-panel[data-open="true"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}

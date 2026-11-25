@@ -542,7 +542,7 @@ impl RelayOwner {
         let uri = request.uri();
         if let Some(host) = &self.config.local_host {
             ensure!(
-                uri.scheme_str() == Some("ws") && uri.host() == Some("127.0.0.1"),
+                uri.scheme_str() == Some("ws") && matches!(uri.host(), Some("127.0.0.1" | "[::1]")),
                 "本机 Relay 必须使用环回地址"
             );
             request.headers_mut().insert("Host", host.parse()?);

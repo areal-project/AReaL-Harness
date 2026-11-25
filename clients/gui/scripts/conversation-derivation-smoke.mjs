@@ -1,4 +1,6 @@
+import { readDesktopSnapshot } from "./support/desktop-fixture.mjs";
 import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
+import { prepareRecording } from "./prepare-recording.mjs";
 import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
@@ -15,9 +17,9 @@ import { fileURLToPath } from "node:url";
 import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 import {
-  assertApplicationStopped,
   closeRecordedSmokeApplication,
-  stopFixtureHost,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
 } from "./application-cleanup.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -25,6 +27,7 @@ const root = resolve(gui, "../..");
 const desktop = join(gui, "app");
 const require = createRequire(join(desktop, "package.json"));
 const { _electron: electron } = require("playwright-core");
+prepareRecording();
 const binary = process.env.AREAL_CORE_BIN || join(root, "target/debug/areal");
 const evidenceRoot = join(root, ".scratch", "gui-evidence");
 await mkdir(evidenceRoot, { recursive: true });
@@ -197,12 +200,10 @@ for (const entry of [
       text: "mutation",
     },
   })),
-  ...["mcpFormRespond", "mcpExtensionCall", "mcpConnect", "contextCompact", "processStart"].map(
-    (operation) => ({
-      command: "manage",
-      parameters: { projectId: "project", threadId: "source", operation },
-    }),
-  ),
+  ...["mcpExtensionCall", "mcpConnect", "contextCompact", "processStart"].map((operation) => ({
+    command: "manage",
+    parameters: { projectId: "project", threadId: "source", operation },
+  })),
   { command: "feedback", parameters: { operation: "preference", enabled: true } },
   { command: "trajectory", parameters: { operation: "retry" } },
   { command: "unknown", parameters: {} },
@@ -243,9 +244,7 @@ const modelConfiguration = (config) => {
 };
 
 async function state() {
-  return withSmokeDeadline("renderer snapshot", () =>
-    page.evaluate(() => window.arealDesktop.snapshot()),
-  );
+  return withSmokeDeadline("renderer snapshot", () => readDesktopSnapshot(page));
 }
 
 async function recordMainFailures(application) {
@@ -502,132 +501,14 @@ async function readCoreThread(threadId) {
     env,
     gui,
     threadId,
-    project: project(await state()),
     workspace,
   });
 }
-async function stopService(env) {
-  const { ServiceConnection } = require(join(desktop, "src/core/service-client.cjs"));
-  const { DesktopLifecycle } = require(join(desktop, "src/core/lifecycle.cjs"));
-  const { executeCore } = require(join(gui, "scripts/support/core-process-fixture.cjs"));
-  const service = async (args) =>
-    JSON.parse(
-      (
-        await executeCore(binary, ["service", ...args, "--json"], {
-          env: { ...env, AREAL_HARNESS_SERVICE_HOME: serviceRegistry },
-          timeout: 30000,
-        })
-      ).stdout,
-    );
-  const cleanup = {
-    registry: serviceRegistry,
-    stopped: false,
-    stopOutcomeUnknown: false,
-    instances: [],
-    errors: [],
-  };
-  events.push({ serviceCleanup: cleanup });
-  let metadata;
-  try {
-    metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-  } catch (error) {
-    if (error.code !== "ENOENT") cleanup.errors.push(error.message);
-  }
-  if (metadata)
-    try {
-      const connection = new ServiceConnection();
-      try {
-        await connection.connect(metadata);
-        await connection.request("hello", {
-          protocol: metadata.protocol,
-          identity: metadata.identity,
-        });
-        const lifecycle = new DesktopLifecycle({
-          connection,
-          metadata,
-          home: join(scratch, "core"),
-          forUpdate: false,
-          notify: async () => ({ response: 1 }),
-        });
-        const observed = await lifecycle.observe();
-        const instances = await service(["list"]);
-        assert.ok(Array.isArray(instances), "isolated service list must be an array");
-        for (const target of observed.targets)
-          if (target.serviceId !== null) {
-            assert.ok(
-              instances.some(
-                (instance) =>
-                  instance.serviceId === target.serviceId &&
-                  instance.generation === target.generation,
-              ),
-              "desktop cleanup target must belong to the isolated registry generation",
-            );
-          }
-        const result = await lifecycle.stop({ mode: "cancel", observed });
-        assert.equal(result.kind, "exited", "desktop lifecycle exit must be confirmed");
-      } finally {
-        connection.close();
-      }
-    } catch (error) {
-      cleanup.stopOutcomeUnknown = error.submissionUnknown === true;
-      cleanup.errors.push(error.message);
-    }
-  try {
-    const instances = await service(["list"]);
-    assert.ok(Array.isArray(instances), "isolated service list must be an array");
-    for (const instance of instances)
-      if (instance.state !== "stopped" && !cleanup.stopOutcomeUnknown) {
-        try {
-          const stopped = await service([
-            "stop",
-            "--instance",
-            instance.serviceId,
-            "--expected-generation",
-            instance.generation,
-            "--cancel",
-          ]);
-          assert.equal(
-            stopped.state,
-            "stopped",
-            `service ${instance.serviceId} stop must be confirmed`,
-          );
-        } catch (error) {
-          cleanup.errors.push(`${instance.serviceId}: ${error.message}`);
-        }
-      }
-    const remaining = await service(["list"]);
-    assert.ok(Array.isArray(remaining), "isolated service confirmation must be an array");
-    cleanup.instances = remaining.map(({ serviceId, generation, workspace, state }) => ({
-      serviceId,
-      generation,
-      workspace,
-      state,
-    }));
-    assert.ok(
-      remaining.every((instance) => instance.state === "stopped"),
-      "isolated registry still has live or unconfirmed services",
-    );
-  } catch (error) {
-    cleanup.errors.push(error.message);
-  }
-  if (metadata)
-    try {
-      try {
-        await readFile(join(scratch, "core/service.json"), "utf8");
-        throw Error("desktop service metadata remains after stop");
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
-    } catch (error) {
-      cleanup.errors.push(error.message);
-    }
-  if (cleanup.errors.length)
-    throw Error(`isolated service cleanup not confirmed: ${cleanup.errors.join("; ")}`);
-  cleanup.stopped = true;
-  checks.push(
-    "isolated desktop service exited and all registry Core services stopped, including projectless",
-  );
-  return cleanup;
+async function storedThreadIds() {
+  return (await readdir(join(scratch, "core", projectId, "state")))
+    .filter((name) => /^[a-f0-9-]{36}\.json$/i.test(name))
+    .map((name) => name.slice(0, -5))
+    .sort();
 }
 
 console.log("GUI evidence:", scratch);
@@ -833,14 +714,14 @@ try {
   }, workspace);
   await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
-  await until((s) => project(s)?.state?.connected, "project connection");
-  projectId = project(await state()).id;
-  const sourceModelTrigger = page
-    .getByTestId("composer-model-trigger")
-    .filter({ hasText: "fixture" });
-  await sourceModelTrigger.waitFor();
+  const registered = await until((snapshot) => project(snapshot), "workspace registration");
+  projectId = project(registered).id;
+  await page.waitForFunction(
+    (id) => document.querySelector('[data-testid="areal-workbench"]')?.dataset.projectId === id,
+    projectId,
+  );
   // 新草稿需显式选择目录中的模型，再开始本专项的来源对话。
-  await sourceModelTrigger.click();
+  await page.getByRole("button", { name: "选择模型", exact: true }).click();
   await page.getByRole("tab", { name: "fixture", exact: true }).click();
   await page.locator('[data-model-value="fixture/fixture"]').getByRole("radio").click();
   await page.keyboard.press("Escape");
@@ -848,7 +729,19 @@ try {
   await page.evaluate(installHostTransportBarrier);
   await page.evaluate(() => {
     globalThis.__scfMutations = [];
+    globalThis.__scfCreations = [];
     globalThis.__scfBarrier = globalThis.createHostTransportBarrier((frame) => {
+      if (frame.method === "session.create") {
+        const record = { commandId: frame.commandId, frameId: frame.id };
+        globalThis.__scfCreations.push(record);
+        return {
+          onResponse(reply) {
+            record.errorCode = reply.error?.code;
+            record.admissionState = reply.result?.admissionState;
+            record.threadId = reply.result?.threadId;
+          },
+        };
+      }
       if (frame.method !== "desktop.command") return null;
       const command = frame.params?.command;
       let request = frame.params?.request;
@@ -908,9 +801,7 @@ try {
   assert.notEqual(second.turnId, anchorTurnId);
   assert.equal(requests.length, 2, "plain-text source should require exactly two fixture requests");
   await shot("01-source.png");
-  const sourceTurns = project(await state()).state.threads[sourceThreadId].turns.map(
-    (turn) => turn.id,
-  );
+  const sourceTurns = (await readCoreThread(sourceThreadId)).turns.map((turn) => turn.id);
   const beforeCreation = {
     modelRequests: requests.length,
     workspaceSha256: await hash(fixturePath),
@@ -926,7 +817,7 @@ try {
     "Branch opens its target dialog directly",
   );
   assert.equal(await forkDialog.getByText("在当前工作区中创建", { exact: true }).count(), 1);
-  assert.equal(await forkDialog.getByText("在新工作树中创建", { exact: true }).count(), 0);
+  assert.equal(await forkDialog.getByText(/^在新工作树中创建$/).count(), 0);
   assert.equal(await forkDialog.getByRole("button").count(), 1);
   assert.equal(
     await forkDialog.locator("select, details, [data-slot=popover-description]").count(),
@@ -965,7 +856,7 @@ try {
     true,
   );
   assert.equal(requests.length, beforeCreation.modelRequests);
-  assert.equal(Object.keys(project(await state()).state.threads).length, 1);
+  assert.deepEqual(await storedThreadIds(), [sourceThreadId]);
   await shot("01a-fork-config-refusal.png");
   checks.push(
     "AC15/61: compact Fork offers one inherited-config action, dismisses via Escape/outside click, and preserves retry after actual Core Workflow rejection without a target or model request",
@@ -984,10 +875,7 @@ try {
   assert.ok(lostResult.transport.requestId != null);
   assert.equal(lostResult.transport.responseHit, lostResult.transport.requestId);
   assert.equal(requests.length, beforeCreation.modelRequests);
-  const storedThreads = (await readdir(join(scratch, "core", projectId, "state")))
-    .filter((name) => /^[a-f0-9-]{36}\.json$/i.test(name))
-    .map((name) => name.slice(0, -5));
-  assert.deepEqual(storedThreads.sort(), [sourceThreadId, lostResult.resultThreadId].sort());
+  assert.deepEqual(await storedThreadIds(), [sourceThreadId, lostResult.resultThreadId].sort());
   await shot("01b-fork-response-unknown.png");
   await page.keyboard.press("Escape");
   await forkDialog.waitFor({ state: "hidden" });
@@ -1008,7 +896,7 @@ try {
     beforeCreation.workspaceSha256,
     "fork creation must not change files",
   );
-  const target = project(await state()).state.threads[targetThreadId];
+  const target = await readCoreThread(targetThreadId);
   assert.equal(target.conversation?.kind, "fork");
   assert.equal(target.conversation?.origin?.sourceThreadId, sourceThreadId);
   assert.equal(target.conversation?.origin?.sourceTurnId, anchorTurnId);
@@ -1101,8 +989,8 @@ try {
       branchInput.includes(forkDraftPrefix),
     "model input must include selected source prefix and preserved/extended explicit input",
   );
-  const branchUserMessage = project(await state())
-    .state.threads[targetThreadId].turns.at(-1)
+  const branchUserMessage = (await readCoreThread(targetThreadId)).turns
+    .at(-1)
     .items.find((item) => item.type === "userMessage");
   const branchUserText = (branchUserMessage.content ?? [])
     .filter((part) => part.type === "text")
@@ -1116,7 +1004,7 @@ try {
   );
   assert.ok(!branchInput.includes(future), "model input must exclude future source Turn");
   assert.deepEqual(
-    project(await state()).state.threads[sourceThreadId].turns.map((turn) => turn.id),
+    (await readCoreThread(sourceThreadId)).turns.map((turn) => turn.id),
     sourceTurns,
   );
   assert.equal(await hash(fixturePath), workspaceBefore);
@@ -1130,8 +1018,10 @@ try {
     .locator(".composer-dock:not(.side-chat-composer)")
     .getByRole("button", { name: "发送", exact: true })
     .click();
-  const running = await until((s) => {
-    const turn = project(s)?.state?.threads?.[sourceThreadId]?.turns?.at(-1);
+  let runningTurn;
+  await until(async () => {
+    const turn = (await readCoreThread(sourceThreadId)).turns.at(-1);
+    runningTurn = turn;
     return (
       turn &&
       !sourceTurns.includes(turn.id) &&
@@ -1139,10 +1029,9 @@ try {
       JSON.stringify(requests.at(-1)?.body?.messages ?? []).includes(activeQuestion)
     );
   }, "source active Turn at model barrier");
-  activeTurnId = project(running).state.threads[sourceThreadId].turns.at(-1).id;
+  activeTurnId = runningTurn.id;
   await untilFile(toolStarted, "Core/Runtime source command marker");
-  const sourceProject = project(await state());
-  const sourceConfig = sourceProject.configurations?.[sourceThreadId];
+  const sourceConfig = (await readCoreThread(sourceThreadId)).desktop?.configuration;
   assert.ok(
     Number.isInteger(sourceConfig?.revision) && sourceConfig.revision > 0,
     "source must have an actual Core configuration before retention check",
@@ -1159,7 +1048,7 @@ try {
     buffer: Buffer.from("keep this main attachment"),
   });
   await page.getByTestId("composer-attachments").getByText("main-attachment.txt").waitFor();
-  assert.equal(project(running).state.threads[sourceThreadId].turns.at(-1).status, "inProgress");
+  assert.equal((await readCoreThread(sourceThreadId)).turns.at(-1).status, "inProgress");
   checks.push(
     "AC30: source run_command entered the real Core/Runtime process and remains held while Side begins",
   );
@@ -1221,7 +1110,7 @@ try {
   await page.keyboard.press("Escape");
   await selectionActions.waitFor({ state: "hidden" });
   assert.equal(
-    project(await state()).state.threads[sourceThreadId].turns.at(-1).status,
+    (await readCoreThread(sourceThreadId)).turns.at(-1).status,
     "inProgress",
     "dismissing selection actions must not stop the source Turn",
   );
@@ -1239,8 +1128,10 @@ try {
   assert.equal(await sideTrigger.count(), 0, "来源 A 的选区不能在切换后的 B 会话显示或提交");
   await selectConversation(page, sourceThreadId);
   // 导航会补全默认模型的权威版本；在打开 Side 前固定完整配置基线。
-  const refreshedSource = await until((s) => {
-    const configuration = project(s)?.configurations?.[sourceThreadId];
+  let refreshedConfiguration;
+  await until(async () => {
+    const configuration = (await readCoreThread(sourceThreadId)).desktop?.configuration;
+    refreshedConfiguration = configuration;
     return (
       (configuration?.model?.providerId === "fixture" &&
         configuration.model.modelId === "fixture") ||
@@ -1249,9 +1140,7 @@ try {
         configuration.defaultModelRevision.length > 0)
     );
   }, "source configured fixture model restored after navigation");
-  const mainConfigBefore = modelConfiguration(
-    project(refreshedSource).configurations[sourceThreadId],
-  );
+  const mainConfigBefore = modelConfiguration(refreshedConfiguration);
   // 路由身份先于历史恢复发布；等待 Composer 解除恢复阻塞后再建立选区。
   await page.waitForFunction(() => {
     const primary = document.querySelector(
@@ -1259,27 +1148,27 @@ try {
     );
     return primary && !primary.disabled;
   });
+  await until(async () => {
+    const thread = project(await state())?.state?.threads?.[sourceThreadId];
+    return thread?.displayHistory?.freshness === "fresh";
+  }, "source thread observation fresh before selection");
+  const beforeCurrentSide = requests.length;
+  const sourceTurnIdsBeforeSide = (await readCoreThread(sourceThreadId)).turns.map(
+    (turn) => turn.id,
+  );
   await selectSideExcerpt();
+  await sideTrigger.waitFor();
   checks.push(
     "AC55: floating selection actions and Add to Chat preserve main text/files, remove/readd quotes without sending, dismiss on Escape/collapse/outside/scroll, and invalidate on source navigation",
   );
-  const beforeCurrentSide = requests.length;
-  const sourceTurnIdsBeforeSide = project(await state()).state.threads[sourceThreadId].turns.map(
-    (turn) => turn.id,
-  );
   await sideTrigger.click();
   const sidePane = page.getByTestId("side-chat-pane").filter({ visible: true });
-  await sidePane.waitFor();
+  await sidePane.and(page.locator("[data-thread-id]:not([data-thread-id=''])")).waitFor();
   sideThreadId = await sidePane.getAttribute("data-thread-id");
-  const sideState = await until(
-    (snapshot) => project(snapshot).state.threads[sideThreadId],
-    "current Side child admitted",
-  );
-  assert.equal(
-    project(sideState).state.threads[sideThreadId].conversation.policy.kind,
-    "sideExecutableV2",
-  );
-  assert.equal(project(sideState).state.threads[sideThreadId].turns.length, 0);
+  assert.ok(sideThreadId);
+  const sideThread = await readCoreThread(sideThreadId);
+  assert.equal(sideThread.conversation.policy.kind, "sideExecutableV2");
+  assert.equal(sideThread.turns.length, 0);
   assert.equal(
     requests.length,
     beforeCurrentSide,
@@ -1293,21 +1182,18 @@ try {
   await sideInput.fill(sideQuestion);
   await sidePane.getByRole("button", { name: "发送", exact: true }).click();
   let sideTurn;
-  const sideAnswered = await until(async () => {
+  await until(async () => {
     sideTurn = (await readCoreThread(sideThreadId))?.turns.at(-1);
     return sideTurn?.status === "completed";
   }, "current Side answer completed");
   await sidePane.locator(`[data-turn-id="${sideTurn.id}"][data-turn-status="completed"]`).waitFor();
-  const sourceAfter = project(sideAnswered).state.threads[sourceThreadId];
+  const sourceAfter = await readCoreThread(sourceThreadId);
   assert.deepEqual(
     sourceAfter.turns.map((turn) => turn.id),
     sourceTurnIdsBeforeSide,
   );
   assert.equal(sourceAfter.turns.at(-1).status, "inProgress");
-  assert.deepEqual(
-    modelConfiguration(project(sideAnswered).configurations[sourceThreadId]),
-    mainConfigBefore,
-  );
+  assert.deepEqual(modelConfiguration(sourceAfter.desktop?.configuration), mainConfigBefore);
   const sideRequest = JSON.stringify(
     requests.slice(beforeCurrentSide).map((request) => request.body),
   );
@@ -1326,6 +1212,10 @@ try {
     const thread = await readCoreThread(sourceThreadId);
     return thread?.turns.find((turn) => turn.id === activeTurnId)?.status === "completed";
   }, "source Runtime command settled");
+  // 窄屏下 Side 以整页 panel 视图覆盖主会话，先切回主会话再验证可见完成态。
+  if ((await page.locator(".work-area").getAttribute("data-workspace-view")) === "panel") {
+    await page.getByRole("button", { name: "进入分屏视图", exact: true }).click();
+  }
   await page.locator(`[data-turn-id="${activeTurnId}"][data-turn-status="completed"]`).waitFor();
   checks.push(
     "current selection-to-Side creates an idle executable child, sends verified Unicode context only on explicit send, and preserves source identity/configuration while its real Runtime command is active",
@@ -1365,18 +1255,20 @@ try {
   await writeFile(toolRelease, "cleanup\n");
   for (const release of heldResponses.values()) release();
   heldResponses.clear();
-  let originalAdapter = null;
-  try {
-    originalAdapter = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-  } catch (error) {
-    if (error.code !== "ENOENT") {
-      events.push({ adapterIdentityError: error.message });
-      failure ??= error.stack ?? String(error);
-      passed = false;
-      process.exitCode = 1;
-    }
-  }
+  const electronPid = app?.process()?.pid;
+  const originalHost = await readFixtureHost(env);
   if (app) {
+    if (!passed && page) {
+      try {
+        events.push({
+          createCommands: await withSmokeDeadline("creation evidence", () =>
+            page.evaluate(() => globalThis.__scfCreations ?? []),
+          ),
+        });
+      } catch (error) {
+        events.push({ creationCaptureError: error.message });
+      }
+    }
     if (!firstMutations.length)
       try {
         firstMutations = await withSmokeDeadline("mutation evidence", () =>
@@ -1423,10 +1315,11 @@ try {
   }
   let cleanupConfirmed = true;
   try {
-    const receipt = await stopFixtureHost(binary, serviceRegistry, scratch);
-    assert.ok(receipt, "the original fixture Host stop is confirmed");
-    await assertApplicationStopped(binary, env, originalAdapter);
-    await stopService(env);
+    await settleFixtureHostAfterQuit(binary, env, scratch, {
+      host: originalHost,
+      pid: electronPid,
+    });
+    checks.push("isolated Host stop receipt and original process exits are confirmed");
   } catch (error) {
     cleanupConfirmed = false;
     events.push({ hostCleanupFailed: error.message, retainedRegistry: serviceRegistry });

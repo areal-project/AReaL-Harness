@@ -38,11 +38,17 @@ export function ApiKeyInput({
         {...TECHNICAL_INPUT_ATTRIBUTES}
         type={visible && !readOnly ? "text" : "password"}
         size="lg"
-        aria-label="API Key" data-testid={TID_MODEL_PROVIDER_API_KEY_INPUT}
-        className="pr-10 h-9"
-        placeholder={configured ? "••••••••" : intl.formatMessage({
-          id: "settings.modelProvider.apiKeyPlaceholder",
-        })}
+        aria-label="API Key"
+        data-testid={TID_MODEL_PROVIDER_API_KEY_INPUT}
+        endAction
+        className="h-9"
+        placeholder={
+          configured
+            ? "••••••••"
+            : intl.formatMessage({
+                id: "settings.modelProvider.apiKeyPlaceholder",
+              })
+        }
         value={value}
         readOnly={readOnly}
         disabled={readOnly}
@@ -63,7 +69,10 @@ export function ApiKeyInput({
         disabled={readOnly || loading || (!value && !configured)}
         className="absolute top-1/2 right-1.5 -translate-y-1/2"
         aria-busy={loading}
-        aria-label={visible ? t("settings.apiKeyInput.hideAPIKey") : t("settings.apiKeyInput.showAPIKey")} onClick={onToggleVisibility}
+        aria-label={
+          visible ? t("settings.apiKeyInput.hideAPIKey") : t("settings.apiKeyInput.showAPIKey")
+        }
+        onClick={onToggleVisibility}
       >
         {visible ? <EyeOffIcon className="size-3.5" /> : <EyeIcon className="size-3.5" />}
       </Button>

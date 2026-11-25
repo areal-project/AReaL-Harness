@@ -32,7 +32,11 @@ export type Fresh<T> =
   | { state: "loading" | "unavailable"; previous?: T; error?: string }
   | { state: "stale"; value: T; error?: string }
   | { state: "fresh"; value: T };
-export type ReadSnapshot = { shell: Fresh<ShellRead>; session: Fresh<SessionRead> };
+export type ReadSnapshot = {
+  shell: Fresh<ShellRead>;
+  session: Fresh<SessionRead>;
+  sessionTarget?: { projectId: string; threadId: string; serviceGeneration?: string };
+};
 export const SESSION_READ_CACHE_MS = 3 * 60 * 1000;
 export const SESSION_READ_CACHE_LIMIT = 8;
 export function sessionReadKey(
@@ -138,7 +142,11 @@ function summary(value: unknown): value is NavigationSummary {
     (value.conversation === undefined ||
       (record(value.conversation) && typeof value.conversation.kind === "string")) &&
     record(value.desktop) &&
-    typeof value.desktop.archived === "boolean"
+    typeof value.desktop.archived === "boolean" &&
+    (value.activity === undefined ||
+      value.activity === "working" ||
+      value.activity === "needsYou" ||
+      value.activity === "failed")
   );
 }
 function worktree(value: unknown): value is WorktreeDisplay {
@@ -194,6 +202,7 @@ function navigation(n: unknown): n is SourceNavigation {
   return (
     record(n) &&
     typeof n.sourceId === "string" &&
+    (n.providerRevision === undefined || typeof n.providerRevision === "string") &&
     ["available", "unknown"].includes(String(n.state)) &&
     Array.isArray(n.bindings) &&
     n.bindings.every(

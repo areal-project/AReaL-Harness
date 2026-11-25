@@ -4,10 +4,9 @@ import * as React from "react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { cn } from "../../lib/utils.js";
 
-type StyledProps<T extends React.ElementType> = Omit<
-  React.ComponentProps<T>,
-  "className"
-> & { className?: string };
+type StyledProps<T extends React.ElementType> = Omit<React.ComponentProps<T>, "className"> & {
+  className?: string;
+};
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
 
@@ -25,7 +24,7 @@ function PopoverContent({
     React.ComponentProps<typeof PopoverPrimitive.Positioner>,
     "align" | "side" | "sideOffset" | "anchor"
   > & {
-    variant?: "default" | "menu";
+    variant?: "default" | "menu" | "compact" | "flush";
     keepMounted?: boolean;
   }) {
   return (
@@ -41,8 +40,14 @@ function PopoverContent({
         <PopoverPrimitive.Popup
           data-slot="popover-content"
           className={cn(
-            "ui-popup flex w-72 max-w-(--available-width) max-h-(--available-height) flex-col gap-field rounded-overlay border border-popover-border text-ui-base text-popover-foreground shadow-overlay overflow-y-auto outline-none [app-region:no-drag]",
-            variant === "menu" ? "bg-menu p-0" : "bg-popover p-2.5",
+            "ui-popup scrollbar-hide flex max-w-(--available-width) max-h-(--available-height) rounded-overlay border border-popover-border text-ui-base text-popover-foreground shadow-overlay overflow-x-hidden overflow-y-auto outline-none [app-region:no-drag]",
+            variant === "menu"
+              ? "w-72 flex-col gap-0 bg-menu p-0"
+              : variant === "compact"
+                ? "w-auto flex-row gap-inline bg-popover p-1"
+                : variant === "flush"
+                  ? "w-auto flex-col gap-0 bg-popover p-0"
+                  : "w-72 flex-col gap-field bg-popover p-2.5",
             className,
           )}
           {...props}
@@ -60,10 +65,7 @@ function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
     />
   );
 }
-function PopoverTitle({
-  className,
-  ...props
-}: StyledProps<typeof PopoverPrimitive.Title>) {
+function PopoverTitle({ className, ...props }: StyledProps<typeof PopoverPrimitive.Title>) {
   return (
     <PopoverPrimitive.Title
       data-slot="popover-title"
@@ -74,21 +76,20 @@ function PopoverTitle({
 }
 function PopoverDescription({
   className,
+  tone = "muted",
   ...props
-}: StyledProps<typeof PopoverPrimitive.Description>) {
+}: StyledProps<typeof PopoverPrimitive.Description> & { tone?: "muted" | "foreground" }) {
   return (
     <PopoverPrimitive.Description
       data-slot="popover-description"
-      className={cn("text-muted-foreground", className)}
+      className={cn(
+        tone === "foreground"
+          ? "text-ui-sm leading-normal wrap-anywhere text-foreground"
+          : "text-muted-foreground",
+        className,
+      )}
       {...props}
     />
   );
 }
-export {
-  Popover,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-};
+export { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger };

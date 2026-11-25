@@ -205,11 +205,16 @@ function configurationProof(value) {
   if (!proofRecord(value)) throw new Error("Core 模型配置应用证明无效，请刷新核对。");
   return value;
 }
-/** @param {unknown} value @returns {{restartSafe:boolean}} */
+/** @param {unknown} value @returns {{restartSafe:boolean,executionReady:boolean,executionError:string|null}} */
 function serverStatus(value) {
   if (!record(value) || typeof value.restartSafe !== "boolean")
     throw new Error("Core 服务状态无效");
-  return { restartSafe: value.restartSafe };
+  const error = record(value.configuration) ? value.configuration.error : undefined;
+  return {
+    restartSafe: value.restartSafe,
+    executionReady: value.executionReady !== false,
+    executionError: typeof error === "string" ? error : null,
+  };
 }
 /** @param {unknown} value @returns {value is AcceptedModel} */
 function isAcceptedModel(value) {
@@ -343,14 +348,14 @@ function modelCapabilities(raw) {
 /** @typedef {{stream:boolean,tools:boolean|null,usage:boolean|null,store?:boolean,unsupportedParameters?:string[]}} CapabilityDefaults */
 /** @typedef {{definitionId:string,connectionId:string,billing:string,authentication:string,credentialSource:string,region:string|null,discovery:Discovery,capabilityDefaults:CapabilityDefaults}} ConnectionMetadata */
 /** @typedef {{id:string,name:string,kind:string,icon:string|null,baseUrl:string,protocol:string,protocols:string[],authMethods:string[],billing:string,models:Array<{id:string,enabled:boolean}>,configurationSchema:Record<string,string>,discovery:Discovery,capabilityDefaults:CapabilityDefaults,regions:Array<{id:string,name:string,baseUrl:string}>}} ProviderDefinition */
-/** @typedef {Pick<ModelSnapshot,'path'|'revision'|'defaultModel'|'credentialStates'|'credentialSources'|'effective'> & {data:Array<ProviderConfig & {baseUrl:string,connection:ConnectionMetadata}>,projects:Array<{projectId:string,root:string,connected:boolean,applied:boolean,error:string|null,application:ApplicationState}>,pendingApply:boolean,application:ApplicationState,definitions:ProviderDefinition[]}} ProviderStatus */
+/** @typedef {Pick<ModelSnapshot,'path'|'revision'|'defaultModel'|'credentialStates'|'credentialSources'|'effective'> & {data:Array<ProviderConfig & {baseUrl:string,connection:ConnectionMetadata}>,projects:Array<{projectId:string,root:string,connected:boolean,applied:boolean,error:string|null,application:ApplicationState}>,pendingApply:boolean,refreshing?:boolean,application:ApplicationState,definitions:ProviderDefinition[]}} ProviderStatus */
 /** @typedef {{id:string,name?:string,source?:string,parameters?:{contextWindowTokens:number},reasoningEffortOptions?:string[]}} SubscriptionModel */
 /** @typedef {{loginId:string,authUrl:string}} Login */
 /** @typedef {{code:string,state:string,phase:string,httpStatus:number|null,requestId:string|null}} Diagnostic */
 /** @typedef {{authenticated:boolean,state:string,email:string|null,planType:string|null,modelError:string|null,models:SubscriptionModel[],diagnostic:Diagnostic|null,login:Login|null,error:string|null,activeAccountId?:string|null,accounts?:Array<{id:string,label:string,email:string|null,active:boolean,state:string,billing:string}>}} AccountStatus */
 /** @typedef {AccountStatus & {availability?:'checking'|'available'|'unavailable',refreshing?:boolean,billing:string,catalog:{source:string,fetchedAt:number|null,fresh:boolean,sessionRevision:number|null,overrides:boolean}|null}} ChatGPTStatus */
 /** @template {string} N @typedef {N extends 'providers' ? ProviderRequest : N extends 'chatgpt' ? ChatGPTRequest : never} Request */
-/** @template {string} N @template P @typedef {N extends 'providers' ? P extends {operation:'revealKey'} ? {apiKey:string} : P extends {operation:'probe'} ? {state:'connected'} : P extends {operation:'discover'} ? {models:string[],modelParameters?:Record<string,ModelParameters>} : P extends {operation:'list'|'apply'|'save'|'saveAndApply'|'removeAndApply'|'defaultAndApply'|'remove'|'default'} ? ProviderStatus : never : N extends 'chatgpt' ? P extends {operation:'login'} ? Login : P extends {operation:'probe'} ? {state:'connected'} : P extends {operation:'status'|'forget'|'logout'|'selectAccount'|'cancel'} ? ChatGPTStatus : never : never} Response */
+/** @template {string} N @template P @typedef {N extends 'providers' ? P extends {operation:'revealKey'} ? {apiKey:string} : P extends {operation:'probe'} ? {state:'connected',networkRoute?:'proxy'|'direct'} : P extends {operation:'discover'} ? {models:string[],modelParameters?:Record<string,ModelParameters>} : P extends {operation:'list'|'apply'|'save'|'saveAndApply'|'removeAndApply'|'defaultAndApply'|'remove'|'default'} ? ProviderStatus : never : N extends 'chatgpt' ? P extends {operation:'login'} ? Login : P extends {operation:'probe'} ? {state:'connected'} : P extends {operation:'status'|'forget'|'logout'|'selectAccount'|'cancel'} ? ChatGPTStatus : never : never} Response */
 /** @param {unknown} value @returns {value is string} */
 function text(value) {
   return typeof value === "string";
@@ -526,6 +531,7 @@ function providerStatus(value) {
     (value.defaultModel === null || modelRef(value.defaultModel)) &&
     stringMap(value.credentialStates) &&
     stringMap(value.credentialSources) &&
+    (value.refreshing === undefined || typeof value.refreshing === "boolean") &&
     record(value.effective) &&
     Array.isArray(value.data) &&
     value.data.every(
@@ -632,7 +638,13 @@ function isResponse(name, request, value) {
         value.apiKey.length <= 16384 &&
         Object.keys(value).every((key) => key === "apiKey")
       );
-    if (request.operation === "probe") return value.state === "connected";
+    if (request.operation === "probe")
+      return (
+        value.state === "connected" &&
+        (value.networkRoute === undefined ||
+          value.networkRoute === "proxy" ||
+          value.networkRoute === "direct")
+      );
     if (request.operation === "discover")
       return (
         strings(value.models) &&

@@ -94,6 +94,8 @@ struct Args {
     #[arg(long)]
     no_deployment_mcp: bool,
     #[arg(long)]
+    history_only: bool,
+    #[arg(long)]
     tui: bool,
     #[arg(long)]
     desktop: bool,
@@ -271,6 +273,9 @@ impl Args {
         }
         if self.no_deployment_mcp {
             out.push("--no-deployment-mcp".into());
+        }
+        if self.history_only {
+            out.push("--history-only".into());
         }
         out
     }
@@ -497,6 +502,19 @@ async fn preflight(args: &mut Args) -> Result<(PathBuf, PathBuf, PathBuf)> {
         .map_or_else(std::env::current_dir, |p| Ok(p.clone()))?
         .canonicalize()?;
     ensure!(workspace.is_dir(), "workspace must be a directory");
+    if args.service_info.is_some() {
+        // Host 已固定存储身份；执行配置预检不能拦住同一 Core 的历史读取入口。
+        let registered = args
+            .data_dir
+            .as_ref()
+            .context("service requires registered data directory")?;
+        let data = areal_local_service::storage::canonical_pending(registered)?;
+        ensure!(
+            !data.starts_with(&workspace),
+            "Core data must be outside the execution workspace"
+        );
+        return Ok((binary, workspace, data));
+    }
     let mut check = TrustedCommand::supervised(&binary, &[])?;
     check.args(["config", "show"]).args(args.core_overrides());
     let output = check

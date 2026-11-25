@@ -193,13 +193,9 @@ export class CoreClient {
     }
     if (message.method && message.id !== undefined) {
       if (
-        ![
-          "item/tool/call",
-          "areal/browser/prepare",
-          "areal/computer/prepare",
-          "areal/task/prepare",
-          "areal/cua/turnEnded",
-        ].includes(message.method) ||
+        !["item/tool/call", "areal/browser/prepare", "areal/task/prepare"].includes(
+          message.method,
+        ) ||
         !this.onServerRequest
       ) {
         this.socket.send(

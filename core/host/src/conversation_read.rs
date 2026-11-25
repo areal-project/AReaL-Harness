@@ -25,7 +25,7 @@ struct PersistedRead {
 fn persisted_capacity() -> Arc<tokio::sync::Semaphore> {
     static CAPACITY: OnceLock<Arc<tokio::sync::Semaphore>> = OnceLock::new();
     CAPACITY
-        .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(2)))
+        .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(6)))
         .clone()
 }
 
@@ -41,6 +41,14 @@ fn existing_lock(path: &std::path::Path) -> Result<std::fs::File> {
             && metadata.mode() & 0o022 == 0,
         "PERSISTED_HISTORY_UNAVAILABLE"
     );
+    file.try_lock_exclusive()
+        .map_err(|_| super::error("RESOURCE_BUSY", "project history is currently owned"))?;
+    Ok(file)
+}
+
+// 仅已发布、从未建立服务的导入来源可补建互斥锁；仍使用同一服务与 Store 锁顺序。
+fn imported_history_lock(path: &std::path::Path) -> Result<std::fs::File> {
+    let file = storage::open_private(path, true)?;
     file.try_lock_exclusive()
         .map_err(|_| super::error("RESOURCE_BUSY", "project history is currently owned"))?;
     Ok(file)
@@ -97,11 +105,36 @@ impl ConversationReader {
             !thread_id.is_empty() && thread_id.len() <= 256,
             "INVALID_PARAMS"
         );
-        let (snapshot, barrier, observation) = host
-            .schedules
-            .connections
-            .conversation_observe(host, project, generation, thread_id, PAGE_BYTES)
-            .await?;
+        let (snapshot, barrier, observation) =
+            if super::cloud_sessions::CloudSessions::is_virtual(project) {
+                host.gateway
+                    .workbench
+                    .cloud
+                    .sessions
+                    .bound_thread(host, project, thread_id)?;
+                let scope = host.gateway.workbench.cloud.sessions.scope(host, project)?;
+                ensure!(scope.identity.1 == generation, "RESYNC_REQUIRED");
+                host.schedules
+                    .connections
+                    .cloud_observe(
+                        host,
+                        project,
+                        &scope.lease,
+                        generation,
+                        thread_id,
+                        PAGE_BYTES,
+                    )
+                    .await?
+            } else {
+                host.schedules
+                    .connections
+                    .ready(host, project, generation)
+                    .await?;
+                host.schedules
+                    .connections
+                    .conversation_observe(host, project, generation, thread_id, PAGE_BYTES)
+                    .await?
+            };
         check_size(&snapshot)?;
         let reader = Self {
             identity: Identity {
@@ -145,6 +178,16 @@ impl ConversationReader {
             .context("PERSISTED_HISTORY_UNAVAILABLE")?
             .registration
             .clone();
+        let imported_without_service = host
+            .slots
+            .borrow()
+            .get(project)
+            .is_some_and(|slot| slot.service.is_none())
+            && host
+                .migration
+                .published()?
+                .iter()
+                .any(|published| published == &registration);
         let capacity = persisted_capacity()
             .try_acquire_owned()
             .map_err(|_| super::error("RESOURCE_BUSY", "close another persisted history view"))?;
@@ -152,26 +195,68 @@ impl ConversationReader {
         let id = thread_id.to_owned();
         let expected = expected_generation.map(str::to_owned);
         let copied = registration.clone();
-        let (service, snapshot, mut baseline, capacity) =
+        let (generation, snapshot, mut baseline, capacity) =
             tokio::task::spawn_blocking(move || -> Result<_> {
                 let capacity = capacity;
                 let directory = storage::registry(&home, &Host::service_id(&copied))?;
-                let _startup = existing_lock(&directory.join("start.lock"))?;
-                let _service = existing_lock(&copied.data_dir.join("service.lock"))?;
-                let _store = existing_lock(&copied.data_dir.join("owner.lock"))?;
-                let service: Service = storage::read(&directory.join("service.json"))?;
+                let descriptor = directory.join("service.json");
+                let descriptor_absent = match std::fs::symlink_metadata(&descriptor) {
+                    Ok(_) => false,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+                    Err(error) => return Err(error.into()),
+                };
+                let imported = descriptor_absent && imported_without_service && expected.is_none();
+                if imported {
+                    ensure!(
+                        copied.data_dir.canonicalize()? == copied.data_dir,
+                        "PERSISTED_HISTORY_UNAVAILABLE"
+                    );
+                    storage::private_dir(&directory)?;
+                    ensure!(
+                        directory.canonicalize()? == directory,
+                        "PERSISTED_HISTORY_UNAVAILABLE"
+                    );
+                }
+                let lock = |path: &std::path::Path| {
+                    if imported {
+                        imported_history_lock(path)
+                    } else {
+                        existing_lock(path)
+                    }
+                };
+                let _startup = lock(&directory.join("start.lock"))?;
+                // 在启动锁内重读；已存在服务绝不降级为无代际读取。
+                let service: Option<Service> = storage::read_optional(&descriptor)?;
                 ensure!(
-                    service.identity.protocol_version == 1
-                        && service.identity.service_id == Host::service_id(&copied)
-                        && service.identity.data_dir == copied.data_dir
-                        && service.identity.workspace == copied.workspace
-                        && expected
-                            .as_ref()
-                            .is_none_or(|generation| generation == &service.identity.generation)
-                        && storage::read::<PathBuf>(&copied.data_dir.join("service-workspace"))?
-                            == copied.workspace,
+                    service.is_some() || imported,
                     "PERSISTED_HISTORY_UNAVAILABLE"
                 );
+                let data_lock = |path: &std::path::Path| {
+                    if service.is_none() {
+                        imported_history_lock(path)
+                    } else {
+                        existing_lock(path)
+                    }
+                };
+                let _service = data_lock(&copied.data_dir.join("service.lock"))?;
+                let _store = data_lock(&copied.data_dir.join("owner.lock"))?;
+                let binding: Option<PathBuf> =
+                    storage::read_optional(&copied.data_dir.join("service-workspace"))?;
+                if let Some(service) = &service {
+                    ensure!(
+                        service.identity.protocol_version == 1
+                            && service.identity.service_id == Host::service_id(&copied)
+                            && service.identity.data_dir == copied.data_dir
+                            && service.identity.workspace == copied.workspace
+                            && expected
+                                .as_ref()
+                                .is_none_or(|generation| generation == &service.identity.generation)
+                            && binding.as_ref() == Some(&copied.workspace),
+                        "PERSISTED_HISTORY_UNAVAILABLE"
+                    );
+                } else {
+                    ensure!(binding.is_none(), "PERSISTED_HISTORY_UNAVAILABLE");
+                }
                 let snapshot = areal_engine::PersistedConversation::read(
                     &copied.data_dir,
                     &copied.workspace,
@@ -179,9 +264,8 @@ impl ConversationReader {
                 )?;
                 let baseline = snapshot.snapshot(PAGE_BYTES - 256)?;
                 ensure!(
-                    serde_json::to_value(storage::read::<Service>(
-                        &directory.join("service.json")
-                    )?)? == serde_json::to_value(&service)?,
+                    serde_json::to_value(storage::read_optional::<Service>(&descriptor)?)?
+                        == serde_json::to_value(&service)?,
                     "PERSISTED_HISTORY_UNAVAILABLE"
                 );
                 for (path, file) in [
@@ -196,7 +280,11 @@ impl ConversationReader {
                         "PERSISTED_HISTORY_UNAVAILABLE"
                     );
                 }
-                Ok((service, snapshot, baseline, capacity))
+                // 无服务的只读订阅使用快照身份，不写服务描述，也不授予执行代际。
+                let generation = service
+                    .map(|service| service.identity.generation)
+                    .unwrap_or_else(|| format!("persisted:{}", snapshot.snapshot_id()));
+                Ok((generation, snapshot, baseline, capacity))
             })
             .await?
             .map_err(|cause| {
@@ -222,7 +310,7 @@ impl ConversationReader {
             identity: Identity {
                 project_id: project.into(),
                 thread_id: thread_id.into(),
-                service_generation: service.identity.generation,
+                service_generation: generation,
                 subscription_id: uuid::Uuid::new_v4().to_string(),
                 sequence: 0,
             },
@@ -264,10 +352,11 @@ impl ConversationReader {
         host.slots.borrow().get(self.project()).is_some_and(|slot| {
             slot.registration.data_dir == persisted.data_dir
                 && slot.registration.workspace == persisted.workspace
-                && slot
-                    .service
-                    .as_ref()
-                    .is_none_or(|service| service.identity.generation == self.generation())
+                && (slot.state == "starting"
+                    || slot
+                        .service
+                        .as_ref()
+                        .is_none_or(|service| service.identity.generation == self.generation()))
         })
     }
     pub(super) fn model(&self) -> Option<Value> {
@@ -280,24 +369,36 @@ impl ConversationReader {
         value["view"] = json!("conversation");
         value
     }
-    pub(super) async fn next_event(&mut self) -> Result<CoreEvent> {
+    pub(super) async fn next_event(&mut self) -> Result<Option<CoreEvent>> {
         let Some(observation) = self.observation.as_mut() else {
             return std::future::pending().await;
         };
-        observation.events.recv().await.context("RESYNC_REQUIRED")
-    }
-    pub(super) async fn event(&mut self, host: &Host, event: CoreEvent) -> Result<Option<Value>> {
-        ensure!(self.current(host), "RESYNC_REQUIRED");
-        if event.sequence <= self.barrier {
-            return Ok(None);
+        match observation.events.recv().await {
+            Ok(event) => Ok(Some(event)),
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => Ok(None),
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                anyhow::bail!("RESYNC_REQUIRED")
+            }
         }
-        let params = &event.value["params"];
-        let thread = params
-            .get("threadId")
-            .or_else(|| params["interaction"].get("threadId"))
-            .or_else(|| params["thread"].get("id"));
-        if thread.and_then(Value::as_str) != Some(self.identity.thread_id.as_str()) {
-            return Ok(None);
+    }
+    pub(super) async fn event(
+        &mut self,
+        host: &Host,
+        event: Option<CoreEvent>,
+    ) -> Result<Option<Value>> {
+        ensure!(self.current(host), "RESYNC_REQUIRED");
+        if let Some(event) = event {
+            if event.sequence <= self.barrier {
+                return Ok(None);
+            }
+            let params = &event.value["params"];
+            let thread = params
+                .get("threadId")
+                .or_else(|| params["interaction"].get("threadId"))
+                .or_else(|| params["thread"].get("id"));
+            if thread.and_then(Value::as_str) != Some(self.identity.thread_id.as_str()) {
+                return Ok(None);
+            }
         }
         let (snapshot, barrier) = self
             .observation
@@ -432,6 +533,14 @@ impl ConversationReader {
                 })
                 .await?
                 .map_err(|_| anyhow::anyhow!("RESOURCE_UNAVAILABLE"))?;
+                conversation_media::from_bytes(reference, bytes)
+            } else if let Some(bytes) = self
+                .observation
+                .as_ref()
+                .context("RESYNC_REQUIRED")?
+                .remote_media(host, &reference)
+                .await?
+            {
                 conversation_media::from_bytes(reference, bytes)
             } else {
                 conversation_media::fetch(
@@ -763,6 +872,248 @@ mod tests {
                 &difference(&changed, &after).unwrap().unwrap()
             ),
             after
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn imported_missing_workspace_opens_persisted_history_without_service() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let host = super::super::schedules::tests::fixture(&root);
+        let source = crate::migration::Source {
+            profile: root.join("profile"),
+            core_home: root.join("old-core"),
+            // 过渡：到 0.2.0 删；旧版服务目录一次性导入测试。
+            legacy_service_home: root.join("old-services"),
+        };
+        for directory in [
+            &source.profile,
+            &source.core_home,
+            // 过渡：到 0.2.0 删；旧版服务目录一次性导入测试。
+            &source.legacy_service_home,
+        ] {
+            storage::private_dir(directory).unwrap();
+        }
+        let workspace = root.join("workspace");
+        let project = "a".repeat(24);
+        storage::write(
+            &source.core_home.join("projects.json"),
+            &json!([{"id":project,"root":workspace}]),
+        )
+        .unwrap();
+        let data = source.core_home.join(&project).join("state");
+        storage::private_dir(&data).unwrap();
+        let thread = uuid::Uuid::new_v4().to_string();
+        let path = data.join(format!("{thread}.json"));
+        storage::write(&path, &json!({"version":17,"thread":{"id":thread,"sessionId":thread,"parentThreadId":null,"preview":"fixture","modelProvider":"fixture","createdAt":1,"updatedAt":2,"status":{"type":"idle"},"cwd":workspace,"cliVersion":"fixture","source":"cli","ephemeral":false,"turns":[{"id":"original-turn","status":"completed","items":[{"id":"original-item","type":"agentMessage","text":"original history"}]}]}})).unwrap();
+        let original = std::fs::read(&path).unwrap();
+        std::fs::remove_dir(&workspace).unwrap();
+        // 旧服务已完成清理；新 Host 尚未启动该项目，不能伪造新服务身份。
+        let service_id = storage::digest(data.as_os_str().as_encoded_bytes())[..24].to_owned();
+        // 过渡：到 0.2.0 删；旧版服务目录一次性导入测试。
+        let prior_service_dir =
+            storage::registry(&source.legacy_service_home, &service_id).unwrap();
+        storage::private_dir(&prior_service_dir).unwrap();
+        let service: areal_protocol::service::Service = serde_json::from_value(json!({
+            "protocolVersion": 1,
+            "serviceId": service_id,
+            "generation": uuid::Uuid::new_v4().to_string(),
+            "workspace": workspace,
+            "dataDir": data,
+            "configFingerprint": "fixture",
+            "endpoint": "http://127.0.0.1:1",
+            "webUrl": "http://127.0.0.1:1",
+            "authFile": prior_service_dir.join("auth.json"),
+            "logFile": prior_service_dir.join("host.log"),
+            "hostPid": 1,
+            "corePid": 1,
+            "state": "stopped"
+        }))
+        .unwrap();
+        storage::write(&prior_service_dir.join("service.json"), &service).unwrap();
+        storage::write(
+            &prior_service_dir.join("cleanup.json"),
+            &storage::CleanupReceipt {
+                version: 1,
+                identity: service.identity.clone(),
+                owner: service.owner.clone(),
+                components: Default::default(),
+                cleanup_confirmed: true,
+            },
+        )
+        .unwrap();
+        host.migration
+            .attach(source.clone(), "importer", None)
+            .unwrap();
+        let imported = host
+            .migration
+            .import(
+                serde_json::from_value(json!({
+                    "requestId": uuid::Uuid::new_v4().to_string(),
+                    "expectedGeneration": host.identity.generation,
+                    "source": source,
+                }))
+                .unwrap(),
+                "importer",
+                &[],
+                &host.journal,
+            )
+            .unwrap();
+        assert_eq!(imported["kind"], "ready");
+        let registration = host
+            .migration
+            .published()
+            .unwrap()
+            .into_iter()
+            .find(|r| r.project_id == project)
+            .unwrap();
+        let directory = storage::registry(&host.home, &Host::service_id(&registration)).unwrap();
+        host.slots
+            .borrow_mut()
+            .insert(project.clone(), super::super::Slot::imported(registration));
+        assert!(
+            ConversationReader::open_persisted(&host, &project, Some("old-generation"), &thread)
+                .await
+                .is_err()
+        );
+        assert!(
+            ConversationReader::open_persisted(&host, "project", None, &thread)
+                .await
+                .is_err(),
+            "unimported registrations cannot use the no-service path"
+        );
+        let owner = storage::open_private(&data.join("owner.lock"), true).unwrap();
+        owner.try_lock_exclusive().unwrap();
+        assert!(
+            ConversationReader::open_persisted(&host, &project, None, &thread)
+                .await
+                .is_err(),
+            "a live Store owner blocks history inspection"
+        );
+        drop(owner);
+        let (reader, opened) = ConversationReader::open_persisted(&host, &project, None, &thread)
+            .await
+            .unwrap();
+        assert!(reader.current(&host));
+        assert_eq!(opened["access"]["readOnly"], true);
+        assert_eq!(opened["snapshot"]["thread"]["id"], thread);
+        assert_eq!(
+            opened["snapshot"]["thread"]["turns"][0]["items"][0]["text"],
+            "original history"
+        );
+        assert!(
+            opened["serviceGeneration"]
+                .as_str()
+                .unwrap()
+                .starts_with("persisted:")
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        assert!(!workspace.exists());
+        assert!(!directory.join("service.json").exists());
+        assert!(!data.join("service-workspace").exists());
+        assert!(
+            ConversationReader::open_persisted(&host, &project, Some(reader.generation()), &thread)
+                .await
+                .is_err(),
+            "snapshot identity must not be accepted as a service generation"
+        );
+        host.slots
+            .borrow_mut()
+            .get_mut(&project)
+            .unwrap()
+            .registration
+            .data_dir = root.join("unrelated");
+        assert!(!reader.current(&host));
+        assert!(
+            ConversationReader::open_persisted(&host, &project, None, &thread)
+                .await
+                .is_err(),
+            "import publication must match the entire registration"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn persisted_reader_stays_current_while_slot_is_starting_and_invalidates_after_ready() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let host = super::super::schedules::tests::fixture(&root);
+        let registration = host.slots.borrow()["project"].registration.clone();
+        storage::private_dir(&registration.data_dir).unwrap();
+        let directory = storage::registry(&host.home, &Host::service_id(&registration)).unwrap();
+        storage::private_dir(&directory).unwrap();
+        for path in [
+            directory.join("start.lock"),
+            registration.data_dir.join("service.lock"),
+            registration.data_dir.join("owner.lock"),
+        ] {
+            storage::open_private(&path, true).unwrap();
+        }
+        storage::write(
+            &registration.data_dir.join("service-workspace"),
+            &registration.workspace,
+        )
+        .unwrap();
+        let service: areal_protocol::service::Service = serde_json::from_value(json!({
+            "protocolVersion": 1,
+            "serviceId": Host::service_id(&registration),
+            "generation": "first",
+            "workspace": registration.workspace,
+            "dataDir": registration.data_dir,
+            "configFingerprint": "old",
+            "endpoint": "http://127.0.0.1:1",
+            "webUrl": "http://127.0.0.1:1",
+            "authFile": directory.join("auth.json"),
+            "logFile": directory.join("host.log"),
+            "hostPid": 1,
+            "corePid": 2,
+            "state": "stopped"
+        }))
+        .unwrap();
+        storage::write(&directory.join("service.json"), &service).unwrap();
+        let thread = uuid::Uuid::new_v4().to_string();
+        storage::write(
+            &registration.data_dir.join(format!("{thread}.json")),
+            &json!({
+                "version": 17,
+                "thread": {
+                    "id": thread,
+                    "sessionId": thread,
+                    "parentThreadId": null,
+                    "preview": "fixture",
+                    "modelProvider": "fixture",
+                    "createdAt": 1,
+                    "updatedAt": 2,
+                    "status": { "type": "idle" },
+                    "cwd": registration.workspace,
+                    "cliVersion": "fixture",
+                    "source": "cli",
+                    "ephemeral": false,
+                    "turns": []
+                }
+            }),
+        )
+        .unwrap();
+        let (reader, _) =
+            ConversationReader::open_persisted(&host, "project", Some("first"), &thread)
+                .await
+                .unwrap();
+        assert!(reader.current(&host));
+        {
+            let mut slots = host.slots.borrow_mut();
+            let slot = slots.get_mut("project").unwrap();
+            let mut next = service.clone();
+            next.identity.generation = "second".into();
+            slot.service = Some(next);
+            slot.state = "starting".into();
+        }
+        assert!(
+            reader.current(&host),
+            "persisted history should remain valid while Core activation is in progress"
+        );
+        host.slots.borrow_mut().get_mut("project").unwrap().state = "ready".into();
+        assert!(
+            !reader.current(&host),
+            "persisted reader must invalidate once replacement generation is ready"
         );
     }
 }

@@ -100,18 +100,20 @@ export function GoalCard({ project, thread, action, onEdit }: Props & { onEdit: 
   return (
     <section className="goal-dock" data-testid="goal-card" aria-label="当前目标">
       <div className="goal-strip">
-        <Button
-          unstyled
-          data-slot={undefined}
-          type="button"
-          className="goal-summary"
-          onClick={onEdit}
-        >
-          <Target size={14} aria-hidden="true" />
-          <span className="goal-status">{labels[goal.status]}</span>
-          <span className="goal-objective">{goal.objective}</span>
-          <span className="goal-elapsed">{duration(goal.usage.timeUsedSeconds)}</span>
-        </Button>
+        <div className="flex min-w-0 flex-1">
+          <Button
+            type="button"
+            variant="row"
+            size="none"
+            className="h-control-sm min-w-0 flex-1 gap-1"
+            onClick={onEdit}
+          >
+            <Target size={14} className="shrink-0" aria-hidden="true" />
+            <span className="goal-status">{labels[goal.status]}</span>
+            <span className="goal-objective">{goal.objective}</span>
+            <span className="goal-elapsed">{duration(goal.usage.timeUsedSeconds)}</span>
+          </Button>
+        </div>
         <ControlHintTooltip
           title={goal.status === "active" || goal.settling ? "暂停目标后可清除" : "清除目标"}
         >
@@ -191,7 +193,7 @@ function loadDraft(key: string, goal: Goal | null): { base: Draft; draft: Draft 
   return { base: current, draft: current };
 }
 export function GoalEditor({ project, thread, action }: Props) {
-  const { t } = useI18n();
+  const { t, intl } = useI18n();
   const { goal, revision } = stateOf(thread);
   const draftKey = `areal-gui:goal-draft:${project.id}:${thread.id}:${goal?.id ?? "new"}`;
   const [initial] = useState(() => loadDraft(draftKey, goal));
@@ -262,7 +264,7 @@ export function GoalEditor({ project, thread, action }: Props) {
       />
       {goal && (
         <p className="goal-editor-notice">
-          {goal.usage.tokensUsed.toLocaleString()} Token 已使用 · {goal.usage.turnsStarted} 轮 ·{" "}
+          {intl.formatNumber(goal.usage.tokensUsed)} Token 已使用 · {goal.usage.turnsStarted} 轮 ·{" "}
           {duration(goal.usage.timeUsedSeconds)}
         </p>
       )}

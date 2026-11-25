@@ -1,0 +1,201 @@
+{
+  "schemaVersion": 1,
+  "journeys": [
+    {
+      "id": "conversation-submit",
+      "title": "提交对话并看到权威结果",
+      "surfaces": ["web", "desktop", "mobile"],
+      "paths": [
+        "clients/gui/scripts/ux-journeys.mjs",
+        "clients/gui/scripts/ux-checks.mjs",
+        "clients/gui/scripts/support/journey-fixture.mjs",
+        "clients/gui/renderer/src/DraftComposer.tsx",
+        "clients/gui/renderer/src/ComposerQueue.tsx",
+        "clients/gui/scripts/web-journeys.mjs",
+        "clients/gui/scripts/journey-manifest.json"
+      ],
+      "authorities": ["host", "core", "runtime"],
+      "terminalFacts": [
+        "coldStartFirstSend",
+        "requestAccepted",
+        "turnSettled",
+        "visibleResult",
+        "attachmentSubmitted",
+        "queuedFollowUp",
+        "modelSwitchNextTurn",
+        "cancelAndContinue"
+      ],
+      "checks": [
+        "smoke:test:ux-journeys",
+        "smoke:test:web-journeys",
+        "smoke:test:conversation-reading"
+      ],
+      "evidenceCheck": "smoke:test:web-journeys",
+      "boundaries": ["request-admission", "history-projection", "provider-configuration"]
+    },
+    {
+      "id": "unknown-receipt-recovery",
+      "title": "断线后核对 UNKNOWN 收据且不重放",
+      "surfaces": ["web", "desktop", "mobile"],
+      "paths": [
+        "clients/gui/scripts/service-reopen-smoke.mjs",
+        "clients/gui/scripts/history-copy-smoke.mjs",
+        "clients/gui/scripts/journey-manifest.json"
+      ],
+      "authorities": ["host", "core", "runtime"],
+      "terminalFacts": [
+        "originalRequestRetained",
+        "receiptReconciled",
+        "noReplay",
+        "cleanupSettled"
+      ],
+      "checks": [
+        "smoke:test:history-compat",
+        "smoke:test:service-reopen",
+        "smoke:test:conversation-reading"
+      ],
+      "evidenceCheck": "smoke:test:service-reopen",
+      "boundaries": ["request-admission", "host-lifecycle", "history-projection"]
+    },
+    {
+      "id": "host-stop-reopen",
+      "title": "显式停止共享 Host 并重开桌面",
+      "surfaces": ["desktop"],
+      "paths": [
+        "clients/gui/scripts/gui-stop-reopen-smoke.mjs",
+        "clients/gui/scripts/journey-manifest.json"
+      ],
+      "boundaries": ["host-lifecycle"],
+      "authorities": ["host", "core"],
+      "terminalFacts": [
+        "stopReceiptSettled",
+        "originalProcessesExited",
+        "newGenerationObserved",
+        "cleanupSettled"
+      ],
+      "checks": ["smoke:test:stop-reopen"],
+      "evidenceCheck": "smoke:test:stop-reopen"
+    },
+    {
+      "id": "connection-recovery",
+      "title": "正常加载、空闲后自动恢复并安全继续提交",
+      "surfaces": ["web"],
+      "paths": [
+        "clients/gui/renderer/src/host-snapshot.ts",
+        "clients/gui/renderer/src/state/useSessionNavigation.ts",
+        "clients/gui/renderer/src/state/useStartupRecovery.ts",
+        "clients/gui/renderer/src/views/StartupScreen.tsx",
+        "clients/gui/scripts/connection-recovery-smoke.mjs",
+        "clients/gui/scripts/connection-recovery-counterexample.mjs",
+        "clients/gui/scripts/journey-manifest.json",
+        "clients/gui/scripts/connection-recovery-explore.mjs",
+        "clients/gui/scripts/support/recovery-exploration.mjs"
+      ],
+      "authorities": ["host", "core"],
+      "terminalFacts": [
+        "loadingWithoutFalseFailure",
+        "automaticRecovery",
+        "draftAndSelectionPreserved",
+        "continuedSubmission",
+        "explicitStopRespected",
+        "unknownNotReplayed"
+      ],
+      "checks": ["smoke:test:connection-recovery"],
+      "evidenceCheck": "smoke:test:connection-recovery",
+      "boundaries": ["request-admission", "host-lifecycle", "history-projection"]
+    },
+    {
+      "id": "ui-visual-audit",
+      "title": "亮暗多视口视觉与动效量化巡检",
+      "surfaces": ["web", "desktop"],
+      "paths": [
+        "clients/gui/packages/ui/tokens.json",
+        "clients/gui/packages/ui/src/*.css",
+        "clients/gui/packages/ui/src/**/*.css",
+        "clients/gui/renderer/src/*.css",
+        "clients/gui/renderer/src/**/*.css",
+        "clients/gui/scripts/ui-audit-probe.mjs",
+        "clients/gui/scripts/journey-manifest.json"
+      ],
+      "authorities": ["renderer"],
+      "terminalFacts": [
+        "overflowFree",
+        "layoutStable",
+        "reducedMotionRespected",
+        "contactSheetCaptured"
+      ],
+      "checks": ["smoke:test:ui-audit"],
+      "evidenceCheck": "smoke:test:ui-audit"
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "request-admission",
+      "paths": [
+        "core/host/src/gateway/**",
+        "core/host/src/client.rs",
+        "core/host/src/server.rs",
+        "core/host/src/service.rs",
+        "core/app-server/src/**",
+        "core/protocol/src/**",
+        "clients/gui/packages/client/**",
+        "clients/gui/scripts/support/host-transport-barrier.mjs",
+        "clients/gui/scripts/support/core-observation.mjs",
+        "clients/gui/scripts/support/native-recovery-observation.mjs",
+        "schemas/areal-host-protocol-v1.json",
+        "schemas/areal-core-v1.json",
+        "core/host/src/journal.rs",
+        "core/host/src/workbench_submissions.rs"
+      ]
+    },
+    {
+      "id": "host-lifecycle",
+      "paths": [
+        "core/host/src/client.rs",
+        "core/host/src/server.rs",
+        "core/host/src/service.rs",
+        "core/host/src/launch.rs",
+        "core/host/src/workbench*.rs",
+        "core/service-host/src/**",
+        "core/server/src/**",
+        "runtime/supervisor/**",
+        "runtime/daemon/**",
+        "clients/gui/app/src/core/service-*.cjs",
+        "clients/gui/app/src/core/host-prerequisites.cjs",
+        "clients/gui/app/src/core/space-bootstrap.cjs",
+        "clients/gui/scripts/application-cleanup.mjs",
+        "clients/gui/scripts/support/desktop-fixture.mjs",
+        "core/host/src/gateway/stop.rs",
+        "schemas/local-service-v1.json",
+        "clients/gui/app/src/core/main.cjs",
+        "clients/gui/app/src/core/host-lifecycle.cjs",
+        "core/host/src/resource_inspections.rs"
+      ]
+    },
+    {
+      "id": "history-projection",
+      "paths": [
+        "clients/gui/renderer/src/host-history-cache.ts",
+        "clients/gui/renderer/src/host-watched-history.ts",
+        "clients/gui/renderer/src/serviceGeneration.ts",
+        "clients/gui/renderer/src/Messages.tsx",
+        "clients/gui/renderer/src/components/ai-elements/message.tsx",
+        "clients/gui/renderer/src/components/ai-elements/message-response-renderer.tsx",
+        "clients/gui/renderer/src/components/ai-elements/message-code-block.tsx",
+        "core/host/src/conversation_read.rs",
+        "core/engine/src/store/archive/own.rs"
+      ]
+    },
+    {
+      "id": "provider-configuration",
+      "paths": [
+        "core/server/src/lib.rs",
+        "core/host/src/provider*.rs",
+        "core/host/src/model_application*.rs",
+        "core/host/src/subscription/**",
+        "core/host/src/library*.rs",
+        "clients/gui/packages/workbench/client/desktop-contract/provider.cjs"
+      ]
+    }
+  ]
+}

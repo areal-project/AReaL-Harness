@@ -571,8 +571,22 @@ async fn inherited_media_survives_release_gc_and_restart() {
             .unwrap(),
         br#"{"original":"tool result"}"#
     );
+    let unreferenced = engine
+        .upload_blob(
+            source.id.clone(),
+            "owner".into(),
+            None,
+            "text/plain".into(),
+            b"archived upload".to_vec(),
+        )
+        .await
+        .unwrap();
     // 来源释放热状态后，GC 仍须沿目标快照保留媒体和原始引用。
     engine.archive_thread(source.id.clone()).await.unwrap();
+    assert!(matches!(
+        engine.release_upload(source.id.clone(), unreferenced.uri).await,
+        Err(Error::Invalid(message)) if message.starts_with("THREAD_ARCHIVED:")
+    ));
     engine.store.collect_blobs().await.unwrap();
     engine.shutdown().await;
     drop(engine);

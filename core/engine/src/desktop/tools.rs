@@ -40,10 +40,6 @@ impl Engine {
             name if name.starts_with("scheduled_task_") => Ok(self
                 .scheduled_task_tool(cell, turn_id, call_id, tool, args)
                 .await),
-            "gen_ui_publish" => {
-                self.gen_ui_publish(&thread_id, turn_id, call_id, args)
-                    .await
-            }
             "task_state" => self
                 .task_state(cell, args["pendingAfter"].as_str())
                 .await

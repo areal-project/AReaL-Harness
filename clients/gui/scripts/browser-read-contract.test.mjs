@@ -3,11 +3,7 @@ import { test } from "node:test";
 import { CoreClient } from "../packages/runtime-client/core.js";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const {
-  DesktopService,
-  PROTOCOL,
-} = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-const { validToolInput } = require("@areal/workbench-service/desktop/core/browser-tool.cjs");
+const { validToolInput } = require("../packages/browser-automation/src/host-tool.cjs");
 
 test("browser observation and capture accept only bounded declared parameters", () => {
   const pageId = "00000000-0000-4000-8000-000000000001";
@@ -259,520 +255,259 @@ test("bound client may answer a browser tool request while ordinary clients reje
   assert.equal(replies.at(-1).result.contentItems[0].text, "fixture sentinel");
 });
 
-test("only the Main owner disconnect revokes its Core tool connection and successor drops ownerless hosts", async (t) => {
-  const { once } = await import("node:events");
-  const WebSocket = createRequire(new URL("../app/package.json", import.meta.url))("ws");
-  const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
-  const {
-    ProjectConnections,
-  } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
-  const project = { id: "project", model: { state: { threads: {} } } };
-  const backend = Object.assign(Object.create(CoreBackend.prototype), {
-    projects: new Map([[project.id, project]]),
-    starting: new Map(),
-    providers: { redact: (value) => value },
-    analytics: { sample() {} },
-    snapshot: () => ({}),
-    hasWork: () => false,
-  });
-  backend._connections = new ProjectConnections(backend);
-  const service = new DesktopService(backend, "owner-fixture");
-  service.schedule = () => {};
-  const descriptor = await service.listen();
-  t.after(() => service.close());
-  const sockets = [];
-  t.after(() => {
-    for (const socket of sockets) socket.terminate();
-  });
-  const main = async (owns = true) => {
-    const socket = new WebSocket(descriptor.endpoint, {
-      headers: { Authorization: `Bearer ${descriptor.token}` },
-    });
-    sockets.push(socket);
-    await once(socket, "open");
-    const packet = once(socket, "message");
-    socket.send(
-      JSON.stringify({
-        id: 1,
-        method: "hello",
-        params: {
-          protocol: PROTOCOL,
-          identity: "owner-fixture",
-          capabilities: owns ? { computerHost: 1 } : {},
-        },
-      }),
-    );
-    await packet;
-    return socket;
-  };
-  const observer = await main(false);
-  const owner = await main();
-  const lease = backend.desktopToolOwner();
-  const core = {
-    closed: false,
-    close() {
-      this.closed = true;
-    },
-  };
-  project.client = core;
-  backend.connections.claimDesktopToolHost(project, core);
-  const observerClosed = once(
-    [...service.clients].find((socket) => socket !== lease),
-    "close",
-  );
-  observer.close();
-  await observerClosed;
-  assert.equal(core.closed, false);
-  const ownerClosed = once(lease, "close");
-  owner.close();
-  await ownerClosed;
-  assert.equal(service.closed, false);
-  assert.equal(backend.desktopToolOwner(), null);
-  assert.equal(core.closed, true);
-
-  const ownerless = {
-    closed: false,
-    close() {
-      this.closed = true;
-    },
-  };
-  project.client = ownerless;
-  await main();
-  assert.equal(ownerless.closed, true, "successor cannot adopt an active ownerless task host");
-  const successor = {
-    closed: false,
-    close() {
-      this.closed = true;
-    },
-  };
-  project.client = successor;
-  backend.connections.claimDesktopToolHost(project, successor);
-  backend.connections.revokeDesktopToolHost(lease);
-  assert.equal(
-    successor.closed,
-    false,
-    "late old owner cleanup cannot close successor Core connection",
-  );
-  const closingOwner = backend.desktopToolOwner();
-  closingOwner._readyState = WebSocket.CLOSING;
-  assert.equal(backend.desktopToolOwner(), null);
-  const closingObserver = {
-    closed: false,
-    close() {
-      this.closed = true;
-    },
-  };
-  project.client = closingObserver;
-  await main();
-  assert.equal(
-    closingObserver.closed,
-    true,
-    "successor also retires observers created during old owner's close handshake",
-  );
-  closingOwner._readyState = WebSocket.OPEN;
-});
-
-test("an authenticated owner claim refuses a request from another Core generation", async () => {
-  const pageId = "00000000-0000-4000-8000-000000000001";
-  const sent = [];
-  const owner = {
-    readyState: 1,
-    bufferedAmount: 0,
-    send: (data, done) => {
-      sent.push(JSON.parse(data));
-      done();
-    },
-  };
-  const project = {
-    client: { closed: false },
-    service: { serviceId: "core-1", generation: "generation-1" },
-    model: { state: { threads: { "thread-1": { dynamicTools: [{ name: "browser_v1" }] } } } },
-  };
-  const backend = {
-    projects: new Map([["project-1", project]]),
-    starting: new Set(),
-    snapshot: () => ({}),
-    hasWork: () => false,
-    providers: { redact: (value) => value },
-    connections: { revokeDesktopToolHost() {} },
-    bindBrowserHostForClaim: async () => {},
-    currentConnection: (current, client) => current.client === client && !client.closed,
-  };
-  const service = new DesktopService(backend, "fixture-identity");
-  const receive = (id, method, params) =>
-    service.receive(owner, Buffer.from(JSON.stringify({ id, method, params })));
-  await receive(1, "hello", {
-    protocol: PROTOCOL,
-    identity: "fixture-identity",
-    capabilities: { computerHost: 1 },
-  });
-  await receive(2, "browserClaim", {
-    protocol: "areal.browser.host.v1",
-    operations: [
-      "describe",
-      "observe",
-      "capture",
-      "act",
-      "wait",
-      "navigate",
-      "openDocument",
-      "newPage",
-      "diagnostics",
-      "runBatch",
-      "command",
-    ],
-    available: true,
-    coreInstanceId: "core-1",
-    projectId: "project-1",
-    threadId: "thread-1",
-    pageId,
-    browserHostId: "host-1",
-    hostGeneration: 1,
-    pageGeneration: 1,
-    controlEpoch: 1,
-  });
-  assert.equal(sent.at(-1).result.claimed, true);
-  const result = await service.browserRead({
-    projectId: "project-1",
-    threadId: "thread-1",
-    turnId: "turn-1",
-    callId: "call-1",
-    coreInstanceId: "core-1",
-    coreGeneration: "generation-2",
-    arguments: { operation: "observe", parameters: { pageId } },
-  });
-  assert.match(JSON.stringify(result), /host_unavailable/);
-  assert.equal(
-    sent.some((packet) => packet.method === "browserRequest"),
-    false,
-  );
-  assert.equal(service.browserClaims.size, 0);
-  clearTimeout(service.timer);
-});
-
-test("revoked or competing claim cannot publish after the Core bind awaits", async () => {
-  const pageId = "00000000-0000-4000-8000-000000000001";
-  const sent = [];
-  const owner = {
-    readyState: 1,
-    bufferedAmount: 0,
-    send: (data, done) => {
-      sent.push(JSON.parse(data));
-      done();
-    },
-  };
-  const other = {
-    readyState: 1,
-    bufferedAmount: 0,
-    send: (data, done) => {
-      sent.push(JSON.parse(data));
-      done();
-    },
-  };
-  const project = {
-    client: { closed: false },
-    service: { serviceId: "core-1", generation: "generation-1" },
-    model: { state: { threads: { "thread-1": { dynamicTools: [{ name: "browser_v1" }] } } } },
-  };
-  const binds = [];
-  const backend = {
-    projects: new Map([["project-1", project]]),
-    starting: new Set(),
-    snapshot: () => ({}),
-    hasWork: () => false,
-    providers: { redact: (value) => value },
-    bindBrowserHostForClaim: () => new Promise((resolve) => binds.push(resolve)),
-    connections: { revokeDesktopToolHost() {} },
-    currentConnection: (current, client) => current.client === client && !client.closed,
-  };
-  const service = new DesktopService(backend, "fixture-identity");
-  const receive = (socket, id, method, params) =>
-    service.receive(socket, Buffer.from(JSON.stringify({ id, method, params })));
-  const claim = (host, epoch = 1) => ({
-    protocol: "areal.browser.host.v1",
-    operations: [
-      "describe",
-      "observe",
-      "capture",
-      "act",
-      "wait",
-      "navigate",
-      "openDocument",
-      "newPage",
-      "diagnostics",
-      "runBatch",
-      "command",
-    ],
-    available: true,
-    coreInstanceId: "core-1",
-    projectId: "project-1",
-    threadId: "thread-1",
-    pageId,
-    browserHostId: host,
-    hostGeneration: 1,
-    pageGeneration: 1,
-    controlEpoch: epoch,
-  });
-  await receive(owner, 1, "hello", {
-    protocol: PROTOCOL,
-    identity: "fixture-identity",
-    capabilities: { computerHost: 1 },
-  });
-  await receive(other, 2, "hello", { protocol: PROTOCOL, identity: "fixture-identity" });
-
-  const revoked = receive(owner, 3, "browserClaim", claim("host-1"));
-  await Promise.resolve();
-  await receive(owner, 4, "browserRevoke", {
-    projectId: "project-1",
-    threadId: "thread-1",
-    pageId,
-  });
-  binds.shift()();
-  await revoked;
-  assert.equal(sent.find((packet) => packet.id === 3)?.result?.claimed, undefined);
-  assert.equal(service.browserClaims.size, 0, "revoked control cannot resurrect a pending page");
-
-  const first = receive(owner, 5, "browserClaim", claim("host-1", 2));
-  await Promise.resolve();
-  const competing = receive(other, 6, "browserClaim", claim("host-2", 2));
-  await Promise.resolve();
-  for (const release of binds.splice(0)) release();
-  await Promise.all([first, competing]);
-  assert.equal(
-    sent.find((packet) => packet.id === 6)?.result?.claimed,
-    undefined,
-    "another live host cannot overtake a pending claim",
-  );
-  assert.equal(
-    service.browserClaims.get(JSON.stringify(["project-1", "thread-1"]))?.browserHostId,
-    "host-1",
-  );
-  clearTimeout(service.timer);
-});
-
-test("queued continuation binds to its persisted queue turn and loses entry on removal, takeover or owner loss", async () => {
-  const sent = [];
-  let service,
-    requestId = 10,
-    queue = { items: [{ id: "queued-user-message", status: "pending", turnId: null }] };
-  const owner = {
-    readyState: 1,
-    bufferedAmount: 0,
-    send: (data, done) => {
-      const packet = JSON.parse(data);
-      sent.push(packet);
-      done();
-      if (packet.method === "browserRequest")
-        queueMicrotask(() => {
-          void receive("browserResult", {
-            requestId: packet.params.requestId,
-            result: { claimed: true },
-          });
-        });
-    },
-  };
-  let reads = 0,
-    pendingQueueRead = null,
-    acceptedQueueId = "queued-user-message";
-  const client = {
-    closed: false,
-    request: async (method, params) => {
-      assert.equal(method, "areal/queue/list");
-      assert.equal(params.threadId, "thread-1");
-      reads++;
-      return pendingQueueRead ? pendingQueueRead() : queue;
-    },
-  };
-  const project = {
-    client,
-    service: { serviceId: "core-1", generation: "generation-1" },
-    model: {
-      state: { threads: { "thread-1": { turns: [{ id: "old-active", status: "inProgress" }] } } },
-    },
-  };
-  const backend = {
-    projects: new Map([["project-1", project]]),
-    starting: new Set(),
-    snapshot: () => ({}),
-    hasWork: () => false,
-    providers: { redact: (value) => value },
-    currentConnection: (current, connection) => current.client === connection && !connection.closed,
-    command: async (_name, _request, context) => {
-      context.onBrowserTurnQueued?.(acceptedQueueId);
-      return {};
-    },
-  };
-  service = new DesktopService(backend, "queue-fixture");
-  const receive = (method, params) =>
-    service.receive(owner, Buffer.from(JSON.stringify({ id: ++requestId, method, params })));
-  const send = () =>
-    receive("command", {
-      name: "send",
-      request: { projectId: "project-1", threadId: "thread-1", text: "Continue in the Browser" },
-    });
-  const describe = (turnId) =>
-    service.browserRead({
-      projectId: "project-1",
-      threadId: "thread-1",
-      turnId,
-      callId: `call-${turnId}`,
-      coreInstanceId: "core-1",
-      coreGeneration: "generation-1",
-      arguments: { operation: "describe", parameters: {} },
-    });
-  const dispatched = () => sent.filter((packet) => packet.method === "browserRequest");
-  try {
-    await receive("hello", { protocol: PROTOCOL, identity: "queue-fixture" });
-    await send();
-    assert.equal(
-      service.browserEntrypoints.size,
-      1,
-      "accepted queued input retains a Browser entry",
-    );
-    await describe("old-active");
-    assert.equal(dispatched().length, 0, "old callback must not consume queued authorization");
-    assert.equal(service.browserEntrypoints.size, 1);
-    queue = {
-      items: [{ id: "queued-user-message", status: "running", turnId: "exact-queued-turn" }],
-    };
-    await describe("unrelated-next-turn");
-    assert.equal(dispatched().length, 0, "next turn is not an authority mapping");
-    await describe("exact-queued-turn");
-    assert.equal(dispatched().length, 1);
-    assert.equal(dispatched()[0].params.turnId, "exact-queued-turn");
-    assert.equal(service.browserEntrypoints.size, 0, "entry is consumed once");
-    assert.ok(reads >= 3, "each queued claim resolves against Core queue state");
-    acceptedQueueId = "queued-first";
-    await send();
-    acceptedQueueId = "queued-second";
-    await send();
-    queue = {
-      items: [
-        { id: "queued-first", status: "running", turnId: "first-queued-turn" },
-        { id: "queued-second", status: "pending", turnId: null },
-      ],
-    };
-    await describe("old-active");
-    assert.equal(dispatched().length, 1);
-    await describe("first-queued-turn");
-    assert.equal(
-      dispatched().length,
-      2,
-      "second queued message cannot overwrite first accepted authorization",
-    );
-    assert.equal(
-      service.browserEntrypoints.size,
-      1,
-      "first consumption preserves second queued entry",
-    );
-    queue.items[0].status = "completed";
-    queue.items[1] = { id: "queued-second", status: "running", turnId: "second-queued-turn" };
-    await describe("second-queued-turn");
-    assert.equal(dispatched().length, 3);
-    assert.equal(service.browserEntrypoints.size, 0);
-    acceptedQueueId = "queued-user-message";
-    await send();
-    queue = { items: [{ id: "queued-user-message", status: "removed", turnId: null }] };
-    await describe("exact-queued-turn");
-    assert.equal(service.browserEntrypoints.size, 0, "removed input revokes authorization");
-    await send();
-    acceptedQueueId = "second-revoked-message";
-    await send();
-    acceptedQueueId = "queued-user-message";
-    await receive("browserRevoke", { projectId: "project-1", threadId: "thread-1" });
-    queue = {
-      items: [{ id: "queued-user-message", status: "running", turnId: "exact-queued-turn" }],
-    };
-    await describe("exact-queued-turn");
-    assert.equal(dispatched().length, 3, "human input revokes queued authorization");
-    await send();
-    let releaseQueue;
-    pendingQueueRead = () =>
-      new Promise((resolve) => {
-        releaseQueue = resolve;
-      });
-    const waiting = describe("exact-queued-turn");
-    await new Promise((resolve) => setImmediate(resolve));
-    await receive("browserRevoke", { projectId: "project-1", threadId: "thread-1" });
-    releaseQueue(queue);
-    await waiting;
-    pendingQueueRead = null;
-    assert.equal(dispatched().length, 3, "late queue response cannot revive a revoked entry");
-    await send();
-    acceptedQueueId = "second-owner-message";
-    await send();
-    project.client = { ...client };
-    await describe("exact-queued-turn");
-    assert.equal(
-      service.browserEntrypoints.size,
-      0,
-      "owner reconnect cannot inherit queued authorization",
-    );
-    assert.equal(dispatched().length, 3);
-  } finally {
-    service.close();
-  }
-});
-
 test("browser describe examples expose valid checkbox and command-topic parameters", async () => {
   const pageId = "00000000-0000-4000-8000-000000000001";
-  const service = new DesktopService(
-    { projects: new Map(), starting: new Set(), snapshot: () => ({}), hasWork: () => false },
-    "guidance-fixture",
+  const { tools, frame, preview } = nativeBrowserFixture();
+  const page = { pageId, control: "agent" };
+  preview.page = () => page;
+  preview.pageStillOwned = (candidate) => candidate === page;
+  preview.ensureAgentPage = async () => page;
+  preview.workspace = { workspacePages: () => [page] };
+  frame.params.arguments = { operation: "describe", parameters: {} };
+  delete frame.params.browserApproval;
+  const result = await tools.callback(frame, new AbortController().signal);
+  assert.equal(result.success, true);
+  const description = JSON.parse(result.contentItems[0].text);
+  const checkbox = description.examples.find(
+    (example) => example.operation === "act" && example.parameters.action?.kind === "setChecked",
   );
-  service.browserClaims.set(JSON.stringify(["project-1", "thread-1"]), {
-    socket: { readyState: 1 },
-    coreInstanceId: "core-1",
-    coreGeneration: "generation-1",
-    browserHostId: "host-1",
-    hostGeneration: 1,
-    pages: new Map([[pageId, { pageId, pageGeneration: 1, controlEpoch: 1 }]]),
-  });
-  try {
-    const result = await service.browserRead({
-      projectId: "project-1",
-      threadId: "thread-1",
-      turnId: "turn-1",
-      callId: "call-1",
-      coreInstanceId: "core-1",
-      coreGeneration: "generation-1",
-      arguments: { operation: "describe", parameters: {} },
-    });
-    assert.equal(result.success, true);
-    const description = JSON.parse(result.contentItems[0].text);
-    const checkbox = description.examples.find(
-      (example) => example.operation === "act" && example.parameters.action?.kind === "setChecked",
-    );
-    const topic = description.examples.find(
-      (example) =>
-        example.operation === "describe" &&
-        example.parameters.topic === "command.playwright.locator",
-    );
-    assert.ok(checkbox, "the model receives an explicit checked:boolean action example");
-    assert.ok(topic, "the model receives a supported describe topic example");
-    for (const example of [checkbox, topic]) {
-      const input = structuredClone(example);
-      if (input.parameters.pageId) input.parameters.pageId = pageId;
-      if (input.parameters.snapshotId) input.parameters.snapshotId = pageId;
-      if (input.parameters.action?.ref) input.parameters.action.ref = "r1";
-      assert.equal(validToolInput(input), true, JSON.stringify(input));
-    }
-    assert.equal(checkbox.parameters.action.checked, true);
-    assert.match(description.parameterGuide, /checked.*boolean/);
-    assert.match(description.parameterGuide, /command\.<method>/);
-    assert.equal(
-      validToolInput({
-        operation: "act",
-        parameters: {
-          pageId,
-          snapshotId: pageId,
-          action: { kind: "setChecked", ref: "r1", value: true },
-        },
-      }),
-      false,
-    );
-    assert.equal(validToolInput({ operation: "describe", parameters: { topic: "act" } }), false);
-  } finally {
-    clearTimeout(service.timer);
+  const topic = description.examples.find(
+    (example) =>
+      example.operation === "describe" && example.parameters.topic === "command.playwright.locator",
+  );
+  assert.ok(checkbox, "the model receives an explicit checked:boolean action example");
+  assert.ok(topic, "the model receives a supported describe topic example");
+  for (const example of [checkbox, topic]) {
+    const input = structuredClone(example);
+    if (input.parameters.pageId) input.parameters.pageId = pageId;
+    if (input.parameters.snapshotId) input.parameters.snapshotId = pageId;
+    if (input.parameters.action?.ref) input.parameters.action.ref = "r1";
+    assert.equal(validToolInput(input), true, JSON.stringify(input));
   }
+  assert.equal(checkbox.parameters.action.checked, true);
+  assert.match(description.parameterGuide, /checked.*boolean/);
+  assert.match(description.parameterGuide, /command\.<method>/);
+  assert.equal(
+    validToolInput({
+      operation: "act",
+      parameters: {
+        pageId,
+        snapshotId: pageId,
+        action: { kind: "setChecked", ref: "r1", value: true },
+      },
+    }),
+    false,
+  );
+  assert.equal(validToolInput({ operation: "describe", parameters: { topic: "act" } }), false);
+});
+
+function nativeBrowserFixture() {
+  const { NativeBrowserTools } = require("../app/src/core/generated/native-browser-tools.cjs");
+  const permit = {
+    pageId: "00000000-0000-4000-8000-000000000001",
+    browserHostId: "browser",
+    hostGeneration: 2,
+    pageGeneration: 3,
+    controlEpoch: 4,
+    origin: "https://before.example",
+  };
+  const frame = {
+    sourceId: "source",
+    projectId: "execution-project",
+    guiProjectId: "logical-project",
+    workspacePath: "/workspace/checkout",
+    lease: "original-lease",
+    coreInstanceId: "core",
+    coreGeneration: "generation",
+    connectionId: "connection",
+    coreRequestId: 17,
+    method: "item/tool/call",
+    params: {
+      tool: "browser_v1",
+      threadId: "thread",
+      turnId: "turn",
+      callId: "call",
+      hostGeneration: "tool-generation",
+      arguments: {
+        operation: "capture",
+        parameters: { pageId: "00000000-0000-4000-8000-000000000001", scope: "viewport" },
+      },
+      browserApproval: { plan: { preparedActionId: "plan" } },
+    },
+  };
+  const calls = [];
+  let connected = true;
+  const preview = {
+    page: () => ({ control: "agent" }),
+    controlPermit: (projectId, threadId, pageId) => {
+      assert.equal(projectId, frame.guiProjectId);
+      assert.equal(threadId, "thread");
+      assert.equal(pageId, "00000000-0000-4000-8000-000000000001");
+      return { ...permit };
+    },
+    execute: async (request) => {
+      calls.push(request);
+      return { mimeType: "image/png", imageBase64: "aW1hZ2U=" };
+    },
+    cancelRead: (request) => calls.push({ cancelled: request }),
+  };
+  const tools = new NativeBrowserTools({
+    preview: () => preview,
+    current: () => connected,
+    call: async (method, params) => {
+      calls.push({ method, params });
+      return { uri: "areal://media/original" };
+    },
+    reveal: () => {},
+  });
+  return {
+    tools,
+    preview,
+    permit,
+    frame,
+    calls,
+    disconnect: () => {
+      connected = false;
+    },
+  };
+}
+
+test("native browser capture binds logical preview to original execution Core media lease", async () => {
+  const f = nativeBrowserFixture();
+  const result = await f.tools.callback(f.frame, new AbortController().signal);
+  assert.equal(f.calls[0].projectId, "logical-project");
+  assert.equal(f.calls[0].workspacePath, "/workspace/checkout");
+  assert.deepEqual(f.calls[1], {
+    method: "core.blob",
+    params: {
+      sourceId: "source",
+      projectId: "execution-project",
+      lease: "original-lease",
+      operation: "upload",
+      threadId: "thread",
+      callId: "call",
+      hostGeneration: "tool-generation",
+      mime: "image/png",
+      base64: "aW1hZ2U=",
+    },
+  });
+  assert.equal(result.success, true);
+  assert.deepEqual(result.contentItems[1], {
+    type: "arealMedia",
+    modality: "image",
+    media: { uri: "areal://media/original" },
+  });
+  assert.doesNotMatch(JSON.stringify(result), /aW1hZ2U=/);
+});
+
+test("native browser approved navigation accepts its new origin but revoked execution remains UNKNOWN", async () => {
+  for (const revoke of [false, true]) {
+    const f = nativeBrowserFixture();
+    f.frame.params.arguments = {
+      operation: "navigate",
+      parameters: { pageId: "00000000-0000-4000-8000-000000000001", url: "https://after.example" },
+    };
+    f.preview.execute = async () => {
+      f.permit.origin = "https://after.example";
+      if (revoke) f.permit.controlEpoch++;
+      return { dispatch: "confirmed" };
+    };
+    const result = await f.tools.callback(f.frame, new AbortController().signal);
+    assert.equal(result.success, !revoke);
+    assert.equal(result.structuredContent.dispatch, revoke ? "unknown" : "confirmed");
+    if (!revoke)
+      assert.equal(result.structuredContent.controlPermit.origin, "https://after.example");
+  }
+});
+
+test("native browser owner loss during capture cannot publish or upload the old image", async () => {
+  const f = nativeBrowserFixture();
+  f.preview.execute = async () => {
+    f.disconnect();
+    return { mimeType: "image/png", imageBase64: "aW1hZ2U=" };
+  };
+  const result = await f.tools.callback(f.frame, new AbortController().signal);
+  assert.equal(result.success, false);
+  assert.equal(f.calls.length, 0);
+  assert.doesNotMatch(JSON.stringify(result), /arealMedia|aW1hZ2U=/);
+});
+
+test("native browser preparation cannot observe another thread's page or human-controlled input", async () => {
+  const f = nativeBrowserFixture();
+  f.frame.method = "areal/browser/prepare";
+  f.frame.params.arguments = { operation: "observe", parameters: { pageId: f.permit.pageId } };
+  let ownerThread = "other-thread";
+  f.preview.page = (projectId, threadId, pageId) =>
+    projectId === f.frame.guiProjectId && threadId === ownerThread && pageId === f.permit.pageId
+      ? { control: "human" }
+      : undefined;
+  f.preview.controlPermit = () => {
+    throw new Error("Human controls the page");
+  };
+  f.preview.prepare = () => assert.fail("Unauthorized pages must not be prepared");
+  assert.deepEqual(await f.tools.callback(f.frame, new AbortController().signal), {
+    error: "wrong_page",
+    dispatch: "not_sent",
+  });
+  ownerThread = f.frame.params.threadId;
+  assert.deepEqual(await f.tools.callback(f.frame, new AbortController().signal), {
+    error: "human_control",
+    dispatch: "not_sent",
+  });
+  assert.deepEqual(f.calls, []);
+});
+
+test("native browser preparation returns the native plan and execute requires Core approval", async () => {
+  const f = nativeBrowserFixture();
+  f.frame.method = "areal/browser/prepare";
+  f.preview.prepare = async (request) => ({
+    plan: {
+      preparedActionId: "original-plan",
+      pageId: request.pageId,
+      operation: request.operation,
+    },
+  });
+  const prepared = await f.tools.callback(f.frame, new AbortController().signal);
+  assert.equal(prepared.preparedActionId, "original-plan");
+  f.frame.method = "item/tool/call";
+  delete f.frame.params.browserApproval;
+  const rejected = await f.tools.callback(f.frame, new AbortController().signal);
+  assert.equal(rejected.structuredContent.code, "approval_required");
+  assert.equal(f.calls.length, 0);
+});
+
+test("native executor distinguishes refused input from dispatched UNKNOWN", async () => {
+  for (const message of ["plan_stale", "not_sent", "outcome_unknown"]) {
+    const f = nativeBrowserFixture();
+    f.frame.params.arguments = {
+      operation: "navigate",
+      parameters: { pageId: f.permit.pageId, url: "https://after.example" },
+    };
+    f.preview.execute = async () => {
+      throw Object.assign(new Error(message), { reason: "navigation_timeout" });
+    };
+    const result = await f.tools.callback(f.frame, new AbortController().signal);
+    assert.equal(result.success, false);
+    assert.equal(
+      result.structuredContent.code,
+      message === "outcome_unknown" ? "outcome_unknown" : message,
+    );
+    assert.equal(
+      result.structuredContent.dispatch,
+      message === "outcome_unknown" ? "unknown" : "not_sent",
+    );
+    if (message === "outcome_unknown")
+      assert.equal(result.structuredContent.reason, "navigation_timeout");
+  }
+  const f = nativeBrowserFixture();
+  f.frame.params.arguments = {
+    operation: "wait",
+    parameters: { pageId: f.permit.pageId, timeoutMs: 1 },
+  };
+  f.preview.execute = async () => {
+    throw new Error("condition_timeout");
+  };
+  const result = await f.tools.callback(f.frame, new AbortController().signal);
+  assert.equal(result.structuredContent.code, "condition_timeout");
+  assert.equal(result.structuredContent.dispatch, "not_sent");
 });

@@ -91,18 +91,28 @@ export function GitPaneChangeCard({
   );
   const file = resolveFileDisplayDescriptor(change.workspaceRelativePath);
   const fileActions = [
-    { label: "复制相对路径", icon: CopyIcon, run: () => onCopyRelativePath(change) },
     {
+      id: "copy-relative",
+      label: "复制相对路径",
+      icon: CopyIcon,
+      run: () => onCopyRelativePath(change),
+    },
+    {
+      id: "open-external",
       label: "在默认应用中打开",
       icon: undefined,
       run: onOpenOutside ? () => onOpenOutside(change) : undefined,
+      external: true,
     },
     {
+      id: "reveal-external",
       label: "在文件管理器中显示",
       icon: undefined,
       run: onOpenLocation ? () => onOpenLocation(change) : undefined,
+      external: true,
     },
     {
+      id: "open-tab",
       label: "在标签页中打开文件",
       icon: undefined,
       run: onOpenFile ? () => onOpenFile(change) : undefined,
@@ -122,12 +132,13 @@ export function GitPaneChangeCard({
           render={
             <div className="review-file-header sticky top-0 z-10 flex w-full items-center gap-2 bg-background supports-[backdrop-filter]:backdrop-blur-sm">
               <Button
-                unstyled
-                data-slot={undefined}
                 type="button"
+                variant="ghost"
+                size="none"
+                align="start"
                 aria-label={change.workspaceRelativePath}
                 aria-expanded={isExpanded}
-                className="review-file-identity min-w-0 flex-1 overflow-hidden text-left"
+                className="min-w-0 flex-1 gap-[var(--spacing-inline)] overflow-hidden"
                 title={change.workspaceRelativePath}
                 onClick={() => onOpenChange(change, !isExpanded)}
               >
@@ -150,6 +161,7 @@ export function GitPaneChangeCard({
                   <Button
                     variant="ghost"
                     size="icon-xs"
+                    shape="pill"
                     aria-label="复制路径"
                     title="复制路径"
                     onClick={() => onCopyRelativePath(change)}
@@ -159,32 +171,38 @@ export function GitPaneChangeCard({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="review-file-disclosure"
+                    shape="pill"
                     aria-label="切换文件差异对比"
                     title={isExpanded ? "折叠文件" : "展开文件"}
                     aria-expanded={isExpanded}
                     onClick={() => onOpenChange(change, !isExpanded)}
                   >
-                    <ActivityIcon kind="chevron" size={14} className="size-3.5" />
+                    <ActivityIcon
+                      kind="chevron"
+                      size={14}
+                      className={`size-3.5 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                    />
                   </Button>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={
-                      <Button variant="ghost" size="icon-xs" aria-label="文件操作" title="文件操作">
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        shape="pill"
+                        aria-label="文件操作"
+                        title="文件操作"
+                      >
                         <MoreOptionsIcon className="size-4" />
                       </Button>
                     }
                   />
                   <DropdownMenuContent align="end" className="w-56">
-                    {fileActions.map(({ label, icon: Icon, run }) => (
+                    {fileActions.map(({ id, label, icon: Icon, run, external }) => (
                       <DropdownMenuItem
-                        key={label}
-                        disabled={
-                          !run ||
-                          (openingFile &&
-                            (label === "在默认应用中打开" || label === "在文件管理器中显示"))
-                        }
+                        key={id ?? label}
+                        disabled={!run || (openingFile && !!external)}
                         onClick={run}
                       >
                         {Icon && <Icon className="size-4" />}
@@ -207,13 +225,10 @@ export function GitPaneChangeCard({
           }
         />
         <ContextMenuContent className="w-56">
-          {fileActions.map(({ label, icon: Icon, run }) => (
+          {fileActions.map(({ id, label, icon: Icon, run, external }) => (
             <ContextMenuItem
-              key={label}
-              disabled={
-                !run ||
-                (openingFile && (label === "在默认应用中打开" || label === "在文件管理器中显示"))
-              }
+              key={id ?? label}
+              disabled={!run || (openingFile && !!external)}
               onClick={run}
             >
               {Icon && <Icon className="size-4" />}

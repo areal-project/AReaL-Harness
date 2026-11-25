@@ -10,9 +10,9 @@ pub mod storage;
 
 pub use client::{
     CONFIGURATION_CONFLICT, bind, capabilities, ensure, ensure_with_lifetime,
-    ensure_with_lifetime_checked, ensure_without_restart, list, operation, probe, reconnect,
-    recover_crashed, restart, rpc, select, status, status_with_recovery, stop, stop_operation,
-    stop_with_generation,
+    ensure_with_lifetime_checked, ensure_without_restart, is_stop_not_dispatched, list, operation,
+    probe, reconnect, recover_crashed, restart, rpc, select, status, status_with_recovery, stop,
+    stop_operation, stop_with_generation,
 };
 pub use spec::{LaunchContext, LaunchSpec, LocalArgs, parse_agent_profile};
 

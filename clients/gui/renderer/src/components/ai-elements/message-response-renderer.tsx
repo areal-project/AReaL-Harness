@@ -2,7 +2,7 @@ import { TitleTooltip } from "@areal/ui";
 import { normalizeMessageSingleDollarMath } from "@areal/ui/math-text";
 import "katex/contrib/mhchem";
 import "katex/contrib/copy-tex";
-import { MarkdownSurface } from "@areal/ui/experimental";
+import { MarkdownSurface } from "@areal/ui/compositions";
 /*
  * Derived from ZCode 872ad960 components/ai-elements/message.tsx, in turn derived
  * from vercel/ai-elements. Copyright 2023 Vercel, Inc. Apache-2.0.
@@ -548,7 +548,7 @@ export const MessageResponse = memo(function MessageResponse({
           return (
             <code
               className={cn(
-                "rounded-md bg-markdown-inline-code mx-0.5 px-1.5 py-0.5 font-mono text-ui-sm",
+                "rounded-sm bg-markdown-inline-code/65 mx-0.5 px-1 py-0.5 font-mono text-ui-sm",
                 codeClassName,
               )}
               {...props}
@@ -596,25 +596,26 @@ export const MessageResponse = memo(function MessageResponse({
   );
   return (
     <>
-      <MarkdownSurface
-        streaming={streaming}
-        theme={theme}
-        className={className}
-        components={components}
-        parseIncompleteMarkdown={streaming}
-        remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
-        plugins={plugins}
-        controls={STREAMDOWN_CONTROLS}
-        linkSafety={{ enabled: false }}
-        urlTransform={(url, key, node) =>
-          onRenderImage && key === "src" && /^areal:\/\/blob\/[A-Za-z0-9_-]+$/.test(url)
-            ? url
-            : defaultUrlTransform(url, key, node)
-        }
-      >
-        {normalizeMessageSingleDollarMath(children)}
-      </MarkdownSurface>
+      <div className={className}>
+        <MarkdownSurface
+          streaming={streaming}
+          theme={theme}
+          components={components}
+          parseIncompleteMarkdown={streaming}
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
+          plugins={plugins}
+          controls={STREAMDOWN_CONTROLS}
+          linkSafety={{ enabled: false }}
+          urlTransform={(url, key, node) =>
+            onRenderImage && key === "src" && /^areal:\/\/blob\/[A-Za-z0-9_-]+$/.test(url)
+              ? url
+              : defaultUrlTransform(url, key, node)
+          }
+        >
+          {normalizeMessageSingleDollarMath(children)}
+        </MarkdownSurface>
+      </div>
       <Dialog
         open={diagram !== null}
         onOpenChange={(open) => {

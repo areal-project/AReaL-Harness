@@ -11,6 +11,7 @@
 | `--ui-font-weight` | `400` | 界面常规字重 |
 | `--text-conversation` | `var(--content-font-size, 14px)` | 对话时间线字号：正文、活动行、子代理行与过程状态共用，跟随内容字号偏好 |
 | `--text-ui-xl` | `calc(var(--ui-font-size) + 4px)` | 区块标题 |
+| `--text-heading-app` | `calc(var(--ui-font-size) + 14px)` | 应用级展示大标题（默认 28px，对齐 Codex 首页欢迎语与设置弹窗主标题） |
 | `--text-page-title` | `calc(var(--ui-font-size) + 8px)` | 页面标题、空态大标题 |
 | `--text-ui-lg` | `calc(var(--ui-font-size) + 2px)` | 输入框文字、卡片标题等较突出内容 |
 | `--text-ui-base` | `var(--ui-font-size)` | 界面正文、卡片内容、普通反馈；在消息正文内被重映射为内容字号 |
@@ -23,24 +24,6 @@
 | `--text-ui-sm` | `max(12px, calc(var(--ui-font-size) - 2px))` | 说明文字、次要反馈、表格辅助列 |
 | `--text-ui-xs` | `max(11px, calc(var(--ui-font-size) - 3px))` | 来源细节、元信息；最小 11px，不用于正文 |
 | `--text-ui-2xs` | `calc(var(--ui-font-size) - 5px)` | 仅限工作流图轴面的例外刻度 |
-| `--text-mobile-input-safe` | `16px` | 移动端聚焦输入的安全字号下限 |
-| `--text-fixed-metadata` | `10px` | 标注编号、图表刻度与固定几何元信息。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-caption` | `12px` | 固定几何的紧凑说明与代码预览字号。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-label` | `13px` | 固定尺寸控件标签、附件文字和远程连接说明。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-body` | `14px` | 现有固定布局的正文与默认字号回退。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-control` | `15px` | 固定高度队列和远程设置控件文字。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-emphasis` | `16px` | 固定布局的强调文字。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-section-title` | `20px` | 固定布局的任务、远程和用量分区标题。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-dialog-title` | `22px` | 远程配对和连接卡片标题。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-fixed-page-title` | `28px` | 现有页面标题和新建任务提示。该角色固定像素，保持原行为；支持随用户字号变化的正文继续使用 text-ui/content 系列。 |
-| `--text-ui-fine` | `calc(var(--ui-font-size) - 3px)` | 插件次要标记，保留原 ui-font-size 减 3px，不额外加最小字号。 |
-| `--text-ui-section` | `calc(var(--ui-font-size) + 6px)` | 界面分区标题，跟随界面字号增加 6px。 |
-| `--text-ui-hero` | `calc(var(--ui-font-size) + 10px)` | 界面大标题，跟随界面字号增加 10px。 |
-| `--text-ui-display` | `calc(var(--ui-font-size) + 12px)` | 插件详情展示标题，跟随界面字号增加 12px。 |
-| `--text-compact-caption` | `0.75rem` | 紧凑说明与元信息，保持既有 text-xs 的 rem 缩放。 |
-| `--text-compact-caption--line-height` | `1rem` | 紧凑说明行高，保持既有 text-xs 的 1rem。 |
-| `--text-compact-body` | `0.875rem` | 紧凑正文，保持既有 text-sm 的 rem 缩放。 |
-| `--text-compact-body--line-height` | `1.25rem` | 紧凑正文行高，保持既有 text-sm 的 1.25rem。 |
 | `--text-user-message-heading` | `1.5em` | 用户消息 Markdown 一级标题相对于该消息正文的字号关系。 D2 保留 renderer/src/workbench.css 原几何。 |
 
 ## 行高与字重
@@ -55,7 +38,9 @@
 | `--line-height-relaxed` | `1.625` | 按钮与工具栏入口文字的宽松行高倍数 |
 | `--line-height-toolbar` | `1.5` | 输入框工具栏里模型与强度入口的行高倍数 |
 | `--line-height-title` | `1.2` | 首页迎宾标题等大标题的行高倍数 |
-| `--tracking-heading-tight` | `-0.02em` | 首页迎宾大标题与页面主标题的紧凑负字距 |
+| `--tracking-heading-tight` | `-0.025em` | 首页迎宾大标题与页面主标题的紧凑负字距 |
+| `--tracking-ui-tight` | `-0.01em` | 紧凑界面标签、按钮与 Tooltip 的精细负字距 |
+| `--tracking-ui-subtle` | `-0.15px` | 常规表单项与界面说明的微调负字距 |
 
 ## 间距与尺寸
 
@@ -67,10 +52,18 @@
 | `--spacing-control` | `max(28px, calc(var(--ui-font-size) + 14px))` | 默认控件高度（h-control / size-control），按钮、图标按钮 |
 | `--spacing-control-lg` | `max(32px, calc(var(--ui-font-size) + 18px))` | 较大控件高度（h-control-lg） |
 | `--spacing-control-form` | `max(38px, calc(var(--ui-font-size) + 24px))` | 表单输入框高度 |
+| `--spacing-1` | `4px` | 4px 极紧凑间距：图标与紧邻标签、微元素内边距 |
+| `--spacing-2` | `8px` | 8px 常规行内间距（等价 spacing-inline） |
+| `--spacing-3` | `12px` | 12px 中等分组与控件内留白 |
+| `--spacing-4` | `16px` | 16px 字段与面板内留白（等价 spacing-field / spacing-panel） |
+| `--spacing-6` | `24px` | 24px 分区间距（等价 spacing-section） |
+| `--spacing-8` | `32px` | 32px 大区块呼吸间距与页面上下留白 |
 | `--spacing-inline` | `8px` | 同行相邻内容的间距 |
 | `--spacing-field` | `16px` | 内容块与内侧留白 |
 | `--spacing-section` | `24px` | 分区间距 |
 | `--spacing-panel` | `16px` | 面板内留白 |
+| `--reading-width-compact` | `640px` | 窄窗口或分屏工作区下对话流与 Composer 的紧凑阅读宽度上限 |
+| `--reading-width-expanded` | `672px` | 常规桌面窗口下对话流的推荐收束阅读宽度上限 |
 
 ## 圆角
 
@@ -82,25 +75,14 @@
 | `--radius-pill` | `999px` | 胶囊形：发送等主动作、标签、计数徽标 |
 | `--radius-overlay` | `var(--radius-3xl)` | 大浮层与独立工作区：Worktree 设置、目录列表、定时任务 |
 | `--radius-navigation` | `var(--radius-md)` | 导航项、侧栏行与拖拽预览 |
-| `--radius-composer` | `var(--radius-2xl)` | 输入区外框 |
+| `--radius-composer` | `var(--radius-4xl)` | 输入区外框（24px 超椭圆连续圆角，对齐 Codex Composer） |
 | `--radius-panel` | `var(--radius-xl)` | 面板与分组卡片 |
 | `--radius-dialog` | `var(--radius-2xl)` | 对话框 |
-| `--radius-message` | `var(--radius-2xl)` | 用户消息气泡圆角 |
-| `--radius-compact` | `var(--radius-sm)` | 紧凑工具按钮与小型输入的既有圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-micro` | `var(--radius-xs)` | 微型工具、缩略图内部和细粒度选择区圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-compact-row` | `var(--radius-sm)` | 紧凑队列和菜单行圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-inline` | `var(--radius-sm)` | 嵌入式输入和紧凑标注工具圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-card` | `var(--radius-2xl)` | 中型资源列表与提示卡片圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-choice` | `var(--radius-2xl)` | 选择菜单和主题预览卡片圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-attachment` | `var(--radius-lg)` | 图片附件与紧凑批注圆角。D3 保留原几何。 |
-| `--radius-feedback` | `var(--radius-xl)` | 输入反馈与提示卡片圆角。D3 保留原几何。 |
-| `--radius-full` | `9999px` | 全圆角胶囊，保留原最大半径。D3 保留原几何。 |
-| `--radius-composer-large` | `var(--radius-4xl)` | 大输入区外框圆角。D3 保留原几何。 |
-| `--radius-status-dot` | `99px` | 供应商状态点的原固定圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-composer-queue-menu` | `var(--radius-2xl)` | 输入器队列菜单的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-turn-marker` | `var(--radius-2xs)` | 轮次导航细标记的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-inspection-dialog` | `var(--radius-4xl)` | Hook 统计检查对话框的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-context-category-dot` | `var(--radius-2xs)` | 上下文组成类别标记的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
+| `--radius-message` | `var(--radius-3xl)` | 用户消息气泡圆角（20px 紧凑胶囊，对齐 Codex） |
+| `--radius-indicator` | `var(--radius-2xs)` | 微型指示条与细标记圆角（2px 档） |
+| `--radius-micro` | `var(--radius-xs)` | 行内代码、键帽与微型徽标圆角（4px 档） |
+| `--radius-compact` | `var(--radius-sm)` | 紧凑按钮、小型标签与紧凑行圆角（6px 档） |
+| `--radius-composer-large` | `var(--radius-4xl)` | 大输入区与大型检查面板外框圆角（24px 档） |
 | `--radius-2xs` | `calc(2px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：微型指示器与进度条圆角 |
 | `--radius-xs` | `calc(4px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：行内代码与微型徽章圆角 |
 | `--radius-sm` | `calc(6px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：紧凑按钮与小型标签圆角 |
@@ -115,20 +97,10 @@
 
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
+| `--shadow-subtle` | `0 1px 2px rgb(0 0 0 / 6%), 0 0 0 0.5px var(--color-border-hairline)` | 控件、卡片与分段滑块的轻微抬起阴影 |
 | `--shadow-menu` | `0 0 0 0.5px var(--color-menu-border, var(--color-border)), 0 8px 16px -4px rgb(0 0 0 / 12%)` | 下拉菜单与右键菜单 |
 | `--shadow-overlay` | `0 4px 12px rgb(0 0 0 / 10%), 0 14px 40px rgb(0 0 0 / 8%)` | Popover 与悬浮面板 |
 | `--shadow-dialog` | `0 12px 32px rgb(0 0 0 / 20%)` | 对话框 |
-| `--shadow-inset-control` | `0 1px 1px rgba(0, 0, 0, 0.04)` | 微型设置按钮的轻投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-raised-control` | `0 1px 2px rgba(0, 0, 0, 0.06)` | 设置控件的轻投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-tooltip` | `0 5px 18px #00000014` | 时间线与更新提示的浮层投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-large-overlay` | `0 16px 64px #0005` | 大预览浮层的投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-menu-wide` | `0 8px 28px #0003` | 宽目录菜单的投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-dark-control` | `0 8px 18px rgb(15 23 42 / 20%)` | 暗色快捷入口的投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-menu-double-stroke` | `0 0 0 .5px color-mix(in srgb, var(--color-foreground) 8.2%, transparent), 0 0 0 .5px color-mix(in srgb, var(--color-foreground) 8.2%, transparent), 0 8px 16px -4px #0000001f` | 双层细描边菜单投影，保留既有重复描边和前景比例。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-floating-toolbar` | `0 8px 24px #0002` | 浮动工具条投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-elevated-chip` | `0 1px 4px #0003, 0 0 0 1px #0000000d` | 悬浮小控件投影与外描边。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-leading-panel` | `-8px 0 16px -8px #0000002e` | 侧面板起始边投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
-| `--shadow-compact-overlay` | `0 3px 12px #0003` | 紧凑浮层投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
 
 ## 状态色与语义色
 
@@ -164,6 +136,21 @@
 | `--color-syntax-regexp` | `#001bcb（暗色 #3d8dff）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：正则表达式 |
 | `--color-syntax-decorator` | `#1a85d4（暗色 #69b1ff）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：装饰器 |
 | `--color-syntax-error` | `#f44747` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：语法错误与非法记号；明暗相同 |
+| `--color-surface-fog` | `color-mix(in oklab, var(--color-foreground) 3%, transparent)（暗色 color-mix(in oklab, var(--color-foreground) 5%, transparent)）` | 极轻雾化表面层，用于分段控件底轨、摘要条与柔和分组底色 |
+| `--color-border-hairline` | `color-mix(in oklab, var(--color-foreground) 8%, transparent)（暗色 color-mix(in oklab, var(--color-foreground) 11%, transparent)）` | 精细 oklab 语义描边色，用于浮层与内嵌表面边界 |
+| `--color-surface-under` | `#f9f9f9（暗色 #1f1f22）` | 最底层外壳与停靠侧栏基底（亮色 #f9f9f9 / 暗色 #1f1f22，对齐 Codex 一体化柔和深炭灰侧栏） |
+| `--color-surface-card` | `#ffffff（暗色 #212121）` | 抬升卡片表面（Codex 灰阶 200：亮色 #ffffff / 暗色 #212121），用于设置组、审批卡、Ask User 与置顶摘要卡 |
+| `--color-surface-composer` | `#ffffff（暗色 #303034）` | 输入区主表面（亮色 #ffffff / 暗色 #303034，浮起于主阅读画布之上，对齐 Codex Composer） |
+| `--color-settings-modal-nav` | `#f7f7f8（暗色 #2b2b30）` | 设置弹窗左侧导航栏表面（对齐 Codex Settings Modal 导航栏层次） |
+| `--color-settings-modal-surface` | `#ffffff（暗色 #26262a）` | 设置弹窗右侧主内容区表面（对齐 Codex Settings Modal 主内容区） |
+| `--color-theme-preview-light-bg` | `#ffffff` | 外观主题缩略图浅色画布背景 |
+| `--color-theme-preview-light-sidebar` | `#f2f2f4` | 外观主题缩略图浅色侧栏背景 |
+| `--color-theme-preview-light-bar` | `#d4d4d8` | 外观主题缩略图浅色占位条颜色 |
+| `--color-theme-preview-dark-bg` | `#1c1c1f` | 外观主题缩略图深色画布背景 |
+| `--color-theme-preview-dark-sidebar` | `#28282c` | 外观主题缩略图深色侧栏背景 |
+| `--color-theme-preview-dark-bar` | `#4b4b52` | 外观主题缩略图深色占位条颜色 |
+| `--color-surface-popover` | `#ffffff（暗色 #303030）` | 浮层、折叠侧栏弹层与灵动摘要条表面（Codex 灰阶 300：亮色 #ffffff / 暗色 #303030） |
+| `--color-surface-docked-sidebar` | `color-mix(in oklab, var(--color-surface-under) 82%, transparent)（暗色 color-mix(in oklab, var(--color-surface-under) 85%, transparent)）` | 停靠侧栏轻透表面，对齐 Codex Docked Sidebar 层次 |
 
 ## 动效与层级
 
@@ -192,7 +179,7 @@
 | --- | --- | --- |
 | `--border-width-default` | `1px` | 描边、分隔线的默认宽度 |
 | `--font-sans` | `-apple-system, system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif` | 基础界面字体及平台回退 |
-| `--font-mono` | `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", monospace` | 代码字体及CJK无衬线回退 |
+| `--font-mono` | `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", monospace` | 代码字体及CJK无衬线回退 |
 | `--conversation-line` | `1.43` | 对话时间线行高（无单位比例）：14px 时为 20px；标题与更大的内容字号按比例增长 |
 | `--message-reading-inset` | `32px` | 对话信息流上下留白：首条消息与列顶部、末条内容与输入框之间 |
 | `--message-bubble-max` | `70%` | 用户消息气泡相对阅读列的最大宽度 |
@@ -212,10 +199,9 @@
 | `--focus-width` | `2px` | 键盘焦点轮廓线宽 |
 | `--focus-offset` | `2px` | 键盘焦点轮廓与元素边缘的距离 |
 | `--browser-file-status-max-height` | `112px` | 浏览器文件交接状态列表的既有最大高度；来自renderer/src/BrowserFileHandoff.layout.css，D2保持原几何。 |
-| `--browser-file-status-inline-gap` | `6px` | 浏览器文件交接状态项的既有内容间距；来自renderer/src/BrowserFileHandoff.layout.css，D2保持原几何。 |
-| `--browser-file-status-block-padding` | `3px` | 浏览器文件交接状态项的既有纵向内边距；来自renderer/src/BrowserFileHandoff.layout.css，D2保持原几何。 |
 | `--size-status-dot` | `7px` | 移动端会话状态圆点尺寸 |
 | `--size-touch-target` | `44px` | 移动端按钮与输入框的最小触控目标 |
+| `--blur-backdrop` | `6px` | 居中模态弹窗遮罩的柔和模糊半径（保留底层工作台可辨识轮廓，对齐 Codex Settings Modal） |
 | `--blur-header` | `18px` | 工作台顶栏与吸顶摘要栏的毛玻璃模糊半径 |
 | `--blur-popover` | `24px` | 任务上下文摘要（Pin Summary）与大浮层的液态玻璃模糊半径 |
 | `--corner-radius-scale` | `1` | 内部圆角倍率：只乘原料刻度，用途圆角随之变化；不开放给用户（D-005） |
@@ -231,6 +217,7 @@
 | `--sidebar-default-width` | `320px` | 侧栏默认宽度；用户可拖动调整 |
 | `--font-weight-strong` | `600` | 侧栏工作区名称等强调标题的字重 |
 | `--font-weight-medium` | `500` | 卡片标题与选项文字的中等字重 |
+| `--corner-shape` | `round` | 控件与浮层的圆角曲率形状，支持 superellipse 的宿主通过 CSS @supports 渐进增强 |
 
 ## 派生参数与来源
 
@@ -297,10 +284,10 @@
 | `default-accent` | `#3a83f7` | themes.accent 既有默认覆盖匹配值。 |
 | `file-link-default` | `#2c67c5` | palette.source.preMigration |
 | `primary-text-default-dark` | `#2d2d2d` | palette.source.preMigration |
-| `user-message-default-dark` | `#173e76` | palette.source.preMigration |
-| `user-message-default-light` | `#e8f3fe` | palette.source.preMigration |
-| `user-text-default-dark` | `#f6fafe` | palette.source.preMigration |
-| `user-text-default-light` | `#0c274a` | palette.source.preMigration |
+| `user-message-default-dark` | `#20447a` | 对齐 Codex 桌面端深强调蓝用户消息胶囊（实采 #20447a，配 #f4f4f5 对比度 > 8.9:1）。 |
+| `user-message-default-light` | `#e8f1ff` | 对齐 Codex 亮色强调浅蓝用户消息胶囊（配 #0c274a 对比度 > 13.5:1）。 |
+| `user-text-default-dark` | `#f4f4f5` | palette.source.preMigration |
+| `user-text-default-light` | `#0c274a` | 对齐 Codex 亮色用户气泡深海军蓝正文（--compact-message-bubble-foreground）。 |
 | `settings-sidebar-default-solid` | `rgb(40 40 40 / 1)` | palette.source.preMigration |
 | `settings-sidebar-default-translucent` | `rgb(40 40 40 / 0.7)` | palette.source.preMigration |
 | `settings-row-default-dark` | `rgba(255, 255, 255, 0.08)` | palette.source.preMigration |
@@ -454,8 +441,8 @@
 | `--color-composer-action-foreground` | component · 中性主动作上的可读文字。 | text-primary-inverse 保留已有组件变量名；仅引用 text-primary-inverse。中性主动作上的可读文字。 | `var(--color-primary-foreground)` | `var(--color-primary-foreground)` |
 | `--color-accent` | semantic · 弱强调背景。 | surface-accent  | `color-mix(in srgb, #1a1c1f 6%, #ffffff)` | `color-mix(in srgb, #ffffff 6%, #181818)` |
 | `--color-secondary` | semantic · 次要控件的前景透明层。 | surface-secondary  | `color-mix(in srgb, #1a1c1f 5%, transparent)` | `color-mix(in srgb, #ffffff 5%, transparent)` |
-| `--color-user-message` | component · 用户消息区分层，默认主题保留已采纳蓝色。 | surface-user-message 保留已有组件变量名；仅引用 surface-user-message。用户消息区分层，默认主题保留已采纳蓝色。 | `#e8f3fe` | `#173e76` |
-| `--color-user-message-text` | component · 用户消息正文，默认主题保留蓝底配对前景。 | text-user-message 保留已有组件变量名；仅引用 text-user-message。用户消息正文，默认主题保留蓝底配对前景。 | `#0c274a` | `#f6fafe` |
+| `--color-user-message` | component · 用户消息区分层，默认主题保留已采纳蓝色。 | surface-user-message 保留已有组件变量名；仅引用 surface-user-message。用户消息区分层，默认主题保留已采纳蓝色。 | `#e8f1ff` | `#20447a` |
+| `--color-user-message-text` | component · 用户消息正文，默认主题保留蓝底配对前景。 | text-user-message 保留已有组件变量名；仅引用 text-user-message。用户消息正文，默认主题保留蓝底配对前景。 | `#0c274a` | `#f4f4f5` |
 | `--color-background-win-alt` | semantic · 浅色外壳与次级窗口表面。 | surface-window-alt  | `color-mix(in srgb, #1a1c1f 4%, #ffffff)` | `color-mix(in srgb, #ffffff 4%, #181818)` |
 | `--color-shell` | semantic · 标题栏和外框表面。 | surface-shell  | `color-mix(in srgb, #1a1c1f 4%, #ffffff)` | `color-mix(in srgb, #ffffff 5.194805194805195%, #181818)` |
 | `--color-navigation-background` | semantic · 导航表面。浅色透明材料保留 OKLab 混色。 | surface-navigation  | `color-mix(in oklab, #ffffff 70%, transparent)` | `color-mix(in srgb, #ffffff 2.5974025974025974%, #181818)` |

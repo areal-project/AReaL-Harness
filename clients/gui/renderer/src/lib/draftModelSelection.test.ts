@@ -85,3 +85,35 @@ describe("desktop draft Fast intent", () => {
     ).toBeUndefined();
   });
 });
+
+describe("new conversation model ownership", () => {
+  it("waits for a choice on first use instead of adopting a configured default", () => {
+    expect(draftModelSelection(project, { model }, null, {}).effectiveModel).toBe("");
+  });
+  it("uses the last accepted model over a preset and preserves a draft choice", () => {
+    const remembered = {
+      ...project,
+      lastAcceptedModel: {
+        model: { providerId: "direct" },
+        modelId: model.modelId,
+        reasoningEffort: "high",
+      },
+    };
+    expect(
+      draftModelSelection(remembered, { model: { providerId: "old", modelId: "old" } }, null, {}),
+    ).toMatchObject({ effectiveModel: value, effort: "high" });
+    expect(draftModelSelection(remembered, undefined, value, {}).effectiveModel).toBe(value);
+  });
+});
+
+it("an unavailable remembered choice returns to the picker without selecting another model", () => {
+  const unavailable = {
+    ...project,
+    models: [{ ...model, available: false }],
+    lastAcceptedModel: { model: { providerId: "direct" }, modelId: model.modelId },
+  };
+  expect(draftModelSelection(unavailable, undefined, null, {})).toMatchObject({
+    effectiveModel: "",
+    notice: "",
+  });
+});

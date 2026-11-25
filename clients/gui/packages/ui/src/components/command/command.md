@@ -2,8 +2,8 @@
 id: command
 title: Command
 summary: 命令选择，沿用现有生产实现与交互。
-status: experimental
-entry: experimental
+status: stable
+entry: index
 layer: core
 category: control
 aliases: ["命令选择"]

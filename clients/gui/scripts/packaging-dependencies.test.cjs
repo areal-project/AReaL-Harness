@@ -111,17 +111,6 @@ test("builder, universal and filelist retain their minimatch APIs", async (t) =>
   ]);
 });
 
-test("Capacitor rimraf retains recursive removal through its glob dependency", async (t) => {
-  const { root, source } = await fixture(t);
-  const mobileRequire = createRequire(resolve(__dirname, "../../mobile/package.json"));
-  const capacitorRequire = createRequire(mobileRequire.resolve("@capacitor/cli/package.json"));
-  const { rimraf } = capacitorRequire("rimraf");
-  await rimraf(join(source, "cache", "*.txt"), { glob: true });
-  await assert.rejects(readFile(join(source, "cache/ignored.txt")), { code: "ENOENT" });
-  assert.equal(await readFile(join(source, "index.js"), "utf8"), "module.exports = 42;\n");
-  await rimraf(root);
-});
-
 test("package build receipts reject changed inputs, corrupted outputs and failed builds", async (t) => {
   const { root } = await fixture(t);
   const { cachedBuild, withStaging, createTimings } = await import("./package-build.mjs");
@@ -172,4 +161,44 @@ test("package build receipts reject changed inputs, corrupted outputs and failed
   await assert.rejects(stat(staging), { code: "ENOENT" });
   assert.ok(timings.stages[0].durationMs >= 0);
   assert.equal(timings.stages[0].status, "ok");
+});
+
+test("package timing records failed and successful intervals before and after execution", async () => {
+  const { createTimings } = await import("./package-build.mjs");
+  const events = [];
+  const timings = createTimings((stage) => events.push({ ...stage }));
+  assert.equal(
+    timings.measureSync("copy", () => 7),
+    7,
+  );
+  const failure = new Error("sign failed");
+  await assert.rejects(
+    timings.measure("sign", async () => {
+      throw failure;
+    }),
+    (error) => error === failure,
+  );
+  assert.throws(
+    () =>
+      timings.measureSync("verify", () => {
+        throw failure;
+      }),
+    (error) => error === failure,
+  );
+  assert.deepEqual(
+    events.map(({ name, status }) => [name, status]),
+    [
+      ["copy", "running"],
+      ["copy", "ok"],
+      ["sign", "running"],
+      ["sign", "failed"],
+      ["verify", "running"],
+      ["verify", "failed"],
+    ],
+  );
+  for (const stage of timings.stages) {
+    assert.ok(Number.isFinite(Date.parse(stage.startedAt)));
+    assert.ok(Date.parse(stage.completedAt) >= Date.parse(stage.startedAt));
+    assert.ok(stage.durationMs >= 0);
+  }
 });

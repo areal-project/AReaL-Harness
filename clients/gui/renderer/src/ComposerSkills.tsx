@@ -369,31 +369,37 @@ function ComposerSkillTag({
         }}
       >
         <PopoverTrigger
-          className="composer-skill-preview-trigger"
           disabled={disabled}
           aria-label={`查看技能 ${skill.name} ${skill.source}`}
+          render={
+            <Button
+              type="button"
+              variant="inline-link"
+              size="none"
+              align="start"
+              className="gap-1"
+            />
+          }
         >
           <Box size={14} />
           {skill.name}
           {duplicate && <small>{skill.source}</small>}
         </PopoverTrigger>
-        <PopoverContent
-          side="top"
-          className="composer-skill-preview"
-          aria-label={`技能 ${skill.name}`}
-        >
-          <strong>{skill.name}</strong>
-          <small>{skill.source}</small>
-          <p>{skill.description}</p>
-          {loading ? (
-            <DelayedVisible active>
-              <p>正在读取内容…</p>
-            </DelayedVisible>
-          ) : error ? (
-            <p role="alert">{error}</p>
-          ) : (
-            <pre>{content}</pre>
-          )}
+        <PopoverContent side="top" variant="flush" aria-label={`技能 ${skill.name}`}>
+          <div className="composer-skill-preview flex flex-col gap-field overflow-y-auto p-2.5">
+            <strong>{skill.name}</strong>
+            <small>{skill.source}</small>
+            <p>{skill.description}</p>
+            {loading ? (
+              <DelayedVisible active>
+                <p>正在读取内容…</p>
+              </DelayedVisible>
+            ) : error ? (
+              <p role="alert">{error}</p>
+            ) : (
+              <pre>{content}</pre>
+            )}
+          </div>
         </PopoverContent>
       </Popover>
       <Button

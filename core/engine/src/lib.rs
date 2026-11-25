@@ -65,6 +65,8 @@ use tracing::{Instrument, info_span};
 
 #[derive(Clone, Debug)]
 pub struct Limits {
+    /// 基础读取服务不能启动执行；恢复执行部署后由正常服务接管。
+    pub execution_enabled: bool,
     pub session_catalog: areal_config::SessionCatalog,
     pub inspection_permissions: areal_config::InspectionPermissions,
     pub goals: goals::Policy,
@@ -121,6 +123,7 @@ pub struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
+            execution_enabled: true,
             session_catalog: {
                 #[cfg(feature = "test-support")]
                 {
@@ -243,7 +246,6 @@ struct Active {
     direct_tool: Option<model::ToolCall>,
     tool_meta: Option<serde_json::Map<String, Value>>,
     tool_calls: usize,
-    cua_used: bool,
     waiting_for_model_capacity: bool,
     started: std::time::Instant,
     isolated_children: usize,
@@ -276,7 +278,7 @@ struct State {
     active: Option<Active>,
     poisoned: bool,
     compacting: bool,
-    compaction_owner: Option<desktop::mcp_apps::CallOwner>,
+    compaction_owner: Option<desktop::mcp_interactions::CallOwner>,
     // Failed cleanup or final persistence is not evidence that capacity is
     // reusable. Keep the reservation until this Engine is dropped/recovered.
     quarantined_admission: Option<OwnedSemaphorePermit>,
@@ -484,7 +486,8 @@ fn restore_sessions(
         .map(|(id, session)| {
             let deferred = session.is_deferred();
             let activity_at = session.deferred_activity_at();
-            let thread = session.into_thread()?;
+            let mut thread = session.into_thread()?;
+            desktop::retire_removed_desktop_tools(&mut thread);
             let mut bindings = tools::Bindings {
                 registry: if thread.is_read_only_side() {
                     registry.clone().side_only(thread.side_workspace_read())
@@ -711,6 +714,10 @@ impl Engine {
             )?
         };
         let desktop = desktop::Desktop::open(root)?;
+        desktop
+            .lifecycle
+            .execution_enabled
+            .store(limits.execution_enabled, Ordering::Release);
         let goals = goals::Goals::open(root, &threads)?;
         let permission_file = root.join("desktop/permissions.json");
         let project_permissions = if permission_file.exists() {
@@ -912,6 +919,7 @@ impl Engine {
             }
         };
         thread.status = ThreadStatus::Idle;
+        desktop::retire_removed_desktop_tools(&mut thread);
         if let Some(desktop) = &mut thread.desktop {
             for hook in &mut desktop.hook_runs {
                 if hook.outcome == "running" {

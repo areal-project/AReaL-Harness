@@ -173,8 +173,16 @@ export function activityRuns(
 }
 
 // 组标题短语的固定顺序：改动最值得注意，其次是其他工具，再是探索，命令最后。
-const stageRank = (stage: string) =>
-  stage === "修改文件" ? 0 : stage === "探索" ? 2 : stage === "运行命令" ? 3 : 1;
+const STAGE_RANK: Record<string, number> = { 修改文件: 0, 探索: 2, 运行命令: 3 };
+const stageRank = (stage: string) => STAGE_RANK[stage] ?? 1;
+const STAGE_RUN_KEY: Record<
+  string,
+  "chat.activity.run.explore" | "chat.activity.run.commands" | "chat.activity.run.wait"
+> = {
+  探索: "chat.activity.run.explore",
+  运行命令: "chat.activity.run.commands",
+  等待任务: "chat.activity.run.wait",
+};
 
 /** 组内出现的阶段，按标题顺序排列；同一顺位按首次出现。 */
 export function activityRunStages(run: { items: Data[] }): string[] {
@@ -192,7 +200,7 @@ export function activityRunLabel(run: { key: string | null; items: Data[] }, t: 
   const views = run.items.map((item) => ({ item, view: toolPresentation(item) }));
   const failures = views.filter(({ view }) => view.failed).length;
   const phrases = activityRunStages(run).map((stage) => {
-    if (stage === "修改文件") {
+    if (stageRank(stage) === 0) {
       const paths = new Set(
         views
           .filter(({ item, view }) => view.state === "completed" && activityStage(item) === stage)
@@ -201,9 +209,8 @@ export function activityRunLabel(run: { key: string | null; items: Data[] }, t: 
       );
       return t("chat.activity.run.edits", { tense: "done", count: paths.size });
     }
-    if (stage === "探索") return t("chat.activity.run.explore", { tense: "done" });
-    if (stage === "运行命令") return t("chat.activity.run.commands", { tense: "done" });
-    if (stage === "等待任务") return t("chat.activity.run.wait", { tense: "done" });
+    const runKey = STAGE_RUN_KEY[stage];
+    if (runKey) return t(runKey, { tense: "done" });
     return toolActionText(
       run.items.find((item) => activityStage(item) === stage)!,
       "done",
@@ -241,7 +248,7 @@ export function executionOutcome(items: Data[]) {
   const views = items.filter((item) => item.type === "dynamicToolCall").map(toolPresentation);
   return {
     failures: views.filter((view) => view.failed).length,
-    unfinished: views.some((view) => view.running || view.status === "结果待确认"),
+    unfinished: views.some((view) => view.running || view.unsettled),
   };
 }
 
@@ -386,6 +393,7 @@ export function toolPresentation(item: Data) {
             : stopped
               ? "已停止"
               : "已完成",
+    unsettled,
   };
 }
 

@@ -11,7 +11,6 @@ function onDesktopEvent(channel, listener) {
   return ipcRenderer.on(channel, listener);
 }
 /** @typedef {import("@areal/workbench/desktop-contract").QuitProgress} QuitProgress */
-/** @typedef {import("@areal/workbench/desktop-contract").McpAppDeepLink} McpAppDeepLink */
 /** @typedef {import("@areal/workbench/desktop-contract").NotificationTarget} NotificationTarget */
 /** @typedef {{pending:number|null,listener:()=>boolean|Promise<boolean>}} QuitSubscription */
 /** @type {QuitProgress} */
@@ -33,7 +32,7 @@ onDesktopEvent(
     for (const listener of quitProgressListeners) listener(quitProgress);
   },
 );
-/** @param {(id:number,allowed:boolean)=>void} reply */
+/** @param {(id:number,allowed:boolean,reason?:'noSubscriber')=>void} reply */
 function decisionSubscription(reply) {
   /** @type {QuitSubscription|null} */
   let current = null;
@@ -49,7 +48,12 @@ function decisionSubscription(reply) {
     request(id) {
       if (typeof id !== "number") return;
       const subscription = current;
-      if (!subscription || subscription.pending !== null) {
+      if (!subscription) {
+        // 本 frame 尚未挂载订阅者（如黑屏或 React 尚未完成 mount），显式上报 noSubscriber，不冒充用户拒绝。
+        reply(id, false, "noSubscriber");
+        return;
+      }
+      if (subscription.pending !== null) {
         reply(id, false);
         return;
       }
@@ -73,8 +77,8 @@ function decisionSubscription(reply) {
     },
   };
 }
-const quitDecision = decisionSubscription((id, allowed) =>
-  sendDesktop("areal-core:quit-decision", { id, allowed }),
+const quitDecision = decisionSubscription((id, allowed, reason) =>
+  sendDesktop("areal-core:quit-decision", reason ? { id, allowed, reason } : { id, allowed }),
 );
 const closeDecision = decisionSubscription((id, allowed) =>
   sendDesktop("areal-core:window-close-decision", { id, allowed }),
@@ -150,46 +154,6 @@ const desktopBridge = {
     onDesktopEvent("areal-core:update-changed", handler);
     return () => ipcRenderer.removeListener("areal-core:update-changed", handler);
   },
-  /** @param {(target:McpAppDeepLink)=>void|Promise<void>} listener */
-  onMcpAppDeepLink: (listener) => {
-    let active = true;
-    /** @type {number|null} */
-    let pending = null;
-    const handler = () => {
-      void invokeDesktop("areal-core:mcp-app-deep-link-target")
-        .then(
-          /** @param {unknown} target */ async (target) => {
-            if (!active || !isMcpAppDeepLink(target) || pending === target.id) return;
-            pending = target.id;
-            try {
-              await listener(target);
-              if (active) await invokeDesktop("areal-core:mcp-app-deep-link-consumed", target.id);
-            } finally {
-              pending = null;
-            }
-          },
-        )
-        .catch(() => {});
-    };
-    onDesktopEvent("areal-core:mcp-app-deep-link", handler);
-    handler();
-    return () => {
-      active = false;
-      ipcRenderer.removeListener("areal-core:mcp-app-deep-link", handler);
-    };
-  },
-  /** @param {unknown} operation @param {unknown} request @returns {Promise<unknown>} */
-  mcpFormResource: (operation, request) =>
-    invokeDesktop("areal-core:mcp-form-resource", operation, request),
-  /** @param {unknown} request @returns {Promise<unknown>} */
-  mcpApp: (request) => invokeDesktop("areal-core:mcp-app", request),
-  /** @param {(value:unknown)=>void} listener */
-  onMcpAppEvent: (listener) => {
-    /** @param {import("electron").IpcRendererEvent} _event @param {unknown} value */
-    const handler = (_event, value) => listener(value);
-    onDesktopEvent("areal-core:mcp-app-event", handler);
-    return () => ipcRenderer.removeListener("areal-core:mcp-app-event", handler);
-  },
   /** @param {unknown} request @returns {Promise<unknown>} */
   preview: (request) => invokeDesktop("areal-core:preview", request),
   /** @param {(value:unknown)=>void} listener */
@@ -248,14 +212,13 @@ const desktopBridge = {
       ipcRenderer.removeListener("areal-core:notification-open", handler);
     };
   },
-  /** @param {unknown} requestId */
-  requestProjection: (requestId) => sendDesktop("areal-core:projection-request", requestId),
+  nativeState: () => invokeDesktop("areal-core:native-state"),
   /** @param {(value:unknown)=>void} listener */
-  onProjection: (listener) => {
+  onNativeState: (listener) => {
     /** @param {import("electron").IpcRendererEvent} _event @param {unknown} value */
     const handler = (_event, value) => listener(value);
-    onDesktopEvent("areal-core:projection", handler);
-    return () => ipcRenderer.removeListener("areal-core:projection", handler);
+    onDesktopEvent("areal-core:native-state-changed", handler);
+    return () => ipcRenderer.removeListener("areal-core:native-state-changed", handler);
   },
   /** @param {(value:unknown)=>void} listener */
   onTheme: (listener) => {
@@ -267,24 +230,6 @@ const desktopBridge = {
 };
 contextBridge.exposeInMainWorld("arealDesktop", desktopBridge);
 
-/** @param {unknown} value @returns {value is McpAppDeepLink} */
-function isMcpAppDeepLink(value) {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    "id" in value &&
-    typeof value.id === "number" &&
-    "pluginId" in value &&
-    typeof value.pluginId === "string" &&
-    "toolName" in value &&
-    typeof value.toolName === "string" &&
-    "path" in value &&
-    typeof value.path === "string" &&
-    (!("marketplace" in value) ||
-      value.marketplace === undefined ||
-      typeof value.marketplace === "string")
-  );
-}
 /** @param {unknown} value @returns {value is NotificationTarget & {id:number}} */
 function isNotificationTarget(value) {
   if (

@@ -1,12 +1,10 @@
 .slash-command-menu {
   --slash-surface: var(--color-background);
-  --slash-border: color-mix(in srgb, var(--color-foreground) 8%, transparent);
-  --slash-selected: color-mix(in srgb, var(--color-foreground) 5.5%, transparent);
   display: flex;
   flex-direction: column;
   margin-bottom: var(--spacing-inline);
   padding: calc(var(--spacing-inline) / 2);
-  border: var(--border-width-default) solid var(--slash-border);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-overlay);
   background: var(--slash-surface);
   color: var(--color-foreground);
@@ -18,8 +16,6 @@
 }
 .dark .slash-command-menu {
   --slash-surface: var(--color-composer-catalog);
-  --slash-border: color-mix(in srgb, var(--color-foreground) 8.2%, transparent);
-  --slash-selected: color-mix(in srgb, var(--color-foreground) 8%, transparent);
 }
 .slash-command-scroll {
   position: relative;
@@ -46,7 +42,7 @@
 .slash-command-row,
 .slash-command-empty {
   padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
-  border-radius: var(--radius-choice);
+  border-radius: var(--radius-dialog);
   text-align: left;
 }
 .slash-command-row {
@@ -57,7 +53,7 @@
   white-space: nowrap;
 }
 .slash-command-row[aria-selected="true"] {
-  background: var(--slash-selected);
+  background: var(--color-selected);
 }
 .slash-command-icon {
   display: flex;
@@ -79,7 +75,7 @@
 }
 .slash-command-description,
 .slash-command-empty {
-  color: color-mix(in srgb, var(--color-foreground) 49.8%, transparent);
+  color: var(--color-foreground-subtle);
 }
 .slash-command-label,
 .slash-command-description {

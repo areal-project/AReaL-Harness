@@ -64,7 +64,12 @@ test("native file handoff follows selected thread checkout and rejects source/fo
         },
       },
     };
-    const backend = { snapshot: () => ({ library: { settings: {} }, projects: [project] }) };
+    const backend = {
+      snapshot: () => ({
+        library: { settings: { fileOpenTarget: "previously-installed-editor" } },
+        projects: [project],
+      }),
+    };
     const opened = [];
     const dependencies = {
       backend,
@@ -78,12 +83,14 @@ test("native file handoff follows selected thread checkout and rejects source/fo
       authorize: () => {},
       chooseSave: () => assert.fail("not saving"),
     };
-    await fileOpen(dependencies, {
+    const request = {
       operation: "open",
       projectId: "p",
       threadId: "t",
       path: "same.txt",
-    });
+    };
+    await assert.rejects(fileOpen(dependencies, request), /默认打开应用已不可用/);
+    await fileOpen(dependencies, { ...request, target: "system" });
     assert.deepEqual(opened, [join(directory, "same.txt")]);
     await assert.rejects(
       fileOpen(dependencies, {
@@ -187,80 +194,35 @@ test("browser workspace identity includes the selected thread execution host", (
   assert.deepEqual(view.workspacePages("logical", "b"), []);
 });
 
-test("desktop browser callbacks select physical owner without changing logical identity", () => {
-  const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-  const physical = { id: "physical", service: { serviceId: "core-isolated" } };
-  const backend = {
-    projects: new Map([
-      ["physical", physical],
-      ["logical", { id: "logical" }],
-    ]),
-    worktrees: {
-      executionProjectId: (logical, thread) => {
-        assert.equal(logical, "logical");
-        assert.equal(thread, "t");
-        return "physical";
-      },
-    },
-  };
-  assert.equal(
-    DesktopService.prototype.projectForThread.call({ backend }, "logical", "t"),
-    physical,
+test("background review summary stays bounded for a large diff", async (t) => {
+  const api = require("../packages/workspace-git");
+  const scratch = await realpath(await mkdtemp(join(tmpdir(), "areal-review-summary-")));
+  t.after(() => rm(scratch, { recursive: true, force: true }));
+  const f = { root: join(scratch, "repo"), storage: join(scratch, "state") };
+  await mkdir(f.root);
+  const git = (...args) =>
+    require("node:child_process").execFileSync("git", args, { cwd: f.root, stdio: "ignore" });
+  git("init", "-b", "main");
+  await writeFile(join(f.root, "tracked.txt"), "committed\n");
+  git("add", ".");
+  git(
+    "-c",
+    "user.name=Review fixture",
+    "-c",
+    "user.email=fixture@example.invalid",
+    "commit",
+    "-m",
+    "fixture",
   );
-});
-
-test("MCP app opening retains logical page identity and physical Core connection", async () => {
-  const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-  const calls = [];
-  const client = {
-    ready: true,
-    request: async (method, params) => {
-      calls.push({ method, params });
-      return method.endsWith("/register")
-        ? { registrationId: "registration", tools: [] }
-        : { revoked: true };
-    },
-  };
-  const project = { id: "physical", logicalProjectId: "logical", client };
-  const socket = { readyState: 1 };
-  const service = Object.assign(Object.create(DesktopService.prototype), {
-    clients: new Set([socket]),
-    mcpPageOwners: new Map(),
-  });
-  service.bindMcpPageOwner(
-    socket,
-    project,
-    client,
-    {
-      projectId: "physical",
-      logicalProjectId: "logical",
-      threadId: "t",
-      operation: "mcpAppOpen",
-    },
-    { instanceId: "app", generation: 7 },
+  await writeFile(join(f.root, "tracked.txt"), "new line\n".repeat(30000));
+  const full = await api.review(f.root, f.storage, { scope: "unstaged" });
+  assert.ok(Buffer.byteLength(JSON.stringify(full)) > 1024 * 1024);
+  const summary = await api.review(f.root, f.storage, { scope: "unstaged", summaryOnly: true });
+  assert.equal(summary.diff, "");
+  assert.deepEqual(
+    summary.files.map(({ path, additions, deletions }) => ({ path, additions, deletions })),
+    full.files.map(({ path, additions, deletions }) => ({ path, additions, deletions })),
   );
-  assert.equal(service.mcpPageOwners.has(JSON.stringify(["physical", "app"])), false);
-  const lease = service.mcpPageOwners.get(JSON.stringify(["logical", "app"]));
-  assert.equal(lease.project, project);
-  assert.equal(lease.client, client);
-  await service.mcpPageTools(socket, {
-    projectId: "logical",
-    threadId: "t",
-    instanceId: "app",
-    generation: 7,
-    operation: "register",
-    declaration: { version: 1, documentId: "document", tools: ["getSelection"] },
-  });
-  const result = await service.mcpPageTools(socket, {
-    projectId: "logical",
-    threadId: "t",
-    instanceId: "app",
-    generation: 7,
-    operation: "revoke",
-    registrationId: "registration",
-  });
-  assert.equal(result.revoked, true);
-  assert.equal(calls[0].method, "areal/mcp/app/tools/register");
-  assert.equal(calls.at(-1).method, "areal/mcp/app/tools/revoke");
-  assert.equal(calls[0].params.threadId, "t");
+  assert.equal(summary.token, full.token);
+  assert.ok(Buffer.byteLength(JSON.stringify(summary)) < 4096);
 });

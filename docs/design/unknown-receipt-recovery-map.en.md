@@ -1,0 +1,17 @@
+[中文](unknown-receipt-recovery-map.md) | **English**
+
+# Unknown Receipt Recovery, Stop/Reopen & Visual Audit Feature Map
+
+This map defines the user-facing product rules and verification bindings for `unknown-receipt-recovery`, `host-stop-reopen`, and `ui-visual-audit` without duplicating test commands or source paths. Machine selection and execution contracts remain owned by [journey manifest](../../clients/gui/scripts/journey-manifest.json); see [verification system design](verification-system.md) for the overall methodology.
+
+> Rule of thumb: **Expected product rules must be written strictly from the user's perspective, with zero internal error codes, process names, or implementation jargon**; engineering clues belong only in the current-reality column.
+
+| Rule ID & User Goal | Expected Product Rule (PM Intent) | Current Reality & Engineering Clues | Authoritative & Visible Outcomes | Verification Anchor & Coverage Gaps | PM Adjudication |
+|---|---|---|---|---|---|
+| **`FM-REC-01`**<br>Disconnect or crash right after sending, then reopen the app<br>(Web / Desktop / Mobile) | After an unexpected disconnect and reopen, the app retains the original submission and only reconciles its receipt—**never silently resending a duplicate message**. | `service-reopen-smoke` now emits a schema-v1 business evidence report bound to `unknown-receipt-recovery` and its 4 `terminalFacts`. | **Authoritative**: Core keeps only the original receipt with no duplicate Turn.<br>**Visible**: History and unsent draft match settled reality. | `unknown-receipt-recovery`: `originalRequestRetained` / `receiptReconciled` / `noReplay`.<br>Mobile and packaged app not run. | Pending PM sign-off |
+| **`FM-REC-02`**<br>Explicitly stop the background service from settings or menu, then reopen desktop<br>(Desktop) | Stopping actually exits all prior background work and service processes; reopening starts cleanly with a fresh session and no stale instance. | `gui-stop-reopen-smoke` now emits a schema-v1 business evidence report bound to `host-stop-reopen` and its 4 `terminalFacts`. | **Authoritative**: Offline receipt confirms stop, original processes exit, reopen observes a new generation.<br>**Visible**: Reopened workbench is ready without stale errors. | `host-stop-reopen`: `stopReceiptSettled` / `originalProcessesExited` / `newGenerationObserved` / `cleanupSettled`. | Pending PM sign-off |
+| **`FM-VIS-01`**<br>Browse the UI across themes, locales, and viewport sizes after CSS or token edits<br>(Web / Desktop) | Light/dark themes, Chinese/English locales, wide/narrow viewports, and enlarged fonts show zero horizontal overflow, zero layout shift, and zero reduced-motion violations, with a visual contact sheet. | `ui-audit-probe.mjs` is registered in `test-manifest.json` (`audit:ui`) and bound as `evidenceCheck` on `ui-visual-audit`. | **Authoritative**: 10-view scan reports `maxOverflowX=0`, `maxCls=0`, `reducedMotionAnims=0`.<br>**Visible**: `contact-sheet-overview.png` generated for visual inspection. | `ui-visual-audit`: `overflowFree` / `layoutStable` / `reducedMotionRespected` / `contactSheetCaptured`. | Pending PM sign-off |
+
+## Anti-Drift Discipline
+
+Whenever live behavior disagrees with this map, classify it explicitly as **doc drift** (intentional product change, update map after PM sign-off), **verification gap** (rule exists but lacks a bound `factId`/assertion), or **product regression** (code broke an agreed rule; keep a failing test first and fix code—never edit the map to mask a regression).

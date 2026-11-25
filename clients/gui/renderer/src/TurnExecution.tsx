@@ -1,7 +1,7 @@
 import { retryProgress } from "./conversationEvents.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useState, type ComponentProps, type ReactNode } from "react";
-import { ActivityGroup, ThinkingStatus } from "@areal/ui/experimental";
+import { ActivityGroup, ThinkingStatus } from "@areal/ui/compositions";
 import "@areal/ui/conversation.css";
 import { spawnedAgent } from "./AgentIdentity.js";
 import { CircleAlert } from "lucide-react";
@@ -86,7 +86,7 @@ export function TurnActivity({
     items.findLast((item) => item.type === "dynamicToolCall" && toolPresentation(item).running);
   const detail = currentTool ? statusTarget(toolPresentation(currentTool).detail) : undefined;
   const unconfirmed = items.some(
-    (item) => item.type === "dynamicToolCall" && toolPresentation(item).status === "结果待确认",
+    (item) => item.type === "dynamicToolCall" && toolPresentation(item).unsettled,
   );
   const last = items.filter((item) => item.type !== "modelContext").at(-1);
   const summary =
@@ -204,11 +204,41 @@ export function TurnExecution({
         };
         const grouped = run.key !== null && activities.items.length > 1;
         const icon = activityStageIcon(grouped ? activityRunStages(activities)[0] : null);
+        const activeRun =
+          grouped &&
+          activities.items.some(
+            (item) => item.type === "activity" && item.activity?.status === "running",
+          );
+        const totalDurationMs = grouped
+          ? activities.items.reduce((sum, item) => {
+              if (item.type !== "activity") return sum;
+              const entry = item.activity;
+              if (typeof entry?.durationMs === "number" && entry.durationMs > 0) {
+                return sum + entry.durationMs;
+              }
+              if (
+                typeof entry?.startedAt === "number" &&
+                typeof entry?.completedAt === "number" &&
+                entry.completedAt > entry.startedAt
+              ) {
+                return sum + (entry.completedAt - entry.startedAt);
+              }
+              return sum;
+            }, 0)
+          : 0;
+        const duration =
+          !activeRun && totalDurationMs >= 1000
+            ? totalDurationMs >= 60_000
+              ? `${Math.floor(totalDurationMs / 60_000)}m ${Math.round((totalDurationMs % 60_000) / 1000)}s`
+              : `${(totalDurationMs / 1000).toFixed(1)}s`
+            : undefined;
         return (
           <ReadingActivityGroup
             key={run.id}
             readingKey={readingKey && JSON.stringify([readingKey, run.id, "activity"])}
             presentation={grouped ? "collapsible" : "inline"}
+            active={activeRun}
+            duration={duration}
             label={
               run.key !== null
                 ? activityRunLabel(activities, t)

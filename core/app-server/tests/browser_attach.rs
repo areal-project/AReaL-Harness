@@ -1,6 +1,6 @@
 use areal_app_server::auth::{Authentication, Permission, Principal};
 use areal_engine::{
-    Engine, Limits,
+    Engine, Limits, SessionCatalog,
     model::{AgentStream, Message, Model, ModelEvent, ModelStream, ToolCall},
 };
 use areal_protocol::Input;
@@ -17,6 +17,39 @@ use tokio_util::sync::CancellationToken;
 type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
 struct ModelFixture;
+
+#[tokio::test]
+async fn retired_computer_bundle_is_not_advertised_or_attachable() {
+    let mut historical =
+        serde_json::to_value(areal_protocol::desktop::ClientOptions::default()).unwrap();
+    historical["externalCua"] = json!(true);
+    let restored: areal_protocol::desktop::ClientOptions =
+        serde_json::from_value(historical.clone()).unwrap();
+    assert_eq!(serde_json::to_value(restored).unwrap(), historical);
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(ModelFixture), Limits::default()).unwrap();
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    let (url, stop, task) = server(engine).await;
+    let mut owner = connected(&url).await;
+    let capabilities = call(&mut owner, "areal/capabilities", json!({})).await;
+    let advertised = &capabilities["result"];
+    assert!(
+        advertised
+            .get("desktopToolBundles")
+            .is_none_or(|bundles| bundles.as_array().is_some_and(Vec::is_empty)),
+        "{advertised}"
+    );
+    assert!(
+        advertised["features"].get("externalCua").is_none(),
+        "{advertised}"
+    );
+    let attached = call(&mut owner, "areal/thread/tools/attach", json!({
+        "threadId":thread.id,"requestId":"retired-computer","expectedToolsetRevision":0,"bundleId":"areal.computer.v1"
+    })).await;
+    assert!(attached.get("error").is_some(), "{attached}");
+    stop.cancel();
+    task.await.unwrap().unwrap();
+}
 #[async_trait]
 impl Model for ModelFixture {
     fn configure(
@@ -83,18 +116,137 @@ impl Model for ModelFixture {
 }
 
 #[tokio::test]
-async fn executable_side_first_input_binds_desktop_browser_before_activation() {
+async fn restored_desktop_session_rebinds_browser_without_retired_computer() {
+    for (catalog, external) in [
+        (SessionCatalog::Memory, false),
+        (SessionCatalog::MemoryLazy, false),
+        (SessionCatalog::MemoryLazy, true),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), Arc::new(ModelFixture), Limits::default()).unwrap();
+        let thread = engine.create("/workspace".into()).await.unwrap();
+        engine
+            .configure_thread(
+                serde_json::from_value(json!({"threadId":thread.id,"expectedRevision":1})).unwrap(),
+            )
+            .await
+            .unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("before upgrade")])
+            .await
+            .unwrap();
+        let old = engine.wait(&thread.id).await.unwrap().turns[0].id.clone();
+        engine.shutdown().await;
+        drop(engine);
+
+        let path = dir.path().join(format!("{}.json", thread.id));
+        let mut saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        saved["thread"]["dynamicTools"] = json!([
+            areal_protocol::desktop::browser_v1_tool(),
+            {
+                "name":"computer_v1",
+                "description":"Control authorized local desktop applications. Call describe first. Get fresh app state before acting. OS permissions must be granted by the user in Computer control settings. Never replay an action whose dispatch is unknown.",
+                "inputSchema":{
+                    "type":"object",
+                    "properties":{"operation":{"type":"string"},"parameters":{"type":"object"}},
+                    "required":["operation","parameters"],
+                    "additionalProperties":false
+                }
+            }
+        ]);
+        saved["thread"]["toolsetRevision"] = json!(1);
+        if external {
+            saved["thread"]["desktop"]["configuration"]["options"]["externalCua"] = json!(true);
+            saved["thread"]["dynamicTools"] = json!([
+                areal_protocol::desktop::browser_v1_tool(),
+                {"name":"js","description":"External desktop fixture","inputSchema":{"type":"object"}},
+                {"name":"js_reset","description":"External desktop reset fixture","inputSchema":{"type":"object"}}
+            ]);
+        }
+        std::fs::write(&path, serde_json::to_vec(&saved).unwrap()).unwrap();
+
+        let engine = Engine::open(
+            dir.path(),
+            Arc::new(ModelFixture),
+            Limits {
+                session_catalog: catalog,
+                ..Limits::default()
+            },
+        )
+        .unwrap();
+        let (url, stop, task) = server(engine.clone()).await;
+        let mut owner = connected(&url).await;
+        let restored = engine.read(&thread.id, true).await.unwrap();
+        let attached = call(
+            &mut owner,
+            "areal/thread/tools/attach",
+            attach(
+                &thread.id,
+                "attach-after-upgrade",
+                restored.toolset_revision,
+            ),
+        )
+        .await;
+        assert_eq!(attached["result"]["threadId"], thread.id, "{attached}");
+        assert_eq!(restored.toolset_revision, 2);
+        assert_eq!(restored.dynamic_tools.len(), 1);
+        assert_eq!(restored.dynamic_tools[0].name, "browser_v1");
+        assert_eq!(restored.turns[0].id, old);
+
+        let resumed = call(&mut owner, "thread/resume", json!({"threadId":thread.id})).await;
+        assert_eq!(resumed["result"]["thread"]["id"], thread.id, "{resumed}");
+        let sent = call(
+            &mut owner,
+            "turn/start",
+            json!({"threadId":thread.id,"input":[{"type":"text","text":"after upgrade"}]}),
+        )
+        .await;
+        assert!(sent["result"]["turn"]["id"].is_string(), "{sent}");
+        let request = approved_browser_call(&mut owner).await;
+        assert_eq!(request["params"]["tool"], "browser_v1");
+        owner.send(Wire::Text(json!({"id":request["id"],"result":{"success":true,"contentItems":[{"type":"inputText","text":"original browser callback"}]}}).to_string().into())).await.unwrap();
+        let completed = engine.wait(&thread.id).await.unwrap();
+        assert_eq!(completed.turns.len(), 2);
+        assert_eq!(completed.turns[0].id, old);
+        assert_eq!(sent["result"]["turn"]["id"], completed.turns[1].id);
+        assert_eq!(
+            completed.turns[1].status,
+            areal_protocol::TurnStatus::Completed
+        );
+        owner.close(None).await.unwrap();
+        stop.cancel();
+        task.await.unwrap().unwrap();
+        engine.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn executable_side_inherits_the_sources_browser_connection() {
     let dir = tempfile::tempdir().unwrap();
     let engine = Engine::open(dir.path(), Arc::new(ModelFixture), Limits::default()).unwrap();
     let source = engine.create("/workspace".into()).await.unwrap();
     let (url, stop, task) = server(engine.clone()).await;
     let mut owner = connected(&url).await;
+    let mut shared = connected(&url).await;
+    let without_browser = call(
+        &mut shared,
+        "areal/side/create",
+        json!({"sourceThreadId":source.id,"requestId":"side-without-browser"}),
+    )
+    .await;
+    assert!(without_browser["result"]["thread"]["id"].is_string());
+    assert!(
+        without_browser["result"]["thread"]["dynamicTools"]
+            .as_array()
+            .is_none_or(Vec::is_empty),
+        "a source without a browser attachment cannot give one to the Side"
+    );
     let attached = call(&mut owner, "areal/thread/tools/attach", json!({
-        "threadId":source.id,"requestId":"attach-computer-side","expectedToolsetRevision":0,"bundleId":"areal.computer.v1"
+        "threadId":source.id,"requestId":"attach-browser-side","expectedToolsetRevision":0,"bundleId":"areal.browser.v1"
     })).await;
     assert!(attached.get("result").is_some(), "{attached}");
     let created = call(
-        &mut owner,
+        &mut shared,
         "areal/side/create",
         json!({"sourceThreadId":source.id,
         "requestId":"browser-side","firstInput":[{"type":"text","text":"inspect browser"}]}),
@@ -113,7 +265,7 @@ async fn executable_side_first_input_binds_desktop_browser_before_activation() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|tool| tool["name"] == "computer_v1"),
+            .any(|tool| tool["name"] == "browser_v1"),
         "{created}"
     );
     let interaction = tokio::time::timeout(Duration::from_secs(10), async {
@@ -142,12 +294,16 @@ async fn executable_side_first_input_binds_desktop_browser_before_activation() {
         ))
         .await
         .unwrap();
-    let request = loop {
-        let message = next(&mut owner).await;
-        if message["method"] == "item/tool/call" {
-            break message;
+    let request = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let message = next(&mut owner).await;
+            if message["method"] == "item/tool/call" {
+                break message;
+            }
         }
-    };
+    })
+    .await
+    .expect("Side callback must reach the browser owner, not the submitting connection");
     assert_eq!(request["params"]["threadId"], id);
     assert_eq!(request["params"]["turnId"], created["result"]["turn"]["id"]);
     assert_eq!(request["params"]["tool"], "browser_v1");
@@ -785,6 +941,38 @@ async fn denied_browser_discovery_never_dispatches_to_the_client_host() {
     );
     owner.close(None).await.unwrap();
     engine.shutdown().await;
+    stop.cancel();
+    task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn empty_native_thread_accepts_browser_from_a_separate_desktop_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(ModelFixture), Limits::default()).unwrap();
+    let (url, stop, task) = server(engine).await;
+    let mut creator = connected(&url).await;
+    let created = call(
+        &mut creator,
+        "areal/thread/start",
+        json!({
+            "requestId":"empty-native-start","cwd":"/workspace"
+        }),
+    )
+    .await;
+    let thread_id = created["result"]["thread"]["id"].as_str().unwrap();
+    let mut browser = connected(&url).await;
+    let attached = call(&mut browser, "areal/thread/tools/attach", json!({
+        "threadId":thread_id,"requestId":"empty-native-browser","expectedToolsetRevision":0,"bundleId":"areal.browser.v1"
+    })).await;
+    assert_eq!(attached["result"]["toolsetRevision"], 1, "{attached}");
+    assert!(
+        call(&mut creator, "areal/capabilities", json!({}))
+            .await
+            .get("result")
+            .is_some()
+    );
+    drop(browser);
+    drop(creator);
     stop.cancel();
     task.await.unwrap().unwrap();
 }

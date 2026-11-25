@@ -7,10 +7,9 @@ const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { runInNewContext } = require("node:vm");
-const {
-  buildRelayResources,
-  prepareRelayResources,
-} = require("@areal/workbench-service/desktop/core/relay-resources.cjs");
+const { createServer } = require("node:net");
+const { get } = require("node:http");
+const { buildRelayResources, prepareRelayResources } = require("./relay-resources.cjs");
 const requireFromApp = createRequire(resolve(__dirname, "../app/package.json"));
 const requireFromBuilder = createRequire(requireFromApp.resolve("electron-builder"));
 const { getFileMatchers, copyFiles } = requireFromBuilder("app-builder-lib/out/fileMatcher.js");
@@ -25,16 +24,17 @@ test("packaged Relay resources retain every manifest file and load their own ws"
     destination: join(home, "bundle"),
   });
   const source = await readFile(join(__dirname, "package.mjs"), "utf8");
-  const resources = source.match(/extraResources: (\[[\s\S]*?\n    \]),/);
+  const resources = source.match(/^( +)extraResources: (\[[\s\S]*?\n\1\]),/m);
   assert.ok(resources, "package.mjs must define extraResources");
-  const extraResources = runInNewContext(`(${resources[1]})`, {
+  const stagedResources = runInNewContext(`(${resources[2]})`, {
     join,
     gui,
     relayBundle,
-    workbenchBundle: { bundleDir: join(home, "workbench") },
     bundle: join(home, "core"),
     release: false,
-  }).filter(
+  });
+  assert.ok(stagedResources.every(({ to }) => to !== "areal-workbench"));
+  const extraResources = stagedResources.filter(
     ({ to }) => to === "areal-gui" || to === "areal-relay" || to.startsWith("areal-relay/"),
   );
   assert.ok(extraResources.length > 0, "package.mjs must include Relay resources");
@@ -51,7 +51,12 @@ test("packaged Relay resources retain every manifest file and load their own ws"
   assert.equal(manifest.version, relayBundle.version);
   assert.ok(manifest.files.some(({ path }) => path === "node_modules/ws/package.json"));
   assert.ok(manifest.files.some(({ path }) => path === "src/host-runner.mjs"));
-  await assert.rejects(access(join(packaged, "assets/remote.html")), { code: "ENOENT" });
+  await access(join(packaged, "assets/remote.html"));
+  await access(join(packaged, "assets/remote-assets.json"));
+  for (const file of manifest.files) {
+    const bytes = await readFile(join(packaged, file.path));
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), file.sha256, file.path);
+  }
   await assert.rejects(access(join(destination, "areal-gui/bundle-analysis.json")), {
     code: "ENOENT",
   });
@@ -74,6 +79,42 @@ test("packaged Relay resources retain every manifest file and load their own ws"
     join(packaged, "node_modules/ws/package.json"),
   );
   assert.equal(typeof requireFromPackage("ws").WebSocketServer, "function");
-  const { serve } = await import(pathToFileURL(join(packaged, "src/server.mjs")).href);
-  assert.equal(typeof serve, "function");
+  const [{ serve }, { openStore }, { parseConfig }] = await Promise.all(
+    ["server", "store", "config"].map(
+      (name) => import(pathToFileURL(join(packaged, "src", `${name}.mjs`)).href),
+    ),
+  );
+  const probe = createServer();
+  await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const port = probe.address().port;
+  await new Promise((resolve) => probe.close(resolve));
+  const origin = `http://192.168.1.8:${port}`;
+  const config = parseConfig({
+    local: true,
+    publicOrigin: origin,
+    listen: `127.0.0.1:${port}`,
+    allowedClientOrigins: [origin],
+    assetsDir: join(packaged, "assets"),
+    dataDir: join(home, "data"),
+  });
+  const store = openStore(config);
+  t.after(() => store.close());
+  const service = await serve(config, store);
+  t.after(() => service.close());
+  for (const path of ["/healthz", "/"]) {
+    const status = await new Promise((resolve, reject) => {
+      get(
+        `http://127.0.0.1:${port}${path}`,
+        {
+          headers: { host: `192.168.1.8:${port}` },
+        },
+        (response) => {
+          response.resume();
+          response.on("end", () => resolve(response.statusCode));
+          response.on("error", reject);
+        },
+      ).on("error", reject);
+    });
+    assert.equal(status, 200, path);
+  }
 });

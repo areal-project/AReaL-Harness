@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "experiment": "bounded-recovery-exploration",
+  "date": "2026-11-22",
+  "status": "passed",
+  "sourceRevision": "fc49e941d79152d5906eb3bfd940f5971f5f641c",
+  "snapshotPatchSha256": "6fbfd3bf23f33eecf202c57bc7111250da9ede8c2b2bae0ea0a67ce6d842f5bf",
+  "runnerSha256": "d00d4f5db2c2d77aec85d16589adcf2100128406f7048df1863fe355f42aec73",
+  "exploration": {
+    "identity": {
+      "sourceRevision": "fc49e941d79152d5906eb3bfd940f5971f5f641c",
+      "inputHash": "2922c98027a871b324b0d5f5385a5a506e68aec0d0803fac408b150328e5ca97",
+      "runnerSha256": "d00d4f5db2c2d77aec85d16589adcf2100128406f7048df1863fe355f42aec73"
+    },
+    "cases": 3,
+    "actions": 18,
+    "status": "passed",
+    "cleanup": [
+      "passed",
+      "passed",
+      "passed"
+    ]
+  },
+  "counterexamples": {
+    "attempts": [
+      {
+        "id": "baseline",
+        "status": "passed",
+        "exploration": {
+          "directory": "/tmp/areal-recovery-counterexamples-explore-final/baseline/exploration",
+          "exitCode": 0,
+          "status": "passed",
+          "firstFailure": null,
+          "reduction": null,
+          "evidenceValidated": true
+        }
+      },
+      {
+        "id": "premature-unavailable",
+        "status": "passed",
+        "exploration": null
+      },
+      {
+        "id": "stale-hibernation-owner",
+        "status": "passed",
+        "exploration": {
+          "directory": "/tmp/areal-recovery-counterexamples-explore-final/stale-hibernation-owner/exploration",
+          "exitCode": 1,
+          "status": "failed",
+          "firstFailure": {
+            "stage": "boundedRecoveryExploration",
+            "assertionId": "exploration-recovery-progress",
+            "kind": "business",
+            "message": "the successor connection must restore the current project without a click",
+            "code": "ERR_ASSERTION",
+            "action": "idle-reconnect",
+            "stepIndex": 2,
+            "attempt": 0
+          },
+          "reduction": {
+            "attempts": 6,
+            "minimal": false,
+            "stoppedReason": "budget-exhausted",
+            "replay": "pnpm --dir clients/gui test:connection-recovery-explore --replay <output>/reduced-plan.json"
+          },
+          "evidenceValidated": true
+        }
+      }
+    ],
+    "metrics": {
+      "targetDefectsDetected": 2,
+      "targetDefectsTotal": 2,
+      "detectionRate": 1,
+      "baselineFalsePositive": false,
+      "evidenceComplete": true,
+      "humanMinutes": null,
+      "canConfirmHumanTimeReduction": false,
+      "interpretation": "Known historical mutations, not newly discovered unknown bugs; no measured human-time saving."
+    },
+    "cleanup": {
+      "status": "passed",
+      "worktreeRemoved": true
+    }
+  },
+  "reduction": {
+    "attempts": 6,
+    "minimal": false,
+    "stoppedReason": "budget-exhausted",
+    "replay": "pnpm --dir clients/gui test:connection-recovery-explore --replay <output>/reduced-plan.json",
+    "plan": {
+      "schemaVersion": 1,
+      "seed": 21,
+      "actions": [
+        {
+          "op": "idle-reconnect"
+        },
+        {
+          "op": "submit"
+        }
+      ]
+    },
+    "attemptStatuses": [
+      "failed",
+      "failed",
+      "failed",
+      "passed",
+      "failed",
+      "passed",
+      "failed"
+    ]
+  },
+  "checks": {
+    "nodeContractTests": 27,
+    "pythonArchitectureJourneyTests": 21,
+    "pythonCiContractTests": 44,
+    "docs": "passed",
+    "journeyManifest": "passed",
+    "references": "passed"
+  },
+  "evidence": [
+    {
+      "path": "/tmp/areal-recovery-exploration-live-6/result.json",
+      "sha256": "9102802e6bb7d0b6804735dbb9588a99799a00a80a36e314b5732e1d628548d2"
+    },
+    {
+      "path": "/tmp/areal-recovery-counterexamples-explore-final/result.json",
+      "sha256": "85078a678569d353213150763309d8ce5bdb6877340027b7e247bbdcfe595d3b"
+    },
+    {
+      "path": "/tmp/areal-recovery-counterexamples-explore-final/stale-hibernation-owner/exploration/result.json",
+      "sha256": "ca5e58ade696f1cb0400520c03a2d5eabc12295e379b09a584fbda243708fb29"
+    },
+    {
+      "path": "/tmp/areal-recovery-counterexamples-explore-final/stale-hibernation-owner/exploration/reduced-plan.json",
+      "sha256": "21401074b52b4a4b49ba8aa8904fb4756fdb47e3f073ea72d807555619631c2c"
+    }
+  ],
+  "limits": [
+    "Source Electron owner and Web renderer, real Rust Host/Core, deterministic local model",
+    "No installed package, Host process replacement, actual 15-minute timer, real provider or mobile acceptance",
+    "Concurrent UI commits after the frozen source are outside this acceptance",
+    "No measured human-time reduction"
+  ],
+  "retainedEarlierRuns": [
+    {
+      "path": "/tmp/areal-recovery-exploration-live-4/result.json",
+      "status": "blocked",
+      "reason": "First session.create returned scheduleHostUnavailable despite Host ready; final sample adds a read-only scheduling prerequisite, not a product fix"
+    },
+    {
+      "path": "/tmp/areal-recovery-exploration-live-5/result.json",
+      "status": "blocked",
+      "reason": "Sandbox Electron launch failed; isolated fixture later removed, original report retained"
+    }
+  ]
+}

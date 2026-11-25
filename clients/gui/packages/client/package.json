@@ -5,11 +5,14 @@
   "license": "Apache-2.0",
   "type": "module",
   "dependencies": {
-    "@areal/remote-client": "workspace:*"
+    "@areal/remote-client": "workspace:*",
+    "@areal/workbench": "workspace:*"
   },
   "exports": {
     ".": "./src/index.ts",
     "./node": "./node/host-client.cjs",
-    "./protocol": "./src/protocol.ts"
+    "./desktop-upgrade": "./node/desktop-upgrade.cjs",
+    "./protocol": "./src/protocol.ts",
+    "./gui-source": "./node/gui-source.cjs"
   }
 }

@@ -16,7 +16,7 @@ export const composerPriorityMessages = {
     en: "Attachment preparation failed",
   },
   "chat.composer.attachmentUnknown": {
-    "zh-CN": "上传结果待核对，不会再次上传",
+    "zh-CN": "上传结果待确认，不会再次上传",
     en: "Upload result unknown. This file will not be uploaded again.",
   },
   "chat.composer.retryAttachment": { "zh-CN": "重试此附件", en: "Retry attachment" },

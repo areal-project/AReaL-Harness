@@ -60,6 +60,7 @@ export function SettingsDialog({
   busy,
   closeLabel = "Close dialog",
   className,
+  placement = "center",
   children,
 }: {
   title: string;
@@ -68,6 +69,7 @@ export function SettingsDialog({
   busy?: boolean;
   closeLabel?: string;
   className?: string;
+  placement?: "center" | "bottom";
   children: ReactNode;
 }) {
   return (
@@ -82,9 +84,12 @@ export function SettingsDialog({
       }}
     >
       <DialogContent
+        placement={placement}
         closeLabel={closeLabel}
         showCloseButton={!busy}
-        className={["settings-dialog sm:max-w-2xl", className].filter(Boolean).join(" ")}
+        className={["settings-dialog", placement === "center" && "sm:max-w-2xl", className]
+          .filter(Boolean)
+          .join(" ")}
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

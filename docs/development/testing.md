@@ -4,13 +4,13 @@
 
 共享失败采集 `captureSmokeFailure` 在清理前保存窗口状态、截图及脱敏的项目/执行代际、pending 方法、Turn 和队列状态；采集失败分别记入 `failure-state.json`，保留原断言错误。Side、Composer 与模型选择共用观察/诊断助手。smoke 的 manifest 顺序同时用于现有矩阵：先运行有失败记录的 Side、模型选择，其余按实测 job 耗时从长到短排列。排序参考 [CI 运行 43540581319](https://github.com/areal-project/AReaL-Harness/actions/runs/43540581319)：Side 314 秒、模型选择 230 秒且失败；其余为 Composer files 327、Composer 300、design 289、migration 240、reading 230、queue 148、browser navigation 134、derivation 129、history 128 秒。这是单轮调度样本，不是稳定性能基线；后续用现有 `ci-timing.py` 的原始数据更新顺序，不改变检查集合、并发上限或通过条件。
 
-共享业务优先在 Web 与真实 Host 服务上用隔离数据验收，不以 GUI 打包为常规前置。窗口、系统加密、浏览器视图和电脑控制等 Electron 专属能力才启动桌面；发行资源、签名与升级仍在对应发行任务单独验证。协议测试、页面交互、原生与发行包证据分别记录，不互相替代。
+共享业务优先在 Web 与真实 Host 服务上用隔离数据验收。窗口、系统加密和嵌入浏览器预览通过 Electron 验收。发行资源、签名与升级在发行任务中单独验证，并分别记录协议、页面交互、原生能力与发行包的证据。
 
-共享 smoke 夹具位于 `clients/gui/scripts/support/`：`core-observation.mjs` 统一解析原 Thread 的执行工作区与服务代际，并校验返回的 Thread 身份；显式 worktree 与已有投影冲突时直接失败，尚未投影的 worktree 不借用父项目代际。`host-transport-barrier.mjs` 在 Host 传输边界控制本次请求与响应。注入须断言命中的请求 ID，权威结算与 UI 呈现分别验证；清理复用 `application-cleanup.mjs` 核对原 Host 停止回执及实际退出，保留原失败。`test:script-units` 验证夹具，`test:core-observation` 验证真实隔离 Core；`test:workbench-errors` 在 GUI 构建后验证后台进程和 Host 错误码映射，依赖均登记在 manifest。
+共享 smoke 夹具位于 `clients/gui/scripts/support/`：`core-observation.mjs` 统一解析原 Thread 的执行工作区与服务代际，并校验返回的 Thread 身份；显式 worktree 与已有投影冲突时直接失败，尚未投影的 worktree 不借用父项目代际。`host-transport-barrier.mjs` 在 Host 传输边界控制本次请求与响应。注入须断言命中的请求 ID，权威结算与 UI 呈现分别验证；清理复用 `application-cleanup.mjs` 核对原 Host 停止回执及实际退出，保留原失败。`test:script-units` 验证夹具，`test:core-observation` 验证真实隔离 Core。客户端的认证、错误和重连边界由 `test:host-client` 验证。
 
 长验收分别记录动作前置、业务完成、清理回执、进程退出和报告落盘，不能以其中一个替代其他完成条件。交互前等待影响目标位置的附件加载和有限动画完成；权威回执与可见结果分别断言。耗时使用单调时钟作诊断，期限用于暴露卡住的阶段；固定 sleep、墙钟差和反复重试不作业务完成证明。静态搜索这些写法只提供审查线索，不能代替行为证据或新增一刀切门禁。
 
-工作台后台冒烟可按领域运行，例如 `pnpm --dir clients/gui test:workbench-backend --domain=providers`。支持 library、trajectory、feedback、tasks、manage、worktree、providers、lifecycle，可组合；省略参数运行完整链路。每次运行使用独立数据目录；停机任务目录和运行中任务管理分别初始化不同项目。开发时选择目标领域及受影响回归，收尾运行完整链路。协议冒烟不替代真实 Web 页面操作。
+共享工作台使用 `pnpm --dir clients/gui test:web-journeys` 验证。旅程使用隔离 Host/Core 与本地模型，覆盖浏览器配对、发送、审批、原请求恢复、Side 审查和设置。
 
 高频操作基线 `pnpm --dir clients/gui test:ux-journeys` 在真实 Electron、后台和 Core 上走三条旅程：没配模型时去配置、打开项目发消息并在审批中继续排队、右上角摘要。外部模型是脚本内的假模型。每步截图并做 6 项确定性检查（400ms 内有反馈、无原始错误、中文界面不混英文、浮层不互相遮挡、等审批时不显示“运行中”、用户没操作时不弹提示）；检查逻辑在 `scripts/ux-checks.mjs`，由 `test:ux-checks` 单测。修一个体验问题时，往这里加一条检查防止回退。
 
@@ -90,7 +90,7 @@ python3 -m unittest scripts.tests.test_check_changed
 cargo test --locked -p areal-engine --test http_model --test provider_replay --test model_timeouts
 cargo test --locked -p areal-engine --lib first_event_deadline_is_fixed_and_activity_starts_a_new_idle_window
 cargo test --locked -p areal-engine --test model_input_budget
-node --test clients/gui/scripts/desktop-projection-transport.test.mjs
+pnpm --dir clients/gui test:host-client
 pnpm --dir clients/gui test:navigation-cache
 pnpm --dir clients/gui test:unit renderer/src/readingViews.test.ts
 pnpm --dir clients/gui test:conversation-reading
@@ -105,6 +105,10 @@ GUI 的产物 job 完成必要构建与 RPC 校验后即可发布同一源码的
 用 `python3 scripts/ci-timing.py --collect areal-project/AReaL-Harness --limit 50 --output target/ci/timing` 保存 gh 原始数据并生成逐 job/step CSV；离线重放使用 `--input <snapshot.json>`。采集最近 50 个 run 的全部 attempt，逐轮读取对应 jobs；分析使用各轮 run_started_at，避免把重跑前的等待或前一轮 runner minutes 计入本轮。分析保留取消、失败、重跑 attempt 和 runner 信息；依赖等待只作估计；`post_dependency_delay_estimate_s` 是从 job 创建与估计依赖完成两者较晚时刻到启动的调度等待，可能包含矩阵限流、调度器、共享配额和 runner 准备。API 无法分离真实机器排队，旧 `runner_wait_lower_bound_s` 字段保留为 null，不能据此诊断容量不足。`first_failure_feedback_s` 使用实际失败 step 的结束时间，并记录其准备/验收/混合阶段；单测输出的模拟失败记录不计入。包含安装/编译的复合 step 独立列为 mixed，不能全算测试耗时。缺少日志或子报告时缓存冷热及精确测试拆分保持 unknown；只比较覆盖相同的成功运行，并同时查看墙钟关键路径和累计 runner minutes。
 
 `scripts/ci-scope.py` 是本地与 CI 共用的检查计划所有者；`check-changed` 解析一次 merge-base，合并暂存、未暂存与未跟踪路径，重命名两侧均纳入，部分暂存相互抵消也保留选检。计划登记命令、依赖、环境能力、平台和 manifest 子测试全集，并绑定 base/source/head 与输入摘要。共享 Rust、schema、锁文件、构建与 CI 变化扩大范围，未知代码保守扩大；比较基准不可用时不得放行。
+
+`clients/gui/scripts/journey-manifest.json` 把共享边界映射到关键旅程：Host/Core 请求准入与传输关联提交和 UNKNOWN 恢复；Host 生命周期关联恢复和显式停止／重开；Core 历史在客户端的投影关联提交后阅读与恢复；Host/工作台的模型配置关联提交旅程。修改这些共享路径会复用现有 smoke job 选入 `test:web-journeys`、`test:service-reopen`、`test:stop-reopen` 等已登记 runner，其余既有 smoke 保留。矩阵从同一计划生成；旅程的 `checks` 必须是准确的计划 ID，例如 `smoke:test:web-journeys`，未登记、重复或无法执行的映射会报错。`python3 scripts/check-journeys.py [路径…]` 校验登记并查看影响范围。
+
+旅程 evidence 由 `verification-evidence.py` 统一生成与校验，preflight、最终 gate 和历史分析复用。`requiredChecks`、`observedChecks`、`missingChecks` 逐 ID 对照；未执行项保持 `pending`，失败、阻塞、取消和输入失效保留其状态与原因。`make verification-evidence REPORT=<report.json>` 同时读取相邻 `plan.json`，核对完整的检查与旅程集合、状态、源码/输入/计划身份、平台及 CI run/attempt，拒绝遗漏或与结果不一致的摘要。历史分析只读取经校验且 `sourceRevision` 相符的报告；旧形状或缺计划的报告不能提供通过证据。旅程通过表示本轮所列 runner 通过；`surfaces` 和 `authorities` 是影响范围，不证明手机、中继、安装包或真机已验收。
 
 `check-changed` 默认运行计划的 `commit` 阶段，加上历史报告中尚未通过的项目及其依赖；`ARGS=--phase=full` 执行完整计划。推送钩子固定选择 `push` 阶段：运行适用的快速结构与静态检查及其构建依赖，完整调度器单测、慢套件和历史失败专项留在默认或完整入口与远端 CI。Clippy 已包含同范围 Rust 类型编译，推送阶段只运行其中的 lint 检查。未选项继续列为 pending，不代表通过。命令读取 `working-tree`，暂存内容影响选检和漂移检测；快检不证明部分暂存内容已执行验收。报告将未选的完整验收列为 `pendingRequired`，其他平台列为 `remoteRequired`。`passed` 只表示本轮所选项通过，`blocked`、`invalidated`、`failed` 均不得作为通过。
 
@@ -143,13 +147,45 @@ AREAL_CORE_BIN=/absolute/verified/bin/areal pnpm --dir clients/gui test:history-
 
 `test:conversation-reading` 使用生产 Messages、Desktop 历史窗口与确定性 Core RPC fixture，组合验证旧页淘汰、离开返回、重观察、后台增量、宽度变化和 Renderer 重载。该短场景登记为常规 ciSmoke；它不启动真实 Core 或 Electron，不证明供应商、安装包或物理输入验收。历史窗口的多视图保护、有限扫描、取消及预算失败由 bounded-history-client 行为检查覆盖。
 
-`node clients/gui/scripts/bounded-history-ui-smoke.mjs` 在生产 Renderer 和 Desktop 历史所有者上使用受控 Core 响应。上滑分页应静默加载；场景在请求挂起时检查无分页加载文字，完成后检查旧消息出现，并验证正文与输入框位置、失败重试，以及读取期间上滑只续读一次、向下取消续读。场景延迟滚动后的动画帧，在该帧前合入历史页，验证同一可见段落的偏移不超过 2 像素；另检查 30 轮完整快照的上下滚轮浏览，以及超过 16 页后的淘汰和缺页重读。`AREAL_HISTORY_UI_LOCALE=en` 可复验英文。该场景不代表真实 Core 或安装包验收。
+`node clients/gui/scripts/bounded-history-ui-smoke.mjs` 在 Chrome 中通过生产阅读组件和 Host 读取适配器验证合成的 Host 响应。它检查按需加载 Unicode 正文、显示容量上限、静默分页、失败后重读原游标和缺页重载。插入旧页前后读取同一已保存段落，位置偏移不得超过 2 像素。另验证 16 页驻留上限、30 轮完整历史滚动，以及挂起时上滑只排队一次、下滑取消续读。`AREAL_HISTORY_UI_LOCALE=en` 可复验英文。真实 Core 分片和 Electron 压缩旅程分别由 `large-history-smoke.mjs` 和 `test:history` 验证。
 
 `test:navigation-cache` 使用生产 React App、真实 Chrome 和 fixture PlatformServices，记录无关 UI 操作的派生计算次数，检查名称、未读、运行、排序和新快照刷新，并保存源码身份及截图。它不启动 Core/Electron，也不验证安装包或感知延迟。`readingViews` 单测覆盖 32 项内存边界、最近访问淘汰、存储不可用和语义锚点重载；真实主题与布局连续性仍需 Renderer 场景。旧 `conversation-flow` 场景在 `.tool-summary-row .tool-failed` 定位器超时；生产折叠失败状态由 `ActivityRowStatus` 的 `data-tone="failed"` 表达。该 markup 与 `readingViews` 容量裁剪属于不同边界，本专项未修改旧 runner，完整对话流未计为通过。
 
 Linux 移动浏览器 job 安装依赖前，将托管 runner 的 Ubuntu mirror list 指向官方 HTTPS archive。发行版、组件、APT 签名校验、锁定 Playwright 的完整依赖与两种浏览器保持原样；下载超时仍属于 CI 安装失败，不计作浏览器测试通过。
 
 对话流设计验收先等待活动面板的展开过渡结束，并确认列表中心是实际鼠标命中区域，再发送一次真实滚轮输入。`conversation-wheel.json` 保留可信输入、命中和滚动前后位置；仍要求该列表真实滚动，不用脚本改滚动位置替代滚轮断言。
+
+### 连接恢复验证试点
+
+`test:connection-recovery` 复用现有 journey manifest、真实 Host/Core、源码 Electron owner、生产网页 Renderer 和本地模型。它逐项输出六个业务事实：正常加载不误报失败、空闲后 socket 换代自动恢复、草稿与选择保留、继续提交有权威及可见终态、显式停止不被自动恢复、UNKNOWN 原提交不重放。空闲步骤调用生产 `ifIdle` 停止路径，不代表已验证 15 分钟计时器；本试点也不证明安装包、真实供应商、Host 进程换代或手机验收。退出时仅由夹具代答原生确认选择，保留选择记录，不能算作真实系统弹窗交互验收。空闲状态按可编辑/可发送及权威状态验收；激活的 `pending` 只有在后续同连接目录与 Host 一致就绪后才能结算。
+
+```sh
+python3 scripts/ci-preflight.py --base <base> --item smoke:test:connection-recovery --with-dependencies
+python3 scripts/verification-evidence.py <run>/report.json
+pnpm --dir clients/gui test:connection-recovery-counterexamples
+```
+
+旅程的 `evidenceCheck` 是逐业务事实报告的可选接入，旧旅程保持原语义。preflight 给 runner 传入 `AREAL_JOURNEY_REPORT` 和本次完整 `AREAL_VERIFICATION_IDENTITY`；报告必须覆盖全部 `terminalFacts`、首个失败、已到达/未到达阶段与清理。证据文件只能是报告目录内的普通文件，导入时计算 SHA-256。退出码为零但缺业务报告、事实缺失、身份不符或清理未完成，均不能成为通过证据。未选检查继续显示 pending；不把局部试点说成完整 CI 通过。
+
+反证入口冻结 HEAD 与本次试点改动，在隔离 worktree 顺序运行正确实现、恢复旧加载投影、恢复旧休眠 guard。每轮构建 Renderer、核对产物身份并运行同一个真实旅程；错误实现必须在对应业务事实处失败且清理成功，构建/启动失败不计检出。报告保留补丁摘要、原始报告、截图和首个失败。固定三个样本用于衡量两项已知缺陷的检出、正确实现误报和证据完整性；这些指标不等于发现全部未知缺陷或减少人工时间。人工分钟数缺少配对实测时保持未知，先根据报告直接可判定的事实和仍需介入的问题决定是否扩大试点。
+
+
+### 有界恢复探索与回放
+
+`test:connection-recovery-explore` 复用同一个真实恢复 runner，在隔离空项目上生成 `edit`、`reconnect`、`idle-reconnect`、`submit`、`unknown-submit`、终止 `stop-reconnect` 的有限序列。默认 3 个 seed、每个 6 步；每次最多 6 个案例、每个最多 12 步。UNKNOWN 必须已有 Thread，显式停止只能位于末尾；回放文件只接受固定 schema 和合成文本，不接受代码、工作区或服务路径。
+
+```sh
+pnpm --dir clients/gui test:connection-recovery-explore --seed 1 --cases 3 --steps 6
+pnpm --dir clients/gui test:connection-recovery-explore --replay /absolute/path/plan.json
+pnpm --dir clients/gui test:connection-recovery-explore --replay /absolute/path/plan.json --shrink --shrink-attempts 6
+pnpm --dir clients/gui test:connection-recovery-counterexamples --explore
+```
+
+每轮建立新 fixture，保存 `plan.json`、`report.json`、导入并计算摘要的 `evidence.json`、逐步前后状态/截图和 `exploration-events.json`。回放重建相同用户动作及受控断连顺序，重新核对新实例的请求和代际；不宣称重放所有操作系统调度。已有输出目录拒绝覆盖。运行前后源码身份必须一致。
+
+缩减只接受同一个业务断言和动作、且清理成功的失败；原失败和每次尝试全部保留，环境/验证器/清理故障停止缩减。`minimal` 只表示当前合法单步删除无法再保留目标失败，不表示全局最短。`--explore` 反例验收在冻结树中分别验证正确实现与旧休眠 guard，并确认缩减产物对应实际执行过的同目标失败。
+
+该入口是可选验收，没有改变 CI 必需检查。它扩展到恢复后的普通提交、UNKNOWN 原回执与显式停止组合，范围仍是源码 Web/socket；不证明 Host 进程换代、真实十五分钟定时、正式安装包或移动真机。用户功能与证据对应见[恢复样板功能地图](../design/recovery-verification-map.md)。
 
 ## 本地验证产物与启动诊断
 
@@ -180,7 +216,7 @@ pnpm --dir clients/gui test:history-navigation-ui
 
 输出目录必须尚不存在；复制前后核对构建回执、源码摘要和每个输出文件，全部成功后才发布副本回执。后续共享 `renderer/dist` 重建不会改变已复制产物。回执保留源码提交、输入摘要、原构建路径和副本文件哈希，证明的是本轮产物，不代表后来源码通过。工作区选择和终验期间的构建顺序遵循[并行修改与终验](README.md#并行修改与终验)。
 
-历史导航 runner 自动调用该入口，只服务本轮静态副本；设置 `AREAL_RENDERER_DIST` 仍要求其回执匹配当前源码。`renderer/test-fixtures/history-navigation.ts` 直接实现生产 `DesktopBridge`，随 Renderer 类型检查；删掉 `onPreviewEvent` 或 `onUpdate` 会在启动浏览器前失败。runner 以现有 Vite 构建该夹具并核对与 Renderer 相同的输入摘要，保留真实桌面适配器和投影读取路径。检查覆盖鼠标与键盘历史导航、冷项目切换、UNKNOWN 原请求保留和零提交；边界是 Chrome + Renderer + bridge 夹具，不覆盖 Electron/Core。
+历史导航 runner 自动调用该入口，只服务本轮静态副本；设置 `AREAL_RENDERER_DIST` 仍要求其回执匹配当前源码。`renderer/test-fixtures/history-navigation.ts` 直接实现生产 `DesktopBridge`，随 Renderer 类型检查；删掉 `onPreviewEvent` 或 `onUpdate` 会在启动浏览器前失败。runner 以现有 Vite 构建该夹具并核对与 Renderer 相同的输入摘要，保留真实桌面适配器与外壳状态读取。检查覆盖鼠标与键盘历史导航、冷项目切换、UNKNOWN 原请求保留和零提交；边界是 Chrome + Renderer + bridge 夹具，不覆盖 Electron/Core。
 
 任务目录 smoke 的页面夹具位于 `clients/gui/renderer/test-fixtures/scheduled-workspace.tsx`，与 Renderer 一起类型检查，并由原浏览器 runner 直接加载。它验证新意图经 `onStartDraft` 打开草稿、项目默认值及旧请求的显式核对与被动回执；夹具仅替换 IPC 边界。
 
@@ -250,11 +286,9 @@ macOS 登录会话中的 Keychain 权限边界另用 `python3 scripts/git-keycha
 
 `pnpm --dir clients/gui test:service-connection` 区分当前应用的 Main 连接与发现的旧 Desktop。当前应用夹具经 `initialize` 和 `connectMain` 进入生产连接边界，每次连接建立独立传输，覆盖原请求身份、丢失回复、停止及重连失败后的回执核查；外来后台经真实 WebSocket `attach` 观察，并验证命令被拒绝且不会自动接管。生命周期兼容夹具提供旧 Desktop 回执，不能替代真实 Host 升级、服务注册或 GUI 验收。
 
-会话目录回归使用 `cargo test --locked -p areal-app-server --lib catalog_tests`、`cargo test --locked -p areal-engine --lib catalog::tests`、`cargo test --locked -p areal-engine --test catalog_observation` 和 `node --test clients/gui/scripts/catalog-refresh.test.cjs`（从仓库根运行）。覆盖旧元数据与持久字节兼容、过滤先于分页、完整参考对照、长过滤空洞、游标排序与授权、会话锁与注册互不阻塞、注册回滚，以及 GUI 合并刷新和连接换代。观察回归还核对模型输入、工具副作用、用量及重启历史不受目录读取影响。GUI 用例已纳入 `pnpm --dir clients/gui verify`。
+会话目录回归从仓库根运行 `cargo test --locked -p areal-app-server --lib catalog_tests`、`cargo test --locked -p areal-engine --lib catalog::tests` 和 `cargo test --locked -p areal-engine --test catalog_observation`。覆盖旧元数据与持久字节兼容、过滤与分页、游标排序与授权、注册回滚，并核对模型输入、工具副作用、用量和重启历史。
 
-显式局部性能对照使用 `cargo test --locked --release -p areal-app-server --lib catalog_performance_comparison -- --ignored --nocapture` 与 `node clients/gui/scripts/catalog-refresh-benchmark.cjs`。后者可传入旧版 `history-observation.cjs` 路径，在相同 fixture 下比较旧协调器。耗时不作为 CI 阈值；固定源码、原始样本、复现方法与测量限制见[会话目录性能报告](../benchmarks/reports/conversation-catalog.md)。
-
-稀疏过滤性能入口为同一 Rust 测试模块的 `catalog_filter_performance_comparison`，同样显式 `--ignored --nocapture` 运行。GUI 脚本设置 `AREAL_CATALOG_BENCH_CACHE=production` 后使用真实 library 序列化、写文件与 rename，并保留活动标记写入；`AREAL_CATALOG_BENCH_THREADS` 可选择 1–20,000 行。交替运行与剩余成本见[目录迭代验证](../benchmarks/reports/conversation-catalog-validation.md)。
+局部性能对照使用 `cargo test --locked --release -p areal-app-server --lib catalog_performance_comparison -- --ignored --nocapture`。稀疏过滤对照在同一命令中用 `catalog_filter_performance_comparison`。历史样本及测量限制见[会话目录性能报告](../benchmarks/reports/conversation-catalog.md)和[目录迭代验证](../benchmarks/reports/conversation-catalog-validation.md)。
 
 会话目录两种后端使用同一套 RPC 回归：分别设置 `AREAL_CATALOG_TEST_BACKEND=memory`、`sqlite` 运行 `cargo test --locked -p areal-app-server --lib catalog_tests --jobs 3 -- --test-threads=4`。该变量仅由测试读取；生产使用 `[storage].session_catalog`。`cargo test --locked -p areal-engine --lib catalog:: --jobs 3 -- --test-threads=4` 覆盖索引重用、离线更改核对、损坏保留重建、外部写锁、索引积压回退、队列溢出、读取期限、安全路径和注册结果未知后的回滚；`catalog_observation` 同时覆盖两个后端的模型输入、真实文件副作用、用量及重启不重放。配置入口使用 `cargo test --locked -p areal-config --test session_catalog`。
 
@@ -299,8 +333,6 @@ Runtime 输出验收分页收齐超出热窗口的全部原文，并独立检查
 桌面连接 smoke 的独立 CLI 配置读取、服务停止和状态查询复用产品 `executeCore` 启动桥；macOS 保留系统 Python 作为原生 Core 的实际父进程，测试不以 Node 直接启动替代产品入口。断线后仍检查原 Turn、订阅和请求计数，不重放提交。
 
 ## 使用统计历史同步
-
-`node --test scripts/analytics-history.test.cjs` 使用真实 `CoreClient` 和本地 WebSocket 协议 fixture，验证独立只读历史连接的 4 MiB 帧限制不会关闭项目主连接，以及启动时模型尚未连接、身份切换、历史去重、部分缓存、握手/RPC 超时和主连接关闭后的清理与部分历史告警。统计连接只进行初始化、能力握手和 `thread/read`，沿用客户端默认请求期限；同一项目只运行一次同步。大历史失败仍显示部分同步，不能据此认为完整历史已同步；该测试不替代真实 Core、原生 GUI、安装包或供应商验收。
 
 ## Python 与 scratch
 
@@ -522,15 +554,15 @@ macOS 实际崩溃预算使用 `AREAL_HOST_SERVICE_ROOT=/absolute/authorized/roo
 
 分页的 `partialChecks` 另包含 Core 换代 cursor 边界：先正常拒绝原审批并等待工作结算，保存已回答交互的分页 cursor，再经公开 `project.stop` 原回执和 `project.ensure` 重开同一 dataDir。用例要求原启动参数、serviceId、principal identity、journalEpoch、完整交互内容、Remote journal 和无文件副作用保持一致，Core generation 与 coreInstanceId 变化。重开后先用纯读 `project.models` 核对共享 Host 连接已到达新 serviceGeneration，仅轮询 `CORE_UNAVAILABLE` 暂态并记录次数与错误码；随后只发送一次旧 cursor 读取，要求原手机连接拒绝它而新分页可完整读取。它不增加完整组数；九组加 partial 不等于原 17 组全部经过真实 Core，同 digest 内容突变及其余故障屏障仍单列。新增路径的实际执行结果以本次产物的 `native-interaction-contract.json` 为准。
 
-`pnpm --dir clients/gui run test:shared-host-consumers` 使用隔离真实 Host/Core 验证 GUI 命名环境凭据、等价 CLI 别名及外来项目的原配置和会话创建。`node clients/gui/scripts/shared-host-gui-journal.mjs` 经普通提交 owner 验证双客户端 CAS、大记录和丢回复后的原回执恢复。`node clients/gui/scripts/gui-host-lifecycle-smoke.mjs` 验证项目登记、客户端断开、显式停止/重开，以及独立客户端活动轮次的全局观察和结算；活动查询不把轮次重复计入任务数。三个脚本使用 `AREAL_TEST_BIN_DIR` 指定的固定完整产物；默认使用本仓 `.local/shared-host-bin`。这些场景不访问真实 Keychain，不启动 Renderer，不替代旧 Desktop writer fence、GUI/TUI 审批交接或安装包验收。
+`pnpm --dir clients/gui run test:shared-host-consumers` 使用隔离真实 Host/Core 验证 GUI 命名环境凭据、等价 CLI 别名及外来项目的原配置和会话创建。Rust Host 的 journal 和 gateway 测试覆盖双客户端 CAS、大记录，以及丢回复后按原请求 ID 恢复，不重发业务命令。`node clients/gui/scripts/gui-host-lifecycle-smoke.mjs` 验证项目登记、客户端断开、显式停止/重开，以及独立客户端活动轮次的全局观察和结算；活动查询不把轮次重复计入任务数。两个脚本使用 `AREAL_TEST_BIN_DIR` 指定的固定完整产物；默认使用本仓 `.local/shared-host-bin`。这些场景不访问真实 Keychain，不启动 Renderer，不替代旧 Desktop writer fence、GUI/TUI 审批交接或安装包验收。
 
-`node clients/gui/scripts/gui-terminal-connection-smoke.mjs` 使用同一固定产物，在独立 Node 客户端中运行生产 Main 终端连接适配器。场景覆盖显式 Profile 权限、真实 PTY 输入/输出/resize、强杀客户端后的定向 Runtime 清理、原请求恢复及普通 thread 资源继续。它不启动 Electron，不验证 Desktop 提交 journal 桥接或退出界面。
+`node clients/gui/scripts/gui-terminal-connection-smoke.mjs` 使用同一固定产物，在独立 Node 客户端中运行 Main 的原生 Host 终端连接。场景覆盖显式 Profile 权限、真实 PTY 输入输出与尺寸调整、附件失联后的定向 Runtime 清理、后继附件通过原请求 ID 恢复回执，以及独立 Core 连接和普通 Thread 资源继续运行。最后分别核对 Host 停止回执与原进程退出。Electron 退出界面由桌面旅程覆盖。
 
-`node clients/gui/scripts/gui-toolhost-connection-smoke.mjs` 使用真实 Host/Core、DesktopService 与 ProjectConnections。Main socket 断开后 Desktop 保持运行，原 Turn 继续，动态工具报告不可用；后继 Main 只能观察活动 Turn，空闲后显式动作才重绑。另覆盖普通观察客户端断开不撤销 Main 工具。模型由本地 HTTP/SSE fixture 提供，不启动 Electron 或真实浏览器，也不证明供应商和安装包可用。
+`node clients/gui/scripts/gui-toolhost-connection-smoke.mjs` 使用固定 Core 产物、已构建的 GUI 适配器、生产 Main 附件与认证 Host loopback。验证普通观察者断开保留浏览器租约，Main 断开保留原轮次，继任 Main 只在空闲后显式发送时接管。合成本地模型核对工具不可用结果和回调未重放。此测试不启动 Electron，也不使用真实浏览器或模型供应商。
 
 `pnpm --dir clients/gui run test:host-handoff` 使用隔离 Electron、真实 TUI PTY 和固定 `.local/shared-host-bin` 产物。GUI 提交停在审批后强退 Main，TUI 连接原 Core 完成原 Turn，Runtime 文件副作用恰好一次。GUI 重开后核对原 Turn、同项目 TUI 新会话和独立 CLI 项目的历史。脚本检查源码、构建与产物身份，并将截图、终端输出、注册记录和清理结果保存在 `.scratch/shared-host/h2-gui-tui-handoff/`。模型仅使用本地确定性 fixture，目录选择器由测试注入；该场景不覆盖凭据迁移、真实供应商或安装包。
 
-`node clients/gui/scripts/shared-host-source-handoff.mjs --unit` 检查迁移适配器的 journal CAS、凭据版本和丢回复核查。真实迁移使用同一脚本，传入 `--legacy-app=<冻结旧版 app 目录>` 和 `--host-bin=<固定 areal 产物>`，并要求旧目录旁的 `source-manifest.json` 校验通过。macOS 运行须先取得隔离 Keychain 读写与测试条目清理授权，再设置 `AREAL_TEST_HOST_KEYCHAIN=1`。脚本使用随机应用身份的 Electron 副本和独立 Host home，先核对原生 safeStorage 条目身份，再测试凭据持久化和 journal 接管后的两次强杀恢复。旧入口真实创建请求的回复在 CoreClient 收到前被截断；新入口只能核查原回执，并断言没有再次创建且仅有一个会话。证据目录保留 `result.json`、中断与恢复记录、`keychain-cleanup.json`；清理仅针对记录的测试 service/account 和本次进程。脚本通过且正常退出才算验收完成。此项不证明发行签名身份、真实凭据或供应商可用。
+`node clients/gui/scripts/shared-host-source-handoff.mjs --unit` 检查迁移适配器的 journal CAS、凭据版本和丢回复核查。真实迁移使用同一脚本，传入 `--legacy-app=<冻结旧版 app 目录>` 和 `--host-bin=<固定 areal 产物>`，并要求旧目录旁的 `source-manifest.json` 校验通过。macOS 运行须先取得隔离 Keychain 读写与测试条目清理授权，再设置 `AREAL_TEST_HOST_KEYCHAIN=1`。脚本使用随机应用身份的 Electron 副本和独立 Host home，先核对原生 safeStorage 条目身份，再测试凭据持久化和 journal 接管后的两次强杀恢复。旧入口真实创建请求的回复在 CoreClient 收到前被截断；新 Host 校验归档的原始待决记录，Core 按原创建 ID 和准入指纹读取回执，并断言仅有一个会话。对旧手机发送，当前回执查询保持 UNKNOWN，Core 独立核查原始轮次。证据目录保留 `result.json`、中断与恢复记录、`keychain-cleanup.json`；清理仅针对记录的测试 service/account 和本次进程。脚本通过且正常退出才算验收完成。此项不证明发行签名身份、真实凭据或供应商可用。
 
 macOS 上即使 GUI 配置为空，启动也会生成订阅传输 token 并写入 Keychain。运行前须取得测试 Keychain 读写授权，再设置 `AREAL_TEST_HOST_KEYCHAIN=1`；未设置时脚本在创建测试状态或启动进程前退出。系统授权可能需要用户手动确认。超时且回执为 `acceptedPending` 时保留原隔离目录和请求 ID，先核查原操作；不能视为未写入后重新提交。
 
@@ -582,13 +614,10 @@ TUI 与共享服务 PTY 检查共用终端画面解析器，处理增量重绘�
 
 ## CI 门禁与冷启动
 
-PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以下六个存量文件上限按集成提交 `9297968c` 的实测值明确修订；指标方向、新文件 800 行上限和 CI 阻断继续生效。这些例外接受模块增长，不代表结构已经改善。
+PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以下三个 Renderer 文件上限按集成提交 `9297968c` 的实测值明确修订；指标方向、新文件 800 行上限和 CI 阻断继续生效。这些例外接受模块增长，不代表结构已经改善。
 
 | 所有者 | 原行数 → 当前行数 | 原因 |
 | --- | --- | --- |
-| `services/workbench/src/desktop/core/backend.cjs` | 2270 → 2284 | 连接任务目录与定时 owner 生命周期 |
-| `services/workbench/src/desktop/core/history-observation.cjs` | 1072 → 1175 | 协调有界历史读取、owner 任务与恢复 |
-| `services/workbench/src/desktop/core/lifecycle-operations.cjs` | 845 → 878 | 持久化调度抑制并支持显式恢复 |
 | `renderer/src/Composer.tsx` | 1564 → 1580 | 通过 owner 任务目录定位 worker 的原任务运行 |
 | `renderer/src/Messages.tsx` | 1561 → 1718 | 加载早期历史时保持阅读锚点 |
 | `renderer/src/TaskCenter.tsx` | 2356 → 2380 | 观察任务目录修订与共享 owner 激活 |
@@ -605,7 +634,7 @@ PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以�
 
 `gui-health.mjs --check --base=<ref>` 会标记基线源码已存在的超限，硬检查仍以已审核的 `health-baseline.json` 判定失败。继承分类用于归因，不是自动豁免；显式例外与基准变更继续经过既有审查。模型菜单 smoke 通过稳定的 `composer-model-trigger` 打开入口，在对应服务商标签内选择原生 radio，并以选中模型和后续行为验证结果。 架构迁移需要整体换基线时，在 `health-baseline.json` 写一条 `$rebaseline`（基点提交、原因、放行的 IPC 名字）：只有以该提交为基点的比较免去“相对基点只降不升”和 IPC 冻结，合入后自动失效，下次写基线时删除。
 
-规模信号包括 Main 总量/业务量、工作台迁移规模、App 行数和 hooks、Renderer CSS 行数、设计文档字节数、已检查文件数、单测文件数及逐文件大小。保留基线和实际 PR 基点对照供职责审查，不通过提高阈值或无关删改消除信号。类型覆盖、能力清单、preload/transport 一致性和依赖边界继续硬检查。数组风险规则 `areal/no-unchecked-array-method` 保持 warning；现有 lint correctness 规则设为 error，提交和 push 入口不再把该信号升级为失败，其他 lint、格式和类型错误仍阻断。
+规模信号包括 Main 总量/业务量、App 行数和 hooks、Renderer CSS 行数、设计文档字节数、已检查文件数、单测文件数及逐文件大小。保留基线和实际 PR 基点对照供职责审查，不通过提高阈值或无关删改消除信号。类型覆盖、能力清单、preload/transport 一致性和依赖边界继续硬检查。数组风险规则 `areal/no-unchecked-array-method` 保持 warning；现有 lint correctness 规则设为 error，提交和 push 入口不再把该信号升级为失败，其他 lint、格式和类型错误仍阻断。
 
 `Track red main` 工作流跟踪 main 上 `Verify` 和 `GUI checks` 的 push 结果。写 issue 前核对当前 main 提交、该 workflow 最新 run/attempt 及终态；过期通知与未完成的新 attempt 不修改告警。当前失败创建或更新对应 issue，当前成功关闭；仓库保护规则拥有必需检查设置。`python3 -m unittest scripts.tests.test_ci_contracts` 在 GitHub CLI 边界使用离线响应，覆盖乱序完成、旧 attempt、新运行未完成和 API 读取失败，测试不会写入真实 issue。
 

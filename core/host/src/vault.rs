@@ -33,6 +33,10 @@ pub(crate) enum Slot {
         #[serde(rename = "sourceId")]
         source_id: String,
     },
+    CloudAccount {
+        #[serde(rename = "sourceId")]
+        source_id: String,
+    },
     RemoteIdentity,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -89,7 +93,9 @@ impl Slot {
                 }
                 source_id
             }
-            Self::SubscriptionTransport { source_id } => source_id,
+            Self::SubscriptionTransport { source_id } | Self::CloudAccount { source_id } => {
+                source_id
+            }
             Self::RemoteIdentity => {
                 return Err(error(
                     "remoteStateRequired",
@@ -104,6 +110,7 @@ impl Slot {
 
 #[derive(Clone)]
 pub(crate) struct Vault {
+    provider_reads: Arc<Mutex<BTreeMap<String, ProviderRead>>>,
     flight: Arc<Mutex<BTreeMap<String, Value>>>,
     worker: bool,
     closing: Arc<AtomicBool>,
@@ -119,7 +126,17 @@ pub(crate) struct Vault {
     #[cfg(test)]
     pub(crate) locked: std::cell::Cell<bool>,
     #[cfg(test)]
+    pub(crate) read_failure: std::cell::Cell<Option<&'static str>>,
+    #[cfg(test)]
     pub(crate) before_write: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
+    #[cfg(test)]
+    backend_reads: Arc<std::sync::atomic::AtomicUsize>,
+}
+struct ProviderRead {
+    generation: String,
+    revision: u64,
+    entry_id: Option<String>,
+    value: Value,
 }
 struct FlightGuard {
     flight: Arc<Mutex<BTreeMap<String, Value>>>,
@@ -141,6 +158,7 @@ impl Vault {
         _identity: &crate::HostIdentity,
         _token: &str,
     ) {
+        self.provider_reads.lock().unwrap().clear();
         #[cfg(target_os = "macos")]
         {
             *self.authority.lock().unwrap() =
@@ -272,6 +290,7 @@ impl Vault {
             self.idle_notice.notified().await;
         }
         self.owner.lock().unwrap().take();
+        self.provider_reads.lock().unwrap().clear();
     }
     pub(crate) async fn dispatch_async(
         &self,
@@ -453,6 +472,7 @@ impl Vault {
                 reference,
             } = state.slot
                 && source_id == source
+                && state.entry_id.is_some()
             {
                 references.insert(reference);
             }
@@ -483,6 +503,34 @@ impl Vault {
             storage::digest(&serde_json::to_vec(slot)?)
         )))
     }
+    /// 已连接的 Cloud 只核对持久修订，不解密凭据或创建槽位。
+    pub(crate) fn cloud_revision(&self, source: &str) -> Result<u64> {
+        let slot = Slot::CloudAccount {
+            source_id: source.into(),
+        };
+        let state: Option<SlotState> = storage::read_optional(&self.state_path(&slot)?)?;
+        if let Some(state) = state {
+            ensure!(state.slot == slot, "vault slot metadata mismatch");
+            Ok(state.revision)
+        } else {
+            Ok(0)
+        }
+    }
+
+    /// 目录失效只读版本与条目身份，不访问钥匙串，也不创建槽位。
+    pub(crate) fn provider_stamp(&self, source: &str) -> Result<Value> {
+        let mut stamps = BTreeMap::new();
+        for reference in self.provider_references(source)? {
+            let slot = Slot::ProviderCredential {
+                source_id: source.to_owned(),
+                reference: reference.clone(),
+            };
+            let state: SlotState = storage::read(&self.state_path(&slot)?)?;
+            ensure!(state.slot == slot, "vault slot metadata mismatch");
+            stamps.insert(reference, json!([state.revision, state.entry_id]));
+        }
+        Ok(json!(stamps))
+    }
     fn state(&self, slot: &Slot, migration: &Migration) -> Result<SlotState> {
         self.idle()?;
         self.state_seed(slot, migration.vault_seed(slot)?)
@@ -502,6 +550,10 @@ impl Vault {
         Ok(state)
     }
     fn save_state(&self, state: &SlotState) -> Result<()> {
+        self.provider_reads
+            .lock()
+            .unwrap()
+            .remove(&Self::slot_key(&serde_json::to_value(&state.slot)?)?);
         storage::private_dir(&self.home.join("host/vault-slots"))?;
         std::fs::File::open(self.home.join("host"))?.sync_all()?;
         storage::write(&self.state_path(&state.slot)?, state)
@@ -624,12 +676,39 @@ impl Vault {
             let read = |vault: &Self| {
                 let mut state = vault.state_seed(&input.slot, seed)?;
                 vault.recover(&mut state)?;
-                let value = match state.entry_id {
+                // 只复用本代非交互 provider 读取；先恢复并核对权威 revision，失败仍可重试。
+                let cache_key = if input.interaction_allowed == Some(false)
+                    && matches!(input.slot, Slot::ProviderCredential { .. })
+                {
+                    Some(Self::slot_key(&serde_json::to_value(&input.slot)?)?)
+                } else {
+                    None
+                };
+                if let Some(key) = &cache_key
+                    && let Some(cached) = vault.provider_reads.lock().unwrap().get(key)
+                    && cached.generation == generation
+                    && cached.revision == state.revision
+                    && cached.entry_id == state.entry_id
+                {
+                    return Ok(json!({"revision":state.revision,"value":cached.value}));
+                }
+                let value = match &state.entry_id {
                     Some(id) => vault
-                        .read(&id)?
+                        .read(id)?
                         .ok_or_else(|| error("storageMissing", "current vault entry is missing"))?,
                     None => Value::Null,
                 };
+                if let Some(key) = cache_key {
+                    vault.provider_reads.lock().unwrap().insert(
+                        key,
+                        ProviderRead {
+                            generation: generation.to_owned(),
+                            revision: state.revision,
+                            entry_id: state.entry_id,
+                            value: value.clone(),
+                        },
+                    );
+                }
                 Ok(json!({"revision":state.revision,"value":value}))
             };
             return if input.interaction_allowed == Some(false) {
@@ -838,6 +917,7 @@ impl Vault {
     }
     pub fn new(home: &Path) -> Self {
         Self {
+            provider_reads: Arc::new(Mutex::new(BTreeMap::new())),
             home: home.to_owned(),
             owner: Arc::new(Mutex::new(None)),
             #[cfg(target_os = "macos")]
@@ -853,12 +933,17 @@ impl Vault {
             #[cfg(test)]
             locked: std::cell::Cell::new(false),
             #[cfg(test)]
+            read_failure: std::cell::Cell::new(None),
+            #[cfg(test)]
             before_write: None,
+            #[cfg(test)]
+            backend_reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
     #[cfg(test)]
     pub fn isolated_files(home: &Path) -> Self {
         Self {
+            provider_reads: Arc::new(Mutex::new(BTreeMap::new())),
             home: home.to_owned(),
             owner: Arc::new(Mutex::new(None)),
             #[cfg(target_os = "macos")]
@@ -872,7 +957,10 @@ impl Vault {
             isolated_files: true,
             locked: std::cell::Cell::new(false),
             #[cfg(test)]
+            read_failure: std::cell::Cell::new(None),
+            #[cfg(test)]
             before_write: None,
+            backend_reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
     pub fn write(&self, entry: &str, value: &Value) -> Result<()> {
@@ -930,6 +1018,12 @@ impl Vault {
     pub fn read(&self, entry: &str) -> Result<Option<Value>> {
         self.idle()?;
         crate::wire::request_id(entry)?;
+        #[cfg(test)]
+        self.backend_reads.fetch_add(1, Ordering::Relaxed);
+        #[cfg(test)]
+        if let Some(code) = self.read_failure.get() {
+            return Err(error(code, "isolated credential failure"));
+        }
         #[cfg(test)]
         if self.locked.get() {
             return Err(error("storageLocked", "isolated vault is locked"));
@@ -1005,6 +1099,7 @@ mod tests {
             auth_file: home.join("host/auth.json"),
             pid: std::process::id(),
             executable_version: "fixture".into(),
+            executable_digest: None,
         };
         storage::write(&home.join("host/host.json"), &identity).unwrap();
         storage::write(&identity.auth_file, &"synthetic-auth").unwrap();
@@ -1109,6 +1204,66 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn noninteractive_provider_reads_reuse_only_current_generation_and_revision() {
+        let f = Fixture::new();
+        let vault = &f.migration.vault;
+        let slot = Slot::ProviderCredential {
+            source_id: f.slot.source_id().unwrap().into(),
+            reference: "AREAL_CREDENTIAL_cache_fixture".into(),
+        };
+        let replace = |revision, value| {
+            vault.dispatch("vault.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","slot":slot,"expectedRevision":revision,"value":value}), "generation", &f.migration).unwrap();
+        };
+        replace(0, json!("synthetic-first"));
+        let params = json!({"slot":slot,"interactionAllowed":false});
+        let read = |generation| {
+            vault.dispatch_async("vault.read", params.clone(), generation, &f.migration)
+        };
+        vault.locked.set(true);
+        for _ in 0..2 {
+            assert!(
+                read("generation")
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("storageLocked")
+            );
+        }
+        vault.locked.set(false);
+        let before = vault.backend_reads.load(Ordering::Relaxed);
+        let (first, second) = tokio::join!(read("generation"), read("generation"));
+        assert_eq!(first.unwrap(), second.unwrap());
+        assert_eq!(vault.backend_reads.load(Ordering::Relaxed) - before, 1);
+        vault
+            .dispatch_async(
+                "vault.read",
+                json!({"slot":slot}),
+                "generation",
+                &f.migration,
+            )
+            .await
+            .unwrap();
+        assert_eq!(vault.backend_reads.load(Ordering::Relaxed) - before, 2);
+        read("next-generation").await.unwrap();
+        assert_eq!(vault.backend_reads.load(Ordering::Relaxed) - before, 3);
+        replace(1, json!("synthetic-second"));
+        let before = vault.backend_reads.load(Ordering::Relaxed);
+        assert_eq!(
+            read("generation").await.unwrap()["value"],
+            "synthetic-second"
+        );
+        assert_eq!(vault.backend_reads.load(Ordering::Relaxed) - before, 1);
+        replace(2, Value::Null);
+        assert!(read("generation").await.unwrap()["value"].is_null());
+        let restarted = Vault::isolated_files(&vault.home);
+        restarted
+            .dispatch_async("vault.read", params, "generation", &f.migration)
+            .await
+            .unwrap();
+        assert_eq!(restarted.backend_reads.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn blocked_subscription_write_does_not_block_another_provider_slot() {
         use std::time::Duration;
         let mut f = Fixture::new();
@@ -1197,6 +1352,7 @@ mod tests {
             socket_path: f.migration.vault.home.join("socket"),
             auth_file: f.migration.vault.home.join("auth"),
             executable_version: "fixture".into(),
+            executable_digest: None,
         };
         let result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
             let receipt = remote.dispatch_async("remote.replace", json!({"requestId":request,"expectedGeneration":"generation","expectedRevision":0,"sourceId":f.slot.source_id().unwrap(),"config":{"identity":noise,"devices":[]}}), "fixture", "generation", &f.migration, &[]).await?;
@@ -1306,6 +1462,7 @@ mod tests {
                 auth_file: root.path().join("auth"),
                 pid: std::process::id(),
                 executable_version: "fixture".into(),
+                executable_digest: None,
             },
             "fixture",
         );

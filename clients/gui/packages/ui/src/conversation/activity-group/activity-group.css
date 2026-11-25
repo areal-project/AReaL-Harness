@@ -28,6 +28,38 @@
 .areal-activity-group > .areal-disclosure > .areal-disclosure-trigger:hover {
   color: var(--color-foreground);
 }
+.areal-activity-heading {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--activity-icon-gap);
+  min-width: 0;
+  max-width: 100%;
+}
+.areal-activity-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.areal-activity-duration {
+  flex: none;
+  color: var(--color-foreground-subtlest);
+  font-size: var(--text-ui-caption);
+  letter-spacing: var(--tracking-ui-subtle);
+}
+@keyframes areal-activity-active-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: var(--opacity-resting);
+  }
+}
+.areal-activity-group[data-active="true"] > .areal-disclosure > .areal-disclosure-trigger {
+  color: var(--color-foreground);
+  animation: areal-activity-active-pulse var(--motion-cycle-slow) var(--ease-in-out)
+    var(--motion-loop);
+}
 /* 通用按钮会把内部图标压小；活动图标与行内图标同尺寸，保证文字起点对齐。 */
 .areal-activity-group > .areal-disclosure > .areal-disclosure-trigger > svg {
   flex: none;
@@ -96,11 +128,13 @@
   inherits: false;
   initial-value: 0px;
 }
+/* 99% 即归零，避免 Chromium 子像素布局下 End 键停在 maxScroll - 0.5px 时残余 1px 渐隐。 */
 @keyframes areal-activity-list-fade {
   from,
   90% {
     --areal-activity-list-fade: var(--activity-list-fade);
   }
+  99%,
   to {
     --areal-activity-list-fade: 0px;
   }

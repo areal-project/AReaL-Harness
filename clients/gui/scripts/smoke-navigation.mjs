@@ -1,4 +1,8 @@
-import { observationSummary } from "./support/desktop-fixture.mjs";
+import {
+  libraryCommand,
+  observationSummary,
+  readDesktopSnapshot,
+} from "./support/desktop-fixture.mjs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
@@ -29,18 +33,12 @@ export async function selectConversation(page, threadId) {
 
 export async function selectCreatedConversation(page, projectId, threadId) {
   // 空对话默认不出现在侧栏；给测试夹具命名后再通过真实导航打开。
-  await page.evaluate(
-    async ({ projectId, threadId }) => {
-      const result = await window.arealDesktop.command("library", {
-        operation: "renameThread",
-        projectId,
-        threadId,
-        title: "Smoke fixture",
-      });
-      if (!result.ok) throw new Error(JSON.stringify(result));
-    },
-    { projectId, threadId },
-  );
+  await libraryCommand(page, {
+    operation: "renameThread",
+    projectId,
+    threadId,
+    title: "Smoke fixture",
+  });
   await selectConversation(page, threadId);
 }
 
@@ -99,9 +97,7 @@ export async function captureSmokeFailure(page, scratch, error) {
   }
   try {
     state.observation = observationSummary(
-      await withSmokeDeadline("failure projection capture", () =>
-        page.evaluate(() => window.arealDesktop.snapshot()),
-      ),
+      await withSmokeDeadline("failure projection capture", () => readDesktopSnapshot(page)),
     );
   } catch (failure) {
     state.observationCaptureError = failure.message;

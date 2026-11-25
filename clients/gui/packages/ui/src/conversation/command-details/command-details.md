@@ -2,8 +2,8 @@
 id: command-details
 title: CommandDetails
 summary: 命令输入、输出、原始记录和结果说明。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: composition
 aliases: ["命令输入、输出、原始记录和结果说明"]

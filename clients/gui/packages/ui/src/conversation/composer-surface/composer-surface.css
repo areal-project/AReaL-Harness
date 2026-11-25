@@ -6,17 +6,18 @@
   grid-template-columns: var(--composer-inset) minmax(0, 1fr) var(--composer-inset);
   gap: 0;
   padding: var(--composer-inset) 0 var(--spacing-inline);
-  border: 0;
+  border: var(--border-width-default) solid var(--color-border-hairline);
   border-radius: var(--radius-composer);
-  background: var(--color-composer);
+  corner-shape: superellipse(1.5);
+  background: var(--color-surface-composer);
   box-shadow: var(--shadow-composer);
-  transition: box-shadow var(--motion-fast) var(--ease-standard);
+  transition:
+    box-shadow var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
 }
 .composer-surface:focus-within {
-  box-shadow:
-    var(--shadow-composer),
-    0 0 0 1px var(--color-border-hover),
-    0 0 0 3px var(--color-focus-ring-soft);
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-composer);
 }
 .composer-surface[data-dragging] {
   outline: var(--focus-width) solid var(--color-brand);
@@ -39,10 +40,10 @@
   scrollbar-width: thin;
 }
 .composer-editor :is([contenteditable], textarea) {
-  min-height: 40px;
+  min-height: calc(var(--spacing-inline) * 5);
   max-height: none;
   overflow-y: visible;
-  padding-bottom: 8px;
+  padding-bottom: var(--spacing-inline);
   caret-color: var(--color-foreground);
 }
 .composer-editor :is([contenteditable], textarea) {
@@ -69,19 +70,41 @@
 .composer-editor textarea {
   field-sizing: content;
 }
+.composer-surface[data-layout="default"] .composer-toolbar {
+  padding-top: calc(var(--spacing-inline) / 2);
+}
 .composer-toolbar {
+  container: composer-footer / inline-size;
   display: flex;
   align-items: center;
   gap: var(--spacing-inline);
   min-width: 0;
-  min-height: 28px;
+  min-height: calc(var(--spacing-inline) * 7 / 2);
 }
 .composer-toolbar :is([type="submit"], .composer-primary-action) {
   border-radius: var(--radius-pill);
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+.composer-toolbar :is([type="submit"], .composer-primary-action):active:not(:disabled) {
+  transform: scale(0.95);
 }
 .composer-toolbar :is([type="submit"], .composer-primary-action):not(:disabled) {
   background: var(--color-composer-action);
   color: var(--color-composer-action-foreground);
+}
+/* 窄输入容器下自动折叠标记为次要的工具项，与 useComposerToolbarFit 协同避免挤换行。 */
+@container composer-footer (max-width: 440px) {
+  .composer-toolbar [data-composer-collapse="secondary"] {
+    display: none;
+  }
+}
+@container composer-footer (max-width: 320px) {
+  .composer-toolbar [data-composer-collapse="compact"] {
+    display: none;
+  }
 }
 
 /* 宿主显式选择布局；面板祖先不能改变另一输入器的几何。 */
@@ -92,8 +115,8 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  padding: 4px 12px;
-  gap: 8px;
+  padding: calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) * 3 / 2);
+  gap: var(--spacing-inline);
   border-radius: var(--radius-composer-large);
 }
 .composer-surface[data-layout="compact"] > :not(.composer-editor):not(.composer-toolbar) {
@@ -108,10 +131,10 @@
   grid-column: 2;
   grid-row: 1;
   padding: 0;
-  max-height: 80px;
+  max-height: calc(var(--spacing-inline) * 10);
 }
 .composer-surface[data-layout="compact"] .composer-editor :is([contenteditable], textarea) {
-  min-height: 36px;
+  min-height: calc(var(--spacing-inline) * 9 / 2);
 }
 .composer-surface[data-layout="compact"] .composer-toolbar {
   display: contents;
@@ -129,14 +152,14 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    padding: 14px 8px 8px;
+    padding: calc(var(--spacing-inline) * 7 / 4) var(--spacing-inline) var(--spacing-inline);
     border-radius: var(--radius-composer);
   }
   .composer-surface[data-layout="compact"] .composer-toolbar {
     display: flex;
   }
   .composer-surface[data-layout="compact"] .composer-model-trigger {
-    max-width: 120px;
+    max-width: calc(var(--spacing-inline) * 15);
   }
 }
 
@@ -162,7 +185,7 @@
     calc(var(--spacing-inline) * 3 / 4) var(--composer-inset);
 }
 .composer-surface[data-layout="decision"] .composer-editor {
-  flex: 1 1 120px;
+  flex: 1 1 calc(var(--spacing-inline) * 15);
   padding: 0 0 0 calc(var(--spacing-control) + var(--spacing-inline) * 3 / 4);
   max-height: calc(4 * var(--line-height-ui));
 }
@@ -179,6 +202,8 @@
 .composer-surface[data-layout="decision"] .composer-toolbar {
   position: static;
   flex: 0 0 auto;
+  /* 决策行里 toolbar 按内容占宽，不能带 inline-size containment，否则内在宽度坍缩为 0 导致控件溢出右边框。 */
+  container-type: normal;
 }
 .composer-surface[data-layout="decision"] [data-composer-leading-actions] {
   position: absolute;

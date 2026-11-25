@@ -11,8 +11,19 @@ import { createServer } from "node:http";
 import { performance } from "node:perf_hooks";
 import { makeTempDir } from "./support/temp.mjs";
 import { applicationFixture } from "./application-fixture.mjs";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
-import { withSmokeDeadline } from "./smoke-deadline.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  readFixtureHost,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
+import {
+  approveFixtureInteraction,
+  createFixtureThread,
+  fixtureWorkbench,
+  libraryCommand,
+} from "./support/desktop-fixture.mjs";
+import { withCore } from "./support/core-observation.mjs";
 import {
   digest,
   expandScheduleFixture,
@@ -25,9 +36,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const gui = resolve(process.env.AREAL_SCHEDULE_GUI_ROOT || join(root, "clients/gui"));
 const require = createRequire(join(root, "clients/gui/app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection, waitForServiceExit } = require(
-  join(gui, "app/src/core/service-client.cjs"),
-);
+const { HostClient } = require("@areal/client/node");
 const binary = resolve(process.env.AREAL_CORE_BIN || join(root, "target/debug/areal"));
 const mode = process.env.AREAL_SCHEDULE_MODE || "accept";
 assert.ok(["seed", "baseline", "accept", "fault"].includes(mode));
@@ -48,9 +57,9 @@ if (previous) {
     true,
     "only an owned stopped fixture may be reused",
   );
-  assert.match(previous.scratch, /^\/private\/.*\/areal-schedule-reliability-[A-Za-z0-9]+$/);
+  assert.match(previous.scratch, /^\/private\/.*\/areal-schedule-(?:reliability-)?[A-Za-z0-9]+$/);
 }
-const scratch = previous?.scratch || (await makeTempDir("areal-schedule-reliability-"));
+const scratch = previous?.scratch || (await makeTempDir("areal-schedule-"));
 const evidence = process.env.AREAL_SCHEDULE_EVIDENCE
   ? resolve(process.env.AREAL_SCHEDULE_EVIDENCE)
   : await trackedMkdtemp(join(root, ".scratch/schedule-reliability-"));
@@ -158,8 +167,6 @@ const env = {
 };
 const traceFile = join(evidence, "trace.jsonl");
 await writeFile(traceFile, "");
-const faultTargetFile = join(evidence, "fault-target.txt");
-await writeFile(faultTargetFile, "");
 const fixture = await applicationFixture(
   gui,
   join(scratch, `app-${randomUUID().slice(0, 8)}`),
@@ -171,60 +178,16 @@ ${
     ? `const {Notification}=require("electron");
 const nativeShow=Notification.prototype.show;
 Notification.prototype.show=function(){record("native_show",{title:this.title,body:this.body});return nativeShow.call(this);};
-const {CoreNotifications}=require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/notifications.cjs"))});
-const publishNotice=CoreNotifications.prototype.publish;
-CoreNotifications.prototype.publish=function(notice){record("notice_publish",{notice});return publishNotice.call(this,notice);};`
+const transportPath=require.resolve(${JSON.stringify(join(gui, "app/src/core/generated/native-host-transport.cjs"))});
+const transport=require(transportPath);
+require.cache[transportPath].exports={...transport,createNativeHostTransport(options){
+ return transport.createNativeHostTransport({...options,onNotice(notice){
+  record("notice_publish",{notice});
+  return options.onNotice?.(notice);
+ }});
+}};`
     : ""
 }
-const {CoreBackend} = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
-const command = CoreBackend.prototype.command;
-CoreBackend.prototype.command = async function(name, request, context) {
- if(name !== "tasks" || request.operation !== "observe" || !(request.viewEpoch >= 9000 && request.viewEpoch < 10000))
-  return command.call(this,name,request,context);
- if(this.scheduleOwners.pending)await this.scheduleOwners.pending;
- const before=this.ownerTasks.published.size;
- const result=await command.call(this,name,request,context);
- const populated=this.ownerTasks.published.size;
- this.ownerTasks.published.clear();
- record("cold_cache_reset",{requestId:request.requestId,before,populated,after:this.ownerTasks.published.size,scanPending:!!this.scheduleOwners.pending});
- return result;
-};
-const start = CoreBackend.prototype.startProject;
-CoreBackend.prototype.startProject = function(projectId) {record("owner_start",{projectId});return start.call(this,projectId);};
-const execute = CoreBackend.prototype.executeCommand;
-CoreBackend.prototype.executeCommand = async function(name, request, context) {
- const watched = name === "tasks" || name === "manage";
- if(watched)record("command_begin",{name,operation:request.operation,projectId:request.projectId});
- try { const result = await execute.call(this,name,request,context); if(watched)record("command_end",{name,operation:request.operation,projectId:request.projectId,rows:result?.data?.length,bytes:Buffer.byteLength(JSON.stringify(result))});return result; }
- catch(error){record("command_error",{name,operation:request.operation,message:error.message});throw error;}
-};
-import(${JSON.stringify(join(gui, "packages/runtime-client/core.js"))}).then(({CoreClient})=>{
- const request = CoreClient.prototype.request;
- CoreClient.prototype.request = function(method,params,...args){
-  if(method.startsWith("areal/"))record("rpc",{method,params});
-  return request.call(this,method,params,...args);
- };
- ${
-   transportFaults
-     ? `const receive=CoreClient.prototype.receive;
- let target="",dropped=false,duplicated=false;
- const watcher=fs.watch(${JSON.stringify(faultTargetFile)},()=>{
-  target=fs.readFileSync(${JSON.stringify(faultTargetFile)},"utf8").trim();
-  if(target){record("transport_armed",{taskId:target});watcher.close();}
- });
- CoreClient.prototype.receive=function(bytes){
-  if(!target)return receive.call(this,bytes);
-  let message;
-  try{message=JSON.parse(String(bytes));}catch{return receive.call(this,bytes);}
-  if(target && message.method==="areal/owner/invalidated" && message.params?.changedTasks?.includes(target)){
-   if(!dropped){dropped=true;record("transport_drop",{taskId:target,sequence:message.params.sequence});return;}
-   if(!duplicated){duplicated=true;record("transport_duplicate",{taskId:target,sequence:message.params.sequence});receive.call(this,bytes);return receive.call(this,bytes);}
-  }
-  return receive.call(this,bytes);
- };`
-     : ""
- }
-});
 `,
 );
 async function guiFingerprint() {
@@ -237,7 +200,7 @@ async function guiFingerprint() {
       if (entry.isFile()) files.push([path.slice(gui.length), digest(await readFile(path))]);
     }
   }
-  for (const directory of ["app/src", "app/bridge", "renderer/dist", "packages"])
+  for (const directory of ["app/src", "app/assets", "renderer/dist", "packages"])
     await walk(join(gui, directory));
   return {
     sha256: digest(JSON.stringify(files.sort((a, b) => a[0].localeCompare(b[0])))),
@@ -295,7 +258,120 @@ async function until(fn, label, timeout = 60000) {
 const readTrace = async () =>
   (await readFile(traceFile, "utf8")).trim().split("\n").filter(Boolean).map(JSON.parse);
 const snapshot = () => page.evaluate(() => window.arealDesktop.snapshot());
+function ownerGenerations(selected) {
+  const services = JSON.parse(
+    execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8", timeout: 20000 }),
+  );
+  return selected.flatMap(({ root }) =>
+    services
+      .filter((service) => service.workspace === root)
+      .map(({ serviceId, generation, state }) => ({ serviceId, generation, state })),
+  );
+}
+async function observeHostWire() {
+  const requests = [];
+  const faults = [];
+  const subscriptions = new Map();
+  let rendererSocket;
+  let target;
+  let phase;
+  await page.routeWebSocket(/\/host\/socket$/, (socket) => {
+    const remote = socket.connectToServer();
+    const pending = new Map();
+    socket.onMessage((message) => {
+      const frame = JSON.parse(message.toString());
+      if (frame.method === "shell.subscribe") {
+        rendererSocket ??= socket;
+        if (socket === rendererSocket) pending.set(frame.id, frame.method);
+      }
+      if (socket === rendererSocket) {
+        const input = frame.params?.request ?? frame.params;
+        requests.push({ method: frame.method, operation: input?.operation });
+        if (input?.operation === "taskWatch") {
+          pending.set(frame.id, {
+            operation: input.operation,
+            projectId: input.projectId,
+            executionProjectId: input.executionProjectId,
+            taskId: input.taskId,
+          });
+        }
+      }
+      remote.send(message);
+    });
+    remote.onMessage((message) => {
+      const frame = JSON.parse(message.toString());
+      const original = pending.get(frame.id);
+      pending.delete(frame.id);
+      if (original === "shell.subscribe" && frame.result?.subscriptionId) {
+        const shell = frame.result;
+        subscriptions.set(
+          shell.subscriptionId,
+          new Map(shell.snapshot.projects.map((row) => [row.projectId, row.taskRevision])),
+        );
+      }
+      if (original?.operation === "taskWatch") {
+        requests.push({
+          ...original,
+          observedTaskId: frame.result?.id ?? frame.result?.task?.id,
+          errorCode: frame.error?.code,
+        });
+      }
+      const event = frame.params;
+      const seen = event && subscriptions.get(event.subscriptionId);
+      if (socket === rendererSocket && event?.event === "shell.updated" && seen) {
+        for (const row of event.delta.projects.upsert) {
+          const prior = seen.get(row.projectId);
+          seen.set(row.projectId, row.taskRevision);
+          if (
+            phase &&
+            row.projectId === target &&
+            typeof prior === "string" &&
+            typeof row.taskRevision === "string" &&
+            row.taskRevision !== prior
+          ) {
+            faults.push({
+              phase,
+              projectId: target,
+              sequence: event.sequence,
+              subscriptionId: event.subscriptionId,
+              taskRevision: row.taskRevision,
+            });
+            const drop = phase === "drop";
+            phase = undefined;
+            if (!drop) {
+              socket.send(message);
+              socket.send(message);
+            }
+            return;
+          }
+        }
+        for (const id of event.delta.projects.remove) seen.delete(id);
+      }
+      socket.send(message);
+    });
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator('[data-testid="areal-workbench"][data-startup-ready="true"]').waitFor();
+  await until(() => subscriptions.size, "native shell subscription observed");
+  return {
+    requests,
+    faults,
+    arm(projectId, action) {
+      assert.equal(phase, undefined, "previous injection reached the original subscription");
+      assert.ok(
+        [...subscriptions.values()].some((rows) => typeof rows.get(projectId) === "string"),
+      );
+      target = projectId;
+      phase = action;
+    },
+  };
+}
 async function call(name, request) {
+  if (name === "tasks") return fixtureWorkbench(page, "tasks.read", request);
+  if (name === "create") {
+    const { projectId, ...input } = request;
+    return createFixtureThread(page, projectId, input);
+  }
   const reply = await page.evaluate(
     ({ name, request }) => window.arealDesktop.command(name, request),
     { name, request },
@@ -321,7 +397,9 @@ async function launch() {
     if (message.text().startsWith("[task-catalog] "))
       catalogEvents.push(JSON.parse(message.text().slice(15)));
   });
-  await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
+  await page
+    .locator('[data-testid="areal-workbench"][data-startup-ready="true"]')
+    .waitFor({ timeout: 120000 });
   await until(async () => (await snapshot()).connection?.state === "ready", "desktop ready");
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];
@@ -332,62 +410,37 @@ async function launch() {
 }
 async function close() {
   if (!app) return;
-  if (await page.getByRole("button", { name: "首页", exact: true }).count())
-    await page.getByRole("button", { name: "首页", exact: true }).click();
-  const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-  const connection = new ServiceConnection();
-  try {
-    await connection.connect(metadata);
-    await until(async () => {
-      const hello = await connection.request("hello", {
-        protocol: metadata.protocol,
-        identity: metadata.identity,
-      });
-      if (hello.service.activeCommands || hello.service.starting) return false;
-      try {
-        await connection.request(
-          "stopService",
-          {
-            protocol: metadata.protocol,
-            cancel: true,
-            expectedDesktopGeneration: metadata.desktopGeneration,
-            expectedTargets: hello.service.targets,
-          },
-          true,
-        );
-        return true;
-      } catch (error) {
-        if (!/请等待已提交操作完成|请等待项目启动完成/.test(error.message)) throw error;
-        return false;
-      }
-    }, "fixture stop accepted after commands settle");
-    await waitForServiceExit(join(scratch, "core"), metadata);
-  } finally {
-    connection.close();
-  }
-  await withSmokeDeadline(
-    "fixture Electron exit",
-    () => app.evaluate(({ app }) => app.exit(0)),
-    5000,
-  ).catch(() => {});
-  await closeSmokeApplication(app);
+  const application = app;
   app = null;
-  await assertApplicationStopped(binary, env, metadata);
-  cleanup.push({
-    pid: metadata.pid,
-    stopped: true,
-    kind: "identity checked fixture teardown, not product quit acceptance",
-  });
+  const pid = application.process().pid;
+  const host = await readFixtureHost(env);
+  const stopDirectory = join(evidence, `stop-${pid}`);
+  await mkdir(stopDirectory);
+  let receipt;
+  try {
+    await application.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 0 });
+    });
+    if (host)
+      receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, stopDirectory);
+  } catch (error) {
+    cleanup.push({ pid, hostPid: host?.pid, stopped: false, error: error.message });
+    throw error;
+  } finally {
+    await closeSmokeApplication(application);
+    await assertApplicationStopped(binary, env, { pid, hostPid: host?.pid });
+  }
+  cleanup.push({ pid, hostPid: host?.pid, stopRequestId: receipt?.requestId, stopped: true });
 }
 async function addProject(directory) {
   await mkdir(directory, { recursive: true });
-  await app.evaluate(({ dialog }, directory) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+  await app.evaluate(({ dialog }, root) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] });
   }, directory);
   await page.evaluate(() => window.arealDesktop.chooseProject());
   return until(
-    async () => (await snapshot()).projects.find((p) => p.root === directory && p.state?.connected),
-    "registered project ready",
+    async () => (await snapshot()).projects.find((entry) => entry.root === directory),
+    "original native project alias",
   );
 }
 async function measureOpen() {
@@ -504,6 +557,9 @@ try {
   if (!previous) {
     await launch();
     primaryId = (await addProject(join(scratch, "primary"))).id;
+    const projectless = join(scratch, "projectless");
+    await mkdir(projectless, { recursive: true });
+    await call("projectless", { operation: "directory", path: projectless });
     for (let index = 0; index < scheduleScale.projects; index++) {
       const project = await addProject(join(scratch, `logical-${String(index).padStart(2, "0")}`));
       const allocated = await call("projectless", {
@@ -541,6 +597,20 @@ try {
       });
       console.log(`Seed owner ${index + 1}/${scheduleScale.projects}`);
     }
+    // 目录将逻辑项目和执行项目合并。空的逻辑项目也要先绑定，冷读才有可信的空目录。
+    const host = new HostClient();
+    try {
+      await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      for (const { registration, service } of (await host.status()).projects) {
+        if (service?.state === "ready" || registration.source.kind !== "gui") continue;
+        assert.ok(registration.workspace.startsWith(scratch + "/"), "seed owner is isolated");
+        await call("connect", { projectId: registration.source.legacyProjectId });
+      }
+      const catalog = await call("tasks", { operation: "observe", limit: 1024 });
+      assert.deepEqual(catalog.errors, [], "seed has a readable catalog for every owner");
+    } finally {
+      host.close();
+    }
     await page.evaluate((id) => {
       localStorage.setItem("areal-gui:project", id);
       localStorage.setItem(
@@ -572,6 +642,8 @@ try {
       "Project/thread/task templates use public Desktop commands. Stopped v5 immutable leaves are synthetic scale/history preconditions.",
   });
   if (mode === "fault") {
+    await launch();
+    for (const owner of owners) await call("connect", { projectId: owner.projectId });
     const versions = await Promise.all(
       owners.map(
         async (owner) =>
@@ -584,47 +656,57 @@ try {
       ),
     );
     assert.deepEqual([...new Set(versions)], [6], "fault run uses publicly migrated v6 owners");
-    await launch();
-    await call("connect", { projectId: owners[0].projectId });
-    await measureOpen();
+    const wire = await observeHostWire();
+    const nativeCatalog = await call("tasks", { operation: "observe", limit: 1024 });
+    await saveScheduleEvidence(evidence, "native-catalog-before-fault", {
+      owners: nativeCatalog.owners,
+      errors: nativeCatalog.errors,
+      rows: nativeCatalog.data.map(({ id, projectId, executionProjectId, objectivePreview }) => ({
+        id,
+        projectId,
+        executionProjectId,
+        objectivePreview,
+      })),
+    });
+    try {
+      await measureOpen();
+    } finally {
+      await saveScheduleEvidence(evidence, "catalog-events-before-fault", catalogEvents);
+    }
     const historicalNotices = (await readTrace()).filter((event) => event.kind === "native_show");
     assert.deepEqual(historicalNotices, [], "initial owner snapshot does not replay old notices");
     if (transportFaults)
       await check("transport-gap-duplicate-over-128-tasks", async () => {
         const owner = owners[0];
         assert.ok(owner.tasks >= 200, "fault target owner contains more than128 Tasks");
+        const source = await createFixtureThread(page, owner.projectId, {});
         let task = await call("manage", {
           operation: "taskCreate",
           projectId: owner.projectId,
           requestId: randomUUID(),
           mode: "scheduled",
           objective: "SCHEDULE_FAULT_INITIAL",
-          sourceThreadId: owner.sourceThreadId,
+          sourceThreadId: source.threadId,
           interactionMode: "interactive",
           schedule: { at: 1893456000, intervalSeconds: 86400 },
         });
         await page
           .getByRole("button", { name: "打开定时任务 SCHEDULE_FAULT_INITIAL", exact: true })
           .waitFor({ timeout: 15000 });
-        await writeFile(faultTargetFile, task.id);
-        const service = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-        await until(
-          async () =>
-            (await readFile(traceFile, "utf8"))
-              .trim()
-              .split("\n")
-              .filter(Boolean)
-              .map(JSON.parse)
-              .some(
-                (event) =>
-                  event.kind === "transport_armed" &&
-                  event.pid === service.pid &&
-                  event.taskId === task.id,
-              ),
-          "owner transport fault armed",
-          15000,
-        );
-        const started = Date.now();
+        const host = new HostClient();
+        let projectId;
+        try {
+          await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+          const owners = (await host.status()).projects.filter(
+            ({ registration }) => registration.workspace === owner.root,
+          );
+          assert.equal(owners.length, 1);
+          projectId = owners[0].registration.projectId;
+        } finally {
+          host.close();
+        }
+        const before = wire.requests.length;
+        wire.arm(projectId, "drop");
         task = await call("manage", {
           operation: "taskUpdate",
           projectId: owner.projectId,
@@ -632,11 +714,12 @@ try {
           expectedRevision: task.revision,
           objective: "SCHEDULE_FAULT_DROPPED",
         });
-        await until(
-          async () => (await readFile(traceFile, "utf8")).includes('"kind":"transport_drop"'),
-          "first owner invalidation dropped",
+        const dropped = await until(
+          () => wire.faults.find((event) => event.phase === "drop"),
+          "first target shell update dropped",
           15000,
         );
+        wire.arm(projectId, "duplicate");
         task = await call("manage", {
           operation: "taskUpdate",
           projectId: owner.projectId,
@@ -644,30 +727,29 @@ try {
           expectedRevision: task.revision,
           objective: "SCHEDULE_FAULT_LATEST",
         });
-        await until(
-          async () => (await readFile(traceFile, "utf8")).includes('"kind":"transport_duplicate"'),
-          "second owner invalidation duplicated",
+        const duplicated = await until(
+          () => wire.faults.find((event) => event.phase === "duplicate"),
+          "second target shell update duplicated",
           15000,
         );
+        assert.equal(duplicated.subscriptionId, dropped.subscriptionId);
+        assert.equal(duplicated.sequence, dropped.sequence + 1);
+        assert.notEqual(duplicated.taskRevision, dropped.taskRevision);
         await page
           .getByRole("button", { name: "打开定时任务 SCHEDULE_FAULT_LATEST", exact: true })
           .waitFor({ timeout: 15000 });
         await page
           .getByRole("button", { name: "打开定时任务 SCHEDULE_FAULT_DROPPED", exact: true })
           .waitFor({ state: "hidden", timeout: 15000 });
-        const events = (await readFile(traceFile, "utf8"))
-          .trim()
-          .split("\n")
-          .filter(Boolean)
-          .map(JSON.parse)
-          .filter((event) => event.at >= started);
-        assert.equal(events.filter((event) => event.kind === "transport_drop").length, 1);
-        assert.equal(events.filter((event) => event.kind === "transport_duplicate").length, 1);
+        assert.equal(wire.faults.length, 2);
+        const recovery = wire.requests.slice(before);
         assert.ok(
-          events.some(
-            (event) => event.kind === "rpc" && event.method === "areal/task/directory/list",
-          ),
-          "sequence gap forces an owner directory resnapshot",
+          recovery.some(({ method }) => method === "shell.subscribe"),
+          "sequence gap opens a fresh shell snapshot",
+        );
+        assert.ok(
+          recovery.some(({ method }) => method === "tasks.read"),
+          "fresh shell triggers an authoritative directory read",
         );
         await call("manage", {
           operation: "taskDelete",
@@ -690,23 +772,22 @@ try {
         return {
           ownerProjectId: owner.projectId,
           taskId: task.id,
-          drop: events.find((event) => event.kind === "transport_drop"),
-          duplicate: events.find((event) => event.kind === "transport_duplicate"),
-          resnapshots: events.filter(
-            (event) => event.kind === "rpc" && event.method === "areal/task/directory/list",
-          ).length,
+          drop: dropped,
+          duplicate: duplicated,
+          recovery,
         };
       });
     await check("unicode-directory-detail-edit", async () => {
       const owner = owners[0];
       const objective = "计划核对😀".repeat(150);
+      const source = await createFixtureThread(page, owner.projectId, {});
       let task = await call("manage", {
         operation: "taskCreate",
         projectId: owner.projectId,
         requestId: randomUUID(),
         mode: "scheduled",
         objective,
-        sourceThreadId: owner.sourceThreadId,
+        sourceThreadId: source.threadId,
         interactionMode: "interactive",
         schedule: { at: 1893456000, intervalSeconds: 86400 },
       });
@@ -725,12 +806,22 @@ try {
       await page
         .getByRole("button", { name: `打开定时任务 ${listed.objectivePreview}`, exact: true })
         .click();
-      await page.waitForFunction(
-        ({ taskId, objective }) =>
-          document.querySelector(`main[data-task-id="${taskId}"] h2`)?.textContent === objective,
-        { taskId: task.id, objective },
-        { timeout: 15000 },
-      );
+      try {
+        await page.waitForFunction(
+          ({ taskId, objective }) =>
+            document
+              .querySelector(`main[data-task-id="${taskId}"] h2`)
+              ?.getAttribute("aria-description") === objective,
+          { taskId: task.id, objective },
+          { timeout: 15000 },
+        );
+      } finally {
+        await saveScheduleEvidence(
+          evidence,
+          "unicode-task-observation",
+          wire.requests.filter(({ taskId }) => taskId === task.id),
+        );
+      }
       task = await call("manage", {
         operation: "taskUpdate",
         projectId: owner.projectId,
@@ -775,7 +866,11 @@ try {
     await check("over-128-task-question-approval-completion-notices", async () => {
       const owner = owners[0];
       assert.ok(owner.tasks >= 200);
-      await call("library", { operation: "settings", key: "turnNotifications", value: "always" });
+      await libraryCommand(page, {
+        operation: "settings",
+        key: "turnNotifications",
+        value: "always",
+      });
       const questionThread = await call("create", {
         projectId: owner.projectId,
         requestId: randomUUID(),
@@ -826,17 +921,19 @@ try {
         threadId: approvalThread.threadId,
         interactionMode: "interactive",
       });
-      const pendingApproval = await until(
-        async () => {
-          const state = (await snapshot()).projects.find(
-            (project) => project.id === owner.projectId,
-          )?.state;
-          return state?.interactions?.[approvalThread.threadId]?.data.find(
-            (item) => item.kind === "approval" && item.status === "pending",
-          );
-        },
-        "foreground Task approval pending",
-        30000,
+      const pendingApproval = await withCore(
+        { binary, env, gui, workspace: owner.root, threadId: approvalThread.threadId },
+        (client) =>
+          until(
+            async () => {
+              const { data } = await client.request("areal/interaction/list", {
+                threadId: approvalThread.threadId,
+              });
+              return data.find((item) => item.kind === "approval" && item.status === "pending");
+            },
+            "foreground Task approval pending",
+            30000,
+          ),
       );
       await until(
         async () =>
@@ -849,12 +946,19 @@ try {
         "foreground approval reaches native publish",
         15000,
       );
-      await call("respond", {
-        projectId: owner.projectId,
+      const approvalCommandId = randomUUID();
+      const approvalTarget = {
         threadId: approvalThread.threadId,
-        requestId: pendingApproval.requestId,
-        decision: "allowOnce",
+        turnId: pendingApproval.turnId,
+        interactionId: pendingApproval.requestId,
+        argumentsDigest: pendingApproval.argumentsDigest,
+      };
+      await saveScheduleEvidence(evidence, "foreground-approval-command", {
+        projectId: owner.projectId,
+        commandId: approvalCommandId,
+        ...approvalTarget,
       });
+      await approveFixtureInteraction(page, owner.projectId, approvalTarget, approvalCommandId);
       await until(
         async () => {
           const task = await call("manage", {
@@ -867,13 +971,14 @@ try {
         "approved foreground Task completes",
         30000,
       );
+      const source = await createFixtureThread(page, owner.projectId, {});
       const scheduled = await call("manage", {
         operation: "taskCreate",
         projectId: owner.projectId,
         requestId: randomUUID(),
         mode: "scheduled",
         objective: "NOTIFY_SCHEDULED_COMPLETION",
-        sourceThreadId: owner.sourceThreadId,
+        sourceThreadId: source.threadId,
         interactionMode: "interactive",
         schedule: { at: 1893456000, intervalSeconds: 86400 },
       });
@@ -923,14 +1028,16 @@ try {
           event.kind === "notice_publish" && event.notice?.projectId === owner.logicalProjectId,
       );
       const shown = (await readTrace()).filter((event) => event.kind === "native_show");
-      for (const [kind, task] of [
-        ["question", question],
-        ["approval", approval],
-        ["completion", approval],
-        ["completion", scheduled],
+      for (const [kind, task, target] of [
+        ["question", question, { taskId: question.id, questionId: pendingQuestion.id }],
+        ["approval", approval, { threadId: approvalThread.threadId }],
+        ["completion", approval, { taskId: approval.id }],
+        ["completion", scheduled, { taskId: scheduled.id }],
       ]) {
         const projected = notices.filter(
-          (event) => event.notice.kind === kind && event.notice.taskId === task.id,
+          (event) =>
+            event.notice.kind === kind &&
+            Object.entries(target).every(([key, value]) => event.notice[key] === value),
         );
         assert.equal(projected.length, 1, `${kind} for ${task.id} has one Desktop projection`);
         const title = {
@@ -971,49 +1078,60 @@ try {
       assert.deepEqual(before.errors, []);
       const retained = before.data.find((row) => row.id === owner.taskId);
       assert.ok(retained);
-      const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-      const connection = new ServiceConnection();
-      await connection.connect(metadata);
+      const host = new HostClient();
+      let dataDir;
       try {
-        const hello = await connection.request("hello", {
-          protocol: metadata.protocol,
-          identity: metadata.identity,
-        });
-        const target = hello.service.targets.find((item) => item.projectId === owner.projectId);
-        assert.ok(target, "fault owner has a running Core before explicit stop");
-        const receipt = await connection.request(
-          "lifecycleRequest",
-          {
-            protocol: metadata.protocol,
-            requestId: randomUUID(),
-            kind: "stopProject",
-            mode: "cancel",
-            expectedDesktopGeneration: metadata.desktopGeneration,
-            expectedTargets: [
-              {
-                projectId: target.projectId,
-                serviceId: target.serviceId,
-                generation: target.generation,
-              },
-            ],
-          },
-          true,
+        await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+        const { projects } = await host.status();
+        const targets = projects.filter(
+          ({ registration }) => registration.workspace === owner.root,
         );
-        assert.equal(receipt.phase, "completed");
+        assert.equal(targets.length, 1, "the original execution workspace is unique");
+        const { registration, service } = targets[0];
+        assert.equal(service?.state, "ready");
+        assert.equal(service.dataDir, registration.dataDir);
+        dataDir = registration.dataDir;
+        assert.ok(dataDir.startsWith(scratch + "/"), "Core data directory remains isolated");
+        const requestId = randomUUID();
+        let receipt;
+        try {
+          receipt = await host.stopProject(
+            requestId,
+            registration.projectId,
+            service.generation,
+            "cancel",
+          );
+        } catch {
+          host.close();
+          await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+          receipt = (await host.operation(requestId)).operation;
+        }
+        assert.equal(receipt?.requestId, requestId);
+        assert.equal(receipt.state, "completed");
+        assert.deepEqual((await host.operation(requestId)).operation, receipt);
+        await writeFile(join(evidence, "corrupt-pack-project-stop.json"), JSON.stringify(receipt));
+        await until(() => {
+          return [service.hostPid, service.corePid].every((pid) => {
+            assert.ok(Number.isSafeInteger(pid) && pid > 1);
+            try {
+              process.kill(pid, 0);
+              return false;
+            } catch (error) {
+              if (error.code !== "ESRCH") throw error;
+              return true;
+            }
+          });
+        }, "original execution owner's Core and project host exited");
       } finally {
-        connection.close();
+        host.close();
       }
-      const rootPath = join(scratch, "core", owner.projectId, "state/desktop/task-mode.json");
+      const rootPath = join(dataDir, "desktop/task-mode.json");
       const rootBytes = await readFile(rootPath);
-      const packPath = join(
-        scratch,
-        "core",
-        owner.projectId,
-        "state/desktop/task-ledger",
-        JSON.parse(rootBytes).schedules.digest,
-      );
+      const packPath = join(dataDir, "desktop/task-ledger", JSON.parse(rootBytes).schedules.digest);
       const packBytes = await readFile(packPath);
-      const started = Date.now();
+      const generations = ownerGenerations([owner]);
+      assert.equal(generations.length, 1);
+      assert.equal(generations[0].state, "stopped");
       try {
         await writeFile(packPath, Buffer.from("broken published summary"));
         const damaged = await call("tasks", {
@@ -1036,13 +1154,8 @@ try {
           .waitFor();
         await page.locator(".task-catalog-error").first().waitFor();
         assert.deepEqual(
-          (await readTrace()).filter(
-            (event) =>
-              event.kind === "owner_start" &&
-              event.projectId === owner.projectId &&
-              event.at >= started,
-          ),
-          [],
+          ownerGenerations([owner]),
+          generations,
           "damaged passive read does not start stopped Core",
         );
         return {
@@ -1131,28 +1244,16 @@ try {
       );
       await close();
     }
+    const coldHostGenerations = new Set();
     for (let index = 0; index < sampleCount; index++) {
       await launch();
-      const before = Date.now();
-      if (mode === "accept") {
-        const requestId = randomUUID();
-        const primed = await call("tasks", {
-          operation: "observe",
-          limit: 1024,
-          requestId,
-          viewEpoch: 9000 + index,
-        });
-        assert.deepEqual(primed.errors, []);
-        assert.equal(primed.data.length, scheduleScale.projects * scheduleScale.scheduled);
-        const reset = (await readTrace()).findLast(
-          (event) => event.kind === "cold_cache_reset" && event.requestId === requestId,
-        );
-        assert.ok(reset, "cold run reaches fixture cache reset boundary");
-        assert.ok(reset.populated >= scheduleScale.projects);
-        assert.equal(reset.after, 0, "cold click begins without a published owner cache");
-        assert.equal(reset.scanPending, false, "startup owner scan settled before cold click");
-      }
-      const measured = await measureOpen();
+      const host = await readFixtureHost(env);
+      assert.ok(host?.generation, "cold run attaches to an isolated Host");
+      assert.ok(!coldHostGenerations.has(host.generation), "each cold run uses a fresh Host");
+      coldHostGenerations.add(host.generation);
+      const generations = ownerGenerations(owners);
+      assert.ok(generations.every((service) => service.state === "stopped"));
+      const measured = { ...(await measureOpen()), hostGeneration: host.generation };
       samples.coldFirstRow.push(measured);
       samples.coldSourceRefresh.push({ ms: measured.fullMs, rows: measured.fullRows });
       await check(`cold-${index}-all-schedules`, async () => {
@@ -1167,19 +1268,12 @@ try {
         assert.ok(catalog.owners.length >= scheduleScale.projects);
         return { rows: catalog.data.length, bytes: Buffer.byteLength(JSON.stringify(catalog)) };
       });
-      await check(`cold-${index}-passive`, async () => {
-        const trace = (await readFile(traceFile, "utf8"))
-          .trim()
-          .split("\n")
-          .filter(Boolean)
-          .map(JSON.parse);
-        const starts = trace.filter(
-          (event) =>
-            event.kind === "owner_start" &&
-            event.at >= before &&
-            owners.some((owner) => owner.projectId === event.projectId),
+      await check(`cold-${index}-passive`, () => {
+        assert.deepEqual(
+          ownerGenerations(owners),
+          generations,
+          "display reads must not start paused execution owners",
         );
-        assert.deepEqual(starts, [], "display reads must not start paused execution owners");
       });
       await close();
     }
@@ -1258,26 +1352,17 @@ try {
       }));
     });
     await check("no-periodic-full-list", async () => {
-      const started = Date.now();
+      const wire = await observeHostWire();
+      await measureOpen();
+      assert.ok(wire.requests.some(({ method }) => method === "tasks.read"));
+      const start = wire.requests.length;
       await new Promise((resolve) => setTimeout(resolve, 9000));
-      const trace = (await readFile(traceFile, "utf8"))
-        .trim()
-        .split("\n")
-        .filter(Boolean)
-        .map(JSON.parse);
-      const periodic = trace.filter(
-        (event) =>
-          event.kind === "rpc" &&
-          event.at >= started &&
-          /^areal\/(task|schedule|inbox|work)\//.test(event.method) &&
-          /(list|snapshot|overview|catalog|directory|attention)/.test(event.method) &&
-          !/(subscribe|unsubscribe)/.test(event.method),
-      );
+      const periodic = wire.requests.slice(start).filter(({ method }) => method === "tasks.read");
       await saveScheduleEvidence(evidence, "idle-requests", periodic);
       assert.deepEqual(
         periodic,
         [],
-        "quiescent owners must not issue recurring full task/inbox/work scans",
+        "quiescent schedule UI issues no recurring task directory reads",
       );
     });
     const liveOwner = await call("projectless", { operation: "prepare", requestId: randomUUID() });
@@ -1434,7 +1519,7 @@ try {
       "All performance schedules paused to separate passive reads from enabled-owner startup activation.",
       "Full-source UI refresh measures reopening the schedule center through catalog end and complete rendered schedule rows. allSourceRpc separately measures public Desktop observe.",
       transportFaults
-        ? "Fault mode covers one Task over a 200-Task owner, foreground question/approval, scheduled and foreground completion notifications, and a damaged published source. UNKNOWN and cleanup safety require separate recovery evidence."
+        ? "Fault mode injects a gap and duplicate on the Host shell stream over a 200-Task owner, and checks foreground question/approval, scheduled and foreground completion notices, and a damaged published source. Core-side stream fault coverage is separate."
         : "Lifecycle, due admission, transport faults, unknown-write and cleanup safety require separate real regression runs and are not claimed by this scale mode.",
     ],
   };

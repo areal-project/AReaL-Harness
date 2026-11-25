@@ -197,16 +197,16 @@ export const worktreeMessages = {
     "zh-CN": "正在设置工作树环境",
     en: "Setting up worktree environment",
   },
-  "worktree.cancelling": { "zh-CN": "正在取消创建", en: "Cancelling creation" },
+  "worktree.cancelling": { "zh-CN": "正在取消创建", en: "Canceling creation" },
   "worktree.cancelled": {
     "zh-CN": "已取消创建，输入已保留",
-    en: "Creation cancelled. Your input is preserved.",
+    en: "Creation canceled. Your input is preserved.",
   },
   "worktree.cancelCreation": { "zh-CN": "取消创建", en: "Cancel creation" },
   "worktree.useOriginal": { "zh-CN": "不使用工作树", en: "Don’t use worktree" },
   "worktree.cancelTooLate": {
     "zh-CN": "工作区已就绪，无法取消。输入已保留，请检查后继续。",
-    en: "The workspace is ready and can no longer be cancelled. Your input is preserved for review.",
+    en: "The workspace is ready and can no longer be canceled. Your input is preserved for review.",
   },
   "worktree.actionRunning": { "zh-CN": "正在运行操作…", en: "Running action\u2026" },
   "worktree.output": { "zh-CN": "操作输出", en: "Action output" },
@@ -271,7 +271,7 @@ export const worktreeMessages = {
   "worktree.ready": { "zh-CN": "工作树已就绪", en: "Worktree ready" },
   "worktree.failed": { "zh-CN": "工作树准备失败", en: "Worktree preparation failed" },
   "worktree.unknown": {
-    "zh-CN": "工作树结果待核对，请勿重复创建",
+    "zh-CN": "工作树创建结果待确认，请勿重复创建",
     en: "Worktree result needs checking. Do not create a duplicate.",
   },
   "worktree.automaticEvent": {

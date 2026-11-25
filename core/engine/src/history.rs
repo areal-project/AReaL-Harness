@@ -38,11 +38,11 @@ pub(super) fn validate_input(input: &[Input], capabilities: &ModelCapabilities) 
     if input.is_empty()
         || input
             .iter()
-            .all(|item| item.modality() == Modality::Text && item.as_text().trim().is_empty())
+            .all(|item| item.modality() == Modality::Text && item.model_text().trim().is_empty())
     {
         return Err(Error::Invalid("input must contain nonempty content".into()));
     }
-    if input.iter().map(|i| i.as_text().len()).sum::<usize>() > 1024 * 1024 {
+    if input.iter().map(|i| i.model_text().len()).sum::<usize>() > 1024 * 1024 {
         return Err(Error::Exhausted("input exceeds 1 MiB".into()));
     }
     if input
@@ -1093,6 +1093,59 @@ pub(crate) fn uploaded_content_with_media(
 #[cfg(test)]
 mod observation_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn review_comment_survives_history_projection_as_model_context() -> anyhow::Result<()> {
+        let data = tempfile::tempdir().unwrap();
+        let engine = Engine::open(
+            data.path(),
+            Arc::new(model::UnconfiguredModel),
+            Limits::default(),
+        )
+        .unwrap();
+        let mut thread = engine.create("/workspace".into()).await.unwrap();
+        let comment = areal_protocol::ReviewComment {
+            id: "comment".into(),
+            path: "src/app.ts".into(),
+            root: "/workspace".into(),
+            scope: "branch".into(),
+            ref_name: "main".into(),
+            token: "token".into(),
+            head: "head".into(),
+            base: "base".into(),
+            side: "additions".into(),
+            start: 3,
+            end: 3,
+            snippet: "const value = 1;".into(),
+            body: "Please extract this value.".into(),
+        };
+        thread.turns.push(serde_json::from_value(json!({
+            "id": "turn",
+            "status": "completed",
+            "items": [{
+                "type": "userMessage",
+                "id": "user",
+                "content": [Input::text("please fix").with_context_parts(vec![areal_protocol::ContextPart::ReviewComment { comment }])]
+            }]
+        }))?);
+        let persisted = serde_json::to_value(&thread.turns[0])?;
+        assert_eq!(
+            persisted["items"][0]["content"][0]["contextParts"][0]["type"],
+            "reviewComment"
+        );
+        assert_eq!(
+            persisted["items"][0]["content"][0]["contextParts"][0]["comment"]["body"],
+            "Please extract this value."
+        );
+        let messages = history(&thread, &engine.store)?;
+        assert!(messages[0].text_content().starts_with("please fix"));
+        assert!(
+            messages[0]
+                .text_content()
+                .contains("审查反馈：Please extract this value.")
+        );
+        Ok::<(), anyhow::Error>(())
+    }
 
     #[tokio::test]
     async fn thinking_projection_preserves_round_boundaries_tools_and_authoritative_history() {

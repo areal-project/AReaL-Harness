@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import { readFixtureHost, settleFixtureHostAfterQuit } from "./application-cleanup.mjs";
 import { selectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
 
 // B-10–B-13: public GUI/Core approval and actual native input against a synthetic site.
@@ -1447,14 +1447,8 @@ try {
   if (page) await captureSmokeFailure(page, scratch, error);
   throw error;
 } finally {
-  const cleanup = {},
-    metadata = await readFile(join(scratch, "core/service.json"), "utf8").then(
-      JSON.parse,
-      (error) => {
-        if (error.code !== "ENOENT") errors.push("cleanup identity: " + error.message);
-        return null;
-      },
-    );
+  const cleanup = {};
+  const host = await readFixtureHost(env);
   if (app) {
     let timer;
     try {
@@ -1481,48 +1475,14 @@ try {
       clearTimeout(timer);
     }
   }
-  if (metadata) {
-    try {
-      await assertApplicationStopped(env.AREAL_CORE_BIN, env, metadata);
-      cleanup.applicationStopped = true;
-    } catch (error) {
-      errors.push("application cleanup: " + error.message);
-    }
-  }
-  if (errors.length && metadata && !cleanup.applicationStopped) {
-    const {
-        ServiceConnection,
-        waitForServiceProcessExit,
-      } = require("../app/src/core/service-client.cjs"),
-      connection = new ServiceConnection();
-    cleanup.assistedServiceStop = true;
-    try {
-      await connection.connect(metadata);
-      const packet = await connection.request("hello", {
-        protocol: metadata.protocol,
-        identity: metadata.identity,
-      });
-      await connection
-        .request(
-          "stopService",
-          {
-            protocol: metadata.protocol,
-            cancel: true,
-            expectedDesktopGeneration: metadata.desktopGeneration,
-            expectedTargets: packet.service.targets,
-          },
-          true,
-        )
-        .catch((error) => {
-          if (!error.message.includes("已请求退出")) throw error;
-        });
-      await waitForServiceProcessExit(join(scratch, "core"), metadata);
-    } catch (error) {
-      if (!["ENOENT", "ECONNREFUSED", "ESRCH"].includes(error.code))
-        errors.push("assisted stop: " + error.message);
-    } finally {
-      connection.close();
-    }
+  try {
+    cleanup.hostStop = await settleFixtureHostAfterQuit(env.AREAL_CORE_BIN, env, scratch, {
+      host,
+      pid: appProcess?.pid,
+    });
+    cleanup.applicationStopped = true;
+  } catch (error) {
+    errors.push("application cleanup: " + error.message);
   }
   if (appProcess && appProcess.exitCode === null && appProcess.signalCode === null) {
     errors.push("forced Electron cleanup");
@@ -1560,9 +1520,10 @@ try {
     new Promise((resolve) => model.close(resolve)),
   ]);
   const files = [
-    "../../services/workbench/src/desktop/core/browser-tool.cjs",
+    "packages/browser-automation/src/host-tool.cjs",
     "app/src/core/preview.cjs",
-    "../../services/workbench/src/desktop/core/service-protocol.cjs",
+    "app/src/core/service-client.cjs",
+    "../../core/host/src/workbench_frontend.rs",
     "renderer/src/ApprovalRequest.tsx",
     "scripts/browser-actions-smoke.mjs",
   ];

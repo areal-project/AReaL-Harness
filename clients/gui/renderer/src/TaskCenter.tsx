@@ -1,10 +1,9 @@
-import { DelayedVisible } from "@areal/ui";
+import { DelayedVisible, TitleTooltip, Input } from "@areal/ui";
+import { AutomationTemplateDialog } from "@areal/ui/compositions";
 import { taskUserState } from "./state/userStates.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import { errorText } from "./errors/errorCopy.js";
-import { TitleTooltip } from "@areal/ui";
 import { observeResize } from "@areal/ui/observe-resize";
-import { Input } from "@areal/ui";
 import { recoveredOutcome, recoveryMessage, type RecoveryFailure } from "./recoveryPresentation.js";
 import { FeedbackNotice } from "./FeedbackNotice.js";
 import {
@@ -107,9 +106,12 @@ type CatalogIdentity = { requestId: string; viewEpoch: number };
 type OwnerRows = {
   data: Data[];
   hasMore: boolean;
-  readAt: number;
   coverage: { kind: string; reason?: string };
-} & ({ source: "published" } | { source: "live"; connectionGeneration: number });
+} & (
+  | { source: "published"; readAt: number }
+  | { source: "live"; readAt: number; connectionGeneration: number }
+  | { source: "retained" }
+);
 type OwnerRead =
   | { status: "pending"; identity: CatalogIdentity; previous?: OwnerRows; explicit?: boolean }
   | { status: "ready"; identity: CatalogIdentity; value: OwnerRows }
@@ -120,7 +122,12 @@ type OwnerRead =
       previous?: OwnerRows;
       explicit?: boolean;
     };
-const ownerRows = (read?: OwnerRead) => (read?.status === "ready" ? read.value : read?.previous);
+function ownerRows(read?: OwnerRead) {
+  return read?.status === "ready" ? read.value : read?.previous;
+}
+// 进程内热缓存：切走再回到定时任务页时首帧先展示最近一次目录，同时后台静默复核，避免冷空态与“正在读取任务…”闪烁。
+const warmTaskCatalog = new Map<string, OwnerRows>();
+const warmCatalogIdentity: CatalogIdentity = { requestId: "warm-cache", viewEpoch: 0 };
 const catalogTrace = (
   kind: "begin" | "response_received" | "epoch_discarded" | "owner_committed" | "end" | "abandoned",
   identity: CatalogIdentity,
@@ -294,7 +301,7 @@ function WorkerParticipant({
         className="justify-self-start"
         size="sm"
         variant="ghost"
-        disabled={!project.state?.connected}
+        disabled={!(task.executionConnected ?? project.state?.connected)}
         onClick={() => onOpenThread(project.id, worker.threadId)}
       >
         打开 worker 会话
@@ -329,7 +336,12 @@ function ChannelRecord({
   if (message.kind === "question" && message.status === "pending") {
     return (
       <ChannelQuestion
-        row={{ taskId: task.id, objective: task.objective, message }}
+        row={{
+          taskId: task.id,
+          executionProjectId: task.executionProjectId,
+          objective: task.objective,
+          message,
+        }}
         projectId={projectId}
         action={action}
         disabled={disabled}
@@ -449,6 +461,7 @@ export function ChannelQuestion({
       localStorage.setItem(pendingKey, JSON.stringify({ row: { ...row, projectId }, answers }));
       const result = await action("manage", {
         projectId,
+        executionProjectId: row.executionProjectId,
         operation: "taskReply",
         taskId: row.taskId,
         runId: message.runId,
@@ -488,6 +501,7 @@ export function ChannelQuestion({
       for (;;) {
         const page = await action("manage", {
           projectId,
+          executionProjectId: pending.row.executionProjectId,
           operation: "taskChannel",
           taskId: row.taskId,
           afterSequence,
@@ -652,7 +666,7 @@ export function TaskCenter({
     eventId?: string;
   };
 }) {
-  const { t } = useI18n();
+  const { t, intl } = useI18n();
   const projects = allProjects;
   const layout = useRef<HTMLElement>(null);
   const [narrow, setNarrow] = useState(false);
@@ -669,6 +683,11 @@ export function TaskCenter({
   const [creationRequestId, setCreationRequestId] = useState<string>();
   const [creationChecked, setCreationChecked] = useState(false);
   const [composer, setComposer] = useState<{ text: string; requestId: string } | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<{
+    title: string;
+    description: string;
+    icon: ReactNode;
+  } | null>(null);
   const creatingRequest = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -677,7 +696,16 @@ export function TaskCenter({
       mounted.current = false;
     };
   }, []);
-  const [catalog, setCatalog] = useState<Record<string, OwnerRead>>({});
+  const [catalog, setCatalog] = useState<Record<string, OwnerRead>>(() =>
+    Object.fromEntries(
+      projects.flatMap((owner) => {
+        const cached = warmTaskCatalog.get(owner.id);
+        return cached
+          ? [[owner.id, { status: "ready" as const, identity: warmCatalogIdentity, value: cached }]]
+          : [];
+      }),
+    ),
+  );
   const catalogState = useRef(catalog);
   catalogState.current = catalog;
   const committedOwners = useRef(new Map<string, string>());
@@ -746,9 +774,9 @@ export function TaskCenter({
   const focusedTarget = useRef<string | undefined>(undefined);
   const sequence = useRef(0),
     mutation = useRef(false);
-  const refreshRead = useRef<(more?: boolean, retryProjectId?: string) => Promise<void>>(
-    async () => {},
-  );
+  const refreshRead = useRef<
+    (more?: boolean, retryProjectId?: string, executionProjectId?: string) => Promise<void>
+  >(async () => {});
   // 后台变化只做静默重读：已有行的项目不回到读取中，失败时保留上一版。
   const quietRead = useRef<(projectIds?: string[]) => Promise<void>>(async () => {});
   const pages = useRef(1);
@@ -756,6 +784,7 @@ export function TaskCenter({
   const [channelError, setChannelError] = useState("");
   const [confirmedWatch, setConfirmedWatch] = useState<{
     owner: string;
+    executionProjectId?: string;
     generation: number | string;
     task?: Data;
   } | null>(null);
@@ -765,13 +794,16 @@ export function TaskCenter({
     const byId = new Map<string, Data>(
       rows.filter((row) => row.projectId === owner.id).map((row) => [row.id, row]),
     );
+    const ownerSettled =
+      catalog[owner.id]?.status === "ready" || catalog[owner.id]?.status === "error";
     for (const live of Object.values<Data>(owner.state?.tasks ?? {})) {
       if (live.mode !== "scheduled") continue;
       const previous = byId.get(live.id);
-      if (!previous && !ownerRows(catalog[owner.id])?.hasMore) continue;
+      // 目录尚未读完时先展示项目内存里已有的实时定时任务，避免首帧空白；目录落定后再以目录边界为准。
+      if (ownerSettled && !previous && !ownerRows(catalog[owner.id])?.hasMore) continue;
       if (
         previous &&
-        ownerRows(catalog[owner.id])?.source !== "published" &&
+        ownerRows(catalog[owner.id])?.source === "live" &&
         (live.revision < previous.revision ||
           (live.channelSequence ?? 0) < (previous.channelSequence ?? 0))
       )
@@ -798,12 +830,19 @@ export function TaskCenter({
   // visible until the following read returns, including when a newer snapshot
   // has already settled the same workers.
   const watchedProject = projects.find((owner) => owner.id === listedTask?.projectId);
-  const watchedTask =
-    watchedProject?.state?.tasks?.[listedTask?.id] ??
-    (confirmedWatch?.owner === selected &&
-    confirmedWatch?.generation === (watchedProject?.core?.connectionGeneration ?? 0)
-      ? confirmedWatch?.task
-      : undefined);
+  const liveTask = watchedProject?.state?.tasks?.[listedTask?.id];
+  const executionProjectId = listedTask?.executionProjectId;
+  const taskConnected =
+    liveTask?.executionConnected ?? (!executionProjectId && !!watchedProject?.state?.connected);
+  const taskGeneration =
+    liveTask?.executionCore?.connectionGeneration ??
+    watchedProject?.core?.connectionGeneration ??
+    0;
+  const watchConfirmed =
+    confirmedWatch?.owner === selected &&
+    confirmedWatch?.executionProjectId === executionProjectId &&
+    confirmedWatch?.generation === taskGeneration;
+  const watchedTask = watchConfirmed ? confirmedWatch?.task : undefined;
   const task =
     controlView && taskKey(controlView) === selected
       ? controlView
@@ -812,28 +851,21 @@ export function TaskCenter({
             ...watchedTask,
             projectId: listedTask.projectId,
             executionProjectId: listedTask.executionProjectId,
+            executionConnected: taskConnected,
+            executionCore: liveTask?.executionCore,
             projectName: listedTask.projectName,
             scope: listedTask.scope,
           }
         : listedTask;
   const project = projects.find((p) => p.id === task?.projectId);
   const ownerFailed = !!project && failedProjects.includes(project.id);
-  const watchConfirmed =
-    confirmedWatch?.owner === selected &&
-    confirmedWatch?.generation === (project?.core?.connectionGeneration ?? 0);
-  const detailsReady =
-    !!task &&
-    Boolean(project?.state?.tasks?.[task.id] || (watchConfirmed && confirmedWatch?.task)) &&
-    watchConfirmed &&
-    connected &&
-    !!project?.state?.connected &&
-    !ownerFailed;
+  const detailsReady = !!task && !!watchedTask && connected && taskConnected && !ownerFailed;
   useEffect(() => {
     const epoch = ++historyEpoch.current;
     const owner = task && project ? `${project.id}:${task.id}` : "";
     setHistory(emptyRunHistory(owner));
     readRuns.current = async () => {};
-    if (!task || !detailsReady) return;
+    if (!task || !project || !detailsReady) return;
     const projectId = project.id,
       taskId = task.id;
     let enabled: boolean | null = null,
@@ -851,6 +883,7 @@ export function TaskCenter({
         if (enabled === null) {
           const capabilities = await action("manage", {
             projectId,
+            executionProjectId,
             operation: "taskHistoryCapabilities",
           });
           if (!current()) return;
@@ -864,6 +897,7 @@ export function TaskCenter({
         if (!enabled) return;
         const page = await action("manage", {
           projectId,
+          executionProjectId,
           operation: "taskRuns",
           taskId,
           ...(more ? { cursor } : {}),
@@ -911,15 +945,7 @@ export function TaskCenter({
     return () => {
       historyEpoch.current++;
     };
-  }, [
-    action,
-    connected,
-    detailsReady,
-    project?.id,
-    project?.state?.connected,
-    project?.core?.connectionGeneration,
-    task?.id,
-  ]);
+  }, [action, connected, detailsReady, project?.id, executionProjectId, taskGeneration, task?.id]);
   useEffect(() => {
     if (
       history.owner === selected &&
@@ -962,6 +988,7 @@ export function TaskCenter({
     setTargetRead({ target, epoch, status: "pending", error: "" });
     void action("manage", {
       projectId: target.projectId,
+      executionProjectId,
       operation: "taskRun",
       taskId: target.taskId,
       runId: target.runId,
@@ -985,12 +1012,22 @@ export function TaskCenter({
         )
           setTargetRead({ target, epoch, status: "error", error: currentErrorText(cause) });
       });
-  }, [action, target, targetRead, selected, history.enabled, history.owner, displayedRuns]);
+  }, [
+    action,
+    target,
+    targetRead,
+    selected,
+    executionProjectId,
+    history.enabled,
+    history.owner,
+    displayedRuns,
+  ]);
   const pending =
     project?.pending?.filter(
       (p: Data) => p.method.startsWith("areal/task/") || p.method === "areal/channel/reply",
     ) ?? [];
-  const disabled = !detailsReady || busy || pending.length > 0;
+  const disabled =
+    !detailsReady || busy || pending.length > 0 || listedTask?.revision > task?.revision;
   useEffect(() => {
     sessionStorage.setItem("areal-gui:selected-global-task", selected);
   }, [selected]);
@@ -999,7 +1036,7 @@ export function TaskCenter({
   // 失败或迟到的读取不能替换已经显示的频道记录。
   // 只有这次分页完整结束、且该任务仍是当前选择时，才用新结果替换。
   const readChannel = useCallback(
-    async (projectId: string, taskId: string) => {
+    async (projectId: string, taskId: string, executionProjectId?: string) => {
       const epoch = ++channelEpoch.current;
       const owner = `${projectId}:${taskId}`;
       try {
@@ -1008,6 +1045,7 @@ export function TaskCenter({
         for (;;) {
           const page = await action("manage", {
             projectId,
+            executionProjectId,
             operation: "taskChannel",
             taskId,
             afterSequence,
@@ -1035,7 +1073,8 @@ export function TaskCenter({
     [action],
   );
   const refresh = useCallback(
-    (more = false, retryProjectId?: string) => refreshRead.current(more, retryProjectId),
+    (more = false, retryProjectId?: string, executionProjectId?: string) =>
+      refreshRead.current(more, retryProjectId, executionProjectId),
     [],
   );
   const projectIds = projects.map((project) => project.id).join(":");
@@ -1047,7 +1086,7 @@ export function TaskCenter({
     const batches = new Set<CatalogIdentity>();
     let active = true,
       reading = false;
-    const queued = new Set<string>();
+    const queued = new Map<string, string | undefined>();
     const quietQueued = new Set<string>();
     const owners = selection.current.projects;
     setCatalog((previous) =>
@@ -1060,11 +1099,12 @@ export function TaskCenter({
       retryProjectId?: string,
       explicitRefresh = false,
       quietOwners?: string[],
+      executionTarget?: string,
     ) => {
       if (!active || !connected || !catalogSupported) return;
       if (reading) {
         if (quietOwners) for (const id of quietOwners) quietQueued.add(id);
-        else queued.add(retryProjectId ?? "");
+        else queued.set(retryProjectId ?? "", executionTarget);
         return;
       }
       if (more) pages.current++;
@@ -1089,13 +1129,14 @@ export function TaskCenter({
             ),
         );
       await Promise.all(
-        Array.from({ length: Math.min(2, queue.length) }, async () => {
+        Array.from({ length: Math.min(6, queue.length) }, async () => {
           while (active && queue.length) {
             const owner = queue.shift();
             if (!owner) continue;
             const quiet = !!quietOwners && catalogState.current[owner.id]?.status === "ready";
             const explicit = !!retryProjectId || explicitRefresh;
-            if (!quiet)
+            const hasWarmRows = !explicit && catalogState.current[owner.id]?.status === "ready";
+            if (!quiet && !hasWarmRows)
               setCatalog((previous) => ({
                 ...previous,
                 [owner.id]: {
@@ -1107,7 +1148,10 @@ export function TaskCenter({
               }));
             try {
               if (retryProjectId)
-                await action("connect", { projectId: owner.id, resumeScheduling: true });
+                await action("connect", {
+                  projectId: executionTarget ?? owner.id,
+                  resumeScheduling: true,
+                });
               const result = explicit
                 ? await action("tasks", {
                     operation: "list",
@@ -1153,7 +1197,14 @@ export function TaskCenter({
                     status: "error",
                     identity,
                     message: result.errors.map((error) => currentErrorText(error)).join("\n"),
-                    previous: ownerRows(previous[owner.id]),
+                    previous: result.data.length
+                      ? {
+                          source: "retained",
+                          coverage: { kind: "retained" },
+                          data: result.data,
+                          hasMore: result.hasMore,
+                        }
+                      : ownerRows(previous[owner.id]),
                     explicit,
                   },
                 }));
@@ -1164,6 +1215,7 @@ export function TaskCenter({
                 data: result.data,
                 hasMore: result.hasMore,
               };
+              warmTaskCatalog.set(owner.id, value);
               setCatalog((previous) => ({
                 ...previous,
                 [owner.id]: { status: "ready", identity, value },
@@ -1193,15 +1245,16 @@ export function TaskCenter({
       if (active && queued.size) {
         const pending = [...queued];
         queued.clear();
-        if (pending.includes("")) void read();
-        else for (const id of pending) void read(false, id);
+        for (const [id, target] of pending)
+          void read(false, id || undefined, !!id, undefined, target);
       } else if (active && quietQueued.size) {
         const pending = [...quietQueued];
         quietQueued.clear();
         void read(false, undefined, false, pending);
       }
     };
-    refreshRead.current = (more, retryProjectId) => read(more, retryProjectId, true);
+    refreshRead.current = (more, retryProjectId, executionTarget) =>
+      read(more, retryProjectId, true, undefined, executionTarget);
     quietRead.current = (projectIds) =>
       read(false, undefined, false, projectIds ?? owners.map((owner) => owner.id));
     void read();
@@ -1230,15 +1283,16 @@ export function TaskCenter({
     // projects 每次渲染都是新数组；只看各项目的目录版本。
   }, [directoryRevision]);
   useEffect(() => {
-    setConfirmedWatch(null);
-    if (!task || !connected || !project?.state?.connected || ownerFailed) return;
+    if (!task || !connected || !project || !taskConnected || ownerFailed) return;
     let live = true;
     const confirmation = {
       owner: taskKey(task),
-      generation: project.core?.connectionGeneration ?? 0,
+      executionProjectId,
+      generation: taskGeneration,
     };
     void action("manage", {
       projectId: project.id,
+      executionProjectId,
       operation: "taskWatch",
       taskId: task.id,
       viewId,
@@ -1251,8 +1305,10 @@ export function TaskCenter({
               ? (watched.task as Data)
               : "id" in watched
                 ? (watched as Data)
-                : task
-            : task;
+                : undefined
+            : undefined;
+        if (!watchedRecord || watchedRecord.id !== task.id)
+          throw new Error("任务观察结果与所选任务不符");
         setConfirmedWatch({ ...confirmation, task: watchedRecord });
       })
       .catch((cause) => {
@@ -1263,9 +1319,9 @@ export function TaskCenter({
       });
     return () => {
       live = false;
-      setConfirmedWatch(null);
       void action("manage", {
         projectId: project.id,
+        executionProjectId,
         operation: "taskUnwatch",
         taskId: task.id,
         viewId,
@@ -1276,8 +1332,11 @@ export function TaskCenter({
     connected,
     ownerFailed,
     project?.id,
-    project?.state?.connected,
-    project?.core?.connectionGeneration,
+    executionProjectId,
+    taskConnected,
+    taskGeneration,
+    listedTask?.revision,
+    listedTask?.channelSequence,
     task?.id,
     viewId,
   ]);
@@ -1291,18 +1350,11 @@ export function TaskCenter({
   }, [project?.id, task?.id]);
   useEffect(() => {
     if (!task || !project || !detailsReady) return;
-    void readChannel(project.id, task.id);
+    void readChannel(project.id, task.id, executionProjectId);
     return () => {
       channelEpoch.current++;
     };
-  }, [
-    detailsReady,
-    project?.id,
-    project?.state?.connected,
-    readChannel,
-    task?.channelSequence,
-    task?.id,
-  ]);
+  }, [detailsReady, project?.id, executionProjectId, readChannel, task?.channelSequence, task?.id]);
   const revealKey =
     target && selected === `${target.projectId}:${target.taskId}` ? target.eventId : undefined;
   useEffect(() => {
@@ -1364,6 +1416,7 @@ export function TaskCenter({
     try {
       const receipt = await action("manage", {
         projectId: project.id,
+        executionProjectId,
         taskId: task.id,
         expectedRevision: task.revision,
         ...(request.operation === "taskRunNow"
@@ -1390,9 +1443,12 @@ export function TaskCenter({
     } catch (cause) {
       setControlView(null);
       if (current()) setError((cause as Error).message);
-      await action("manage", { projectId: project.id, operation: "task", taskId: task.id }).catch(
-        () => {},
-      );
+      await action("manage", {
+        projectId: project.id,
+        executionProjectId,
+        operation: "task",
+        taskId: task.id,
+      }).catch(() => {});
     } finally {
       mutation.current = false;
       setBusy(false);
@@ -1606,12 +1662,11 @@ export function TaskCenter({
   const updatedTask = useCallback(() => {
     void refresh();
   }, [refresh]);
+  const newTaskButton = useRef<HTMLButtonElement>(null);
   const closeDetails = () => {
     setCreating(false);
     setSelected("");
-    requestAnimationFrame(() =>
-      layout.current?.querySelector<HTMLButtonElement>(".task-new")?.focus(),
-    );
+    requestAnimationFrame(() => newTaskButton.current?.focus());
   };
   const visibleRows = listed.filter(
     (row) =>
@@ -1660,7 +1715,7 @@ export function TaskCenter({
           <Button
             size="sm"
             variant="ghost"
-            disabled={!connected || !project.state?.connected}
+            disabled={!connected || !taskConnected}
             onClick={() =>
               activeRun.threadId
                 ? onOpenThread(project.id, activeRun.threadId)
@@ -1702,7 +1757,7 @@ export function TaskCenter({
                 <Button
                   size="sm"
                   variant="ghost"
-                  disabled={!connected || !project.state?.connected}
+                  disabled={!connected || !taskConnected}
                   onClick={() => setTargetRead(null)}
                 >
                   {t("operations.retryNotification")}
@@ -1728,7 +1783,7 @@ export function TaskCenter({
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={history.pending || !connected || !project.state?.connected}
+                disabled={history.pending || !connected || !taskConnected}
                 onClick={() => void readRuns.current("refresh")}
               >
                 {t("operations.refreshHistory")}
@@ -1766,16 +1821,20 @@ export function TaskCenter({
                   打开执行会话，在“编辑目标”中调整预算后恢复。
                 </p>
               )}
-              <p className="text-foreground-subtle">
-                {run.usage.tokensUsed.toLocaleString()} Token · {run.usage.turnsStarted} 轮 ·{" "}
-                {run.usage.timeUsedSeconds.toLocaleString(undefined, {
-                  maximumFractionDigits: 1,
-                })}{" "}
-                秒{!run.usage.accountingComplete && " · 用量尚未结算完整"}
-              </p>
-              <SettingsDisclosure title={t("common.schedules.usageDetails")}>
-                <GoalUsageSummary usage={run.usage} label="运行用量" />
-              </SettingsDisclosure>
+              {run.usage && (
+                <>
+                  <p className="text-foreground-subtle">
+                    {intl.formatNumber(run.usage.tokensUsed)} Token · {run.usage.turnsStarted} 轮 ·{" "}
+                    {intl.formatNumber(run.usage.timeUsedSeconds, {
+                      maximumFractionDigits: 1,
+                    })}{" "}
+                    秒{!run.usage.accountingComplete && " · 用量尚未结算完整"}
+                  </p>
+                  <SettingsDisclosure title={t("common.schedules.usageDetails")}>
+                    <GoalUsageSummary usage={run.usage} label="运行用量" />
+                  </SettingsDisclosure>
+                </>
+              )}
               {messages
                 .filter((message) => message.runId === run.id && message.kind === "report")
                 .at(-1)?.text && (
@@ -1863,7 +1922,7 @@ export function TaskCenter({
             <Button
               size="sm"
               variant="ghost"
-              disabled={history.pending || !connected || !project.state?.connected}
+              disabled={history.pending || !connected || !taskConnected}
               onClick={() => {
                 setAllRunsShown(true);
                 void readRuns.current("more");
@@ -1896,27 +1955,25 @@ export function TaskCenter({
       className={`task-center text-ui-base ${detailOpen ? "has-detail" : ""} ${narrow ? "is-narrow" : ""}`}
     >
       <div className="task-center-toolbar">
-        {navigation}
         <Button
-          unstyled
-          data-slot={undefined}
-          type="submit"
-          className="icon-button"
-          aria-label={t("operations.schedules.forward")}
-          disabled
-        >
-          <ArrowRight size={16} />
-        </Button>
-        <Button
-          unstyled
-          data-slot={undefined}
-          type="submit"
-          className="icon-button"
+          variant="ghost-subtle"
+          size="icon"
+          type="button"
           aria-label={t("operations.schedules.toggleSidebar")}
           aria-expanded={!navCollapsed}
           onClick={() => setNavCollapsed(!navCollapsed)}
         >
           <SidebarToggleIcon />
+        </Button>
+        {navigation}
+        <Button
+          variant="ghost-subtle"
+          size="icon"
+          type="button"
+          aria-label={t("operations.schedules.forward")}
+          disabled
+        >
+          <ArrowRight size={16} />
         </Button>
       </div>
       <ScheduledWorkspace>
@@ -1939,10 +1996,8 @@ export function TaskCenter({
           </header>
           {searching && (
             <Input
-              unstyled
-              data-slot={undefined}
+              size="sm"
               autoFocus
-              className="task-search"
               aria-label={t("operations.schedules.search")}
               placeholder={t("operations.schedules.search")}
               value={search}
@@ -1956,10 +2011,12 @@ export function TaskCenter({
             />
           )}
           <Button
-            unstyled
-            data-slot={undefined}
-            type="submit"
-            className="task-new"
+            ref={newTaskButton}
+            type="button"
+            variant="row"
+            size="lg"
+            active={creating}
+            className="w-full shrink-0"
             aria-label={t("operations.schedules.newLabel")}
             aria-pressed={creating}
             disabled={!connected}
@@ -2022,9 +2079,11 @@ export function TaskCenter({
                 />
               );
             })}
-            <DelayedVisible active={initialLoading && !listed.length}>
-              <p role="status">{t("operations.schedules.readingCatalog")}</p>
-            </DelayedVisible>
+            {!listed.length && (
+              <DelayedVisible active={initialLoading}>
+                <p role="status">{t("operations.schedules.readingCatalog")}</p>
+              </DelayedVisible>
+            )}
             {(
               [
                 [
@@ -2158,12 +2217,26 @@ export function TaskCenter({
                 icon={<Icon size={18} />}
                 title={title}
                 description={description}
-                onClick={() => void beginCreate(description)}
+                onClick={() => setPreviewTemplate({ title, description, icon: <Icon size={16} /> })}
                 disabled={!connected}
               />
             ))}
           </ScheduledWorkspace.Welcome>
         )}
+        <AutomationTemplateDialog
+          open={previewTemplate !== null}
+          onOpenChange={(open) => {
+            if (!open) setPreviewTemplate(null);
+          }}
+          title={previewTemplate?.title ?? ""}
+          scheduleSummary="按需配置运行频率 · 创建后可随时暂停或修改"
+          prompt={previewTemplate?.description ?? ""}
+          hint="确认后将以此模板作为任务提示词进入创建流程。"
+          icon={previewTemplate?.icon}
+          onConfirm={() => {
+            if (previewTemplate) void beginCreate(previewTemplate.description);
+          }}
+        />
 
         {task && project && !creating && !detailsReady && (
           <main
@@ -2193,6 +2266,20 @@ export function TaskCenter({
                 <Spinner label={t("operations.schedules.updatingStatus")} className="size-5" />
               </div>
             ) : null}
+            {!taskConnected && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={!connected || catalog[project.id]?.status === "pending"}
+                onClick={() => {
+                  setError("");
+                  void refresh(false, project.id, executionProjectId);
+                }}
+              >
+                {t("operations.schedules.refreshProject")}
+              </Button>
+            )}
             {error && (
               <p role="alert" className="task-plan-note">
                 {error}

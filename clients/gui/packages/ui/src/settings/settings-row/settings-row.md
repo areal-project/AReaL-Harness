@@ -2,7 +2,7 @@
 id: settings-row
 title: SettingsRow
 summary: 对齐设置名称、说明、控件与详情，保留宿主状态所有权。
-status: experimental
+status: stable
 entry: compositions
 layer: settings
 category: settings
@@ -18,11 +18,11 @@ related: ["settings-group-card", "disclosure"]
 
 ## 内容
 
-`R-SETTINGSROW-004` 字段名说明用户可调整的内容，描述说明影响。失败提供明确重试条件，结果未知时先核对回执，不能自动重放写入。
+`R-SETTINGSROW-004` 字段名说明用户可调整的内容，描述说明影响。失败提供明确重试条件，结果未知时先核对回执，不能自动重放写入。**检查：**`clients/gui/packages/ui/src/settings/settings-row/settings-row.test.tsx`
 
 ## 可访问性
 
-`R-SETTINGSROW-005` label插槽是布局内容，不能自动标记任意控件。宿主通过htmlFor/id或aria-label命名实际输入，用aria-describedby连接帮助及错误；真实disabled由控件负责。
+`R-SETTINGSROW-005` label插槽是布局内容，不能自动标记任意控件。宿主通过htmlFor/id或aria-label命名实际输入，用aria-describedby连接帮助及错误；真实disabled由控件负责。**检查：**`clients/gui/packages/ui/src/settings/settings-row/settings-row.test.tsx`
 
 ## 示例
 

@@ -3,7 +3,6 @@ import type { Action, Data } from "../services.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { BrowserSettings } from "../settings/BrowserSettings.js";
 import { CloudSettings } from "../settings/CloudSettings.js";
-import { ComputerSettings } from "../settings/ComputerSettings.js";
 import { AppearanceSettings, GeneralSettings } from "../settings/DisplaySettings.js";
 import { HooksSettings } from "../settings/HooksSettings.js";
 import { MobileSettings } from "../settings/MobileSettings.js";
@@ -31,14 +30,14 @@ export function SpecSettingsPage({
   const [fontSize, setFontSize] = useState(13);
   return (
     <SettingsPage key={tab} title={settingsLabel(tab, t)} subtitle={settingsSubtitle(tab, t)}>
-      {tab === "外观" ? (
+      {tab === "appearance" ? (
         <AppearanceSettings
           theme={theme}
           setTheme={setTheme}
           fontSize={fontSize}
           setFontSize={setFontSize}
         />
-      ) : tab === "常规" ? (
+      ) : tab === "general" ? (
         <GeneralSettings
           connected
           action={(async () => ({})) as Action}
@@ -51,27 +50,25 @@ export function SpecSettingsPage({
             preferredLabel: "系统默认",
           })}
         />
-      ) : tab === "用量" ? (
+      ) : tab === "usage" ? (
         <UsageDashboard action={action} />
       ) : tab === "SnapShots" ? (
         <SnapShotSettings action={action} connected />
-      ) : tab === "浏览器" ? (
+      ) : tab === "browser" ? (
         <BrowserSettings action={action} connected />
       ) : tab === "Cloud" ? (
         <CloudSettings action={action} />
-      ) : tab === "电脑控制" ? (
-        <ComputerSettings action={action} connected />
       ) : tab === "Worktrees" ? (
         <WorktreesSettings action={action} projects={[project]} />
-      ) : tab === "钩子" ? (
+      ) : tab === "hooks" ? (
         <HooksSettings action={action} connected onConnect={async () => {}} />
-      ) : tab === "模型服务" ? (
+      ) : tab === "providers" ? (
         <ModelSettings action={action} />
-      ) : tab === "会话配置" ? (
+      ) : tab === "session" ? (
         <SessionSettings project={project} action={action} />
-      ) : tab === "手机连接" ? (
+      ) : tab === "mobile" ? (
         <MobileSettings action={action} projects={[project]} />
-      ) : tab === "数据飞轮" ? (
+      ) : tab === "trajectory" ? (
         <TrajectorySettings action={action} connected onStatus={() => {}} />
       ) : null}
     </SettingsPage>

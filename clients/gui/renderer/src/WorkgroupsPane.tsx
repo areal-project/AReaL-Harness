@@ -1,7 +1,7 @@
 import { useI18n } from "./i18n/IntlProvider.js";
 import { errorText } from "./errors/errorCopy.js";
 import type { ManagementRequestMap } from "./services.js";
-import { Input } from "@areal/ui";
+import { EmptyState, Input } from "@areal/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import {
@@ -706,7 +706,7 @@ export function WorkgroupsPane({ project, action }: { project: Data; action: Act
                   value={workers}
                   disabled={disabled}
                   onChange={(event) => setWorkers(event.target.value)}
-                  className="ml-2 w-20 rounded-control border border-border bg-transparent px-2"
+                  className="ml-2 w-20"
                   placeholder="默认"
                 />
               </label>
@@ -791,13 +791,22 @@ export function WorkgroupsPane({ project, action }: { project: Data; action: Act
                   key={group.id}
                   data-testid={`workgroup-${group.id}`}
                   variant={selected === group.id ? "secondary" : "ghost"}
-                  className="h-auto justify-start whitespace-normal text-left"
+                  size="auto"
+                  align="start"
+                  wrap
+                  className="w-full"
                   onClick={() => select(group.id)}
                 >
                   {group.objective} · {status[group.status] ?? group.status}
                 </Button>
               ))}
-              {!groups.length && !reading && <p>此项目尚无工作组。</p>}
+              {!groups.length && !reading && (
+                <EmptyState
+                  size="compact"
+                  title={t("common.workgroups.emptyTitle")}
+                  description={t("common.workgroups.emptyDescription")}
+                />
+              )}
             </div>
             {record && (
               <div

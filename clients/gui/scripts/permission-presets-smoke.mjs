@@ -14,7 +14,13 @@ import {
   selectConversation,
   captureSmokeFailure,
 } from "./smoke-navigation.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import {
+  closeSmokeApplication,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
+} from "./application-cleanup.mjs";
+import { readCoreThread as observeCoreThread, withCore } from "./support/core-observation.mjs";
+import { openProjectInDesktop } from "./support/journey-fixture.mjs";
 import { checkBrowserStartup } from "./browser-startup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 
@@ -22,11 +28,6 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { CoreClient } = await import("../packages/runtime-client/core.js");
-const WebSocket = require("ws");
-const { ServiceConnection, waitForServiceExit } = require(
-  join(gui, "app/src/core/service-client.cjs"),
-);
 const binary = process.env.AREAL_CORE_BIN || join(root, ".local/dev-bin/areal");
 assert.ok(isAbsolute(binary), "AREAL_CORE_BIN must identify the frozen absolute Core path");
 assert.equal(
@@ -41,7 +42,7 @@ const evidence = await trackedMkdtemp(join(evidenceRoot, "run-"));
 const stateRoot = await makeTempDir("app-");
 const owner = randomUUID();
 await writeFile(join(stateRoot, ".owner"), owner);
-const workspace = join(stateRoot, "workspace");
+const workspace = join(stateRoot, "demo");
 const userHome = join(stateRoot, "user");
 await mkdir(workspace);
 await mkdir(join(userHome, ".areal"), { recursive: true });
@@ -286,7 +287,7 @@ await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
 const config = join(userHome, ".areal/config.toml");
 await writeFile(
   config,
-  `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`,
+  `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`,
 );
 const deployment = join(stateRoot, "desktop.json");
 await writeFile(
@@ -307,6 +308,7 @@ for (const key of Object.keys(env))
   if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];
 const noProxy = [env.NO_PROXY, env.no_proxy, "127.0.0.1,localhost,::1"].filter(Boolean).join(",");
 Object.assign(env, {
+  HOME: userHome,
   NO_PROXY: noProxy,
   no_proxy: noProxy,
   AREAL_CORE_BIN: binary,
@@ -324,11 +326,10 @@ let app,
   projectId,
   passed = false;
 const state = () => page.evaluate(() => window.arealDesktop.snapshot());
-const project = (snapshot) => snapshot.projects.find((item) => item.id === projectId);
-const approvals = (snapshot, threadId) =>
-  (project(snapshot)?.state?.interactions?.[threadId]?.data ?? []).filter(
-    (item) => item.kind === "approval",
-  );
+const coreObservation = { binary, env, gui, workspace };
+const approvals = (thread) =>
+  (thread.desktop?.interactions ?? []).filter((item) => item.kind === "approval");
+let host;
 async function until(predicate, label, timeout = 60000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -369,10 +370,19 @@ async function launch() {
       (chunk) => void writeFile(join(evidence, "electron.stderr.log"), chunk, { flag: "a" }),
     );
   page = await app.firstWindow();
+  await page.getByTestId("areal-workbench").waitFor({ timeout: 120_000 });
+  await page.evaluate(() => {
+    const key = "areal-gui:application-preferences";
+    const preferences = JSON.parse(localStorage.getItem(key) ?? "{}");
+    localStorage.setItem(key, JSON.stringify({ ...preferences, nextPromptSuggestions: false }));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
   page.setDefaultTimeout(20000);
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-  await until(async () => (await state()).connection?.state === "ready", "desktop service ready");
+  await page
+    .locator('[data-testid="areal-workbench"][data-startup-ready="true"]')
+    .waitFor({ timeout: 120000 });
+  host = await until(() => readFixtureHost(env), "original isolated Host");
   const runtime = await app.evaluate(({ app, BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
     window.setSize(1440, 960);
@@ -403,40 +413,27 @@ async function launch() {
   });
 }
 async function closeOwned() {
-  const metadata = await readFile(join(stateRoot, "core/service.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
-  if (app) {
-    await app
-      .evaluate(({ dialog }) => {
-        dialog.showMessageBox = async () => ({ response: 1 });
-      })
-      .catch(() => {});
-    await app.close();
-    app = null;
-  }
-  try {
-    await assertApplicationStopped(binary, env, metadata);
-  } catch {
-    assert.ok(metadata, "cleanup can only target this run's service metadata");
-    const connection = new ServiceConnection();
-    try {
-      await connection.connect(metadata);
-      await connection.request("hello", {
-        protocol: metadata.protocol,
-        identity: metadata.identity,
-      });
-      await connection.request("stopService", { protocol: metadata.protocol }, true);
-    } finally {
-      connection.close();
-    }
-    await waitForServiceExit(join(stateRoot, "core"), metadata);
-    await assertApplicationStopped(binary, env, metadata);
-  }
-  facts.cleanup.push({ pid: metadata?.pid ?? null, serviceExited: true });
+  if (!app) return;
+  const pid = app.process().pid;
+  host ??= await readFixtureHost(env);
+  await app.evaluate(({ dialog }, failed) => {
+    dialog.showMessageBox = async (...args) => {
+      const options = args.at(-1);
+      return { response: failed && ["question", "warning"].includes(options.type) ? 1 : 0 };
+    };
+  }, errors.length > 0);
+  await closeSmokeApplication(app);
+  const directory = join(evidence, `quit-${pid}`);
+  await mkdir(directory);
+  const receipt = await settleFixtureHostAfterQuit(binary, env, directory, { host, pid });
+  facts.cleanup.push({
+    pid,
+    hostPid: host?.pid,
+    serviceExited: true,
+    stopRequestId: receipt?.requestId,
+  });
+  app = null;
+  host = undefined;
 }
 async function choosePreset(preset, capture = false) {
   await page.getByRole("button", { name: "更改权限", exact: true }).click();
@@ -456,6 +453,11 @@ async function choosePreset(preset, capture = false) {
   await page.getByRole("menuitemradio", { name: new RegExp(`^${preset.label}`) }).click();
 }
 async function assertSelectedPreset(preset, label, capture = false) {
+  const chooseModel = page.getByRole("button", { name: "选择模型", exact: true });
+  if (await chooseModel.isVisible()) {
+    await chooseModel.click();
+    await page.getByRole("radio", { name: "fixture", exact: true }).click();
+  }
   await page.getByRole("button", { name: "更改权限", exact: true }).click();
   const choice = page.getByRole("menuitemradio", { name: new RegExp(`^${preset.label}`) });
   assert.equal(await choice.getAttribute("aria-checked"), "true", label);
@@ -479,55 +481,25 @@ async function assertSelectedPreset(preset, label, capture = false) {
   await page.keyboard.press("Escape");
 }
 async function send(text) {
-  const before = new Set(Object.keys(project(await state())?.state?.threads ?? {}));
+  const workbench = page.getByTestId("areal-workbench");
+  assert.ok(!(await workbench.getAttribute("data-thread-id")), "send starts from a draft");
   await page.getByTestId("chat-input").fill(text);
   await page.getByTestId("chat-send-button").click();
-  return until(async () => {
-    const snapshot = await state();
-    const id = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-    return id && !before.has(id) && project(snapshot)?.state?.threads?.[id] ? id : null;
-  }, "UI send creates a new Core Thread");
+  return until(() => workbench.getAttribute("data-thread-id"), "UI send creates a new Core Thread");
 }
 async function completed(threadId) {
   return until(async () => {
-    const snapshot = await state();
-    const pending = approvals(snapshot, threadId).find((item) => item.status === "pending");
+    const thread = await readCoreThread(threadId);
+    const pending = approvals(thread).find((item) => item.status === "pending");
     if (pending)
       throw new Error(
         `Unexpected approval for ${pending.tool} ${JSON.stringify(pending.effectiveArguments)}`,
       );
-    const thread = project(snapshot)?.state?.threads?.[threadId];
-    return thread?.turns?.at(-1)?.status === "completed" ? thread : null;
+    return thread.turns.at(-1)?.status === "completed" ? thread : null;
   }, `completed Thread ${threadId}`);
 }
-async function readCoreThread(threadId) {
-  const instance = project(await state()).core.instanceId;
-  const descriptor = JSON.parse(
-    execFileSync(binary, ["service", "status", "--instance", instance, "--json"], {
-      env,
-      encoding: "utf8",
-      timeout: 20000,
-    }),
-  );
-  assert.equal(descriptor.state, "ready");
-  assert.equal(descriptor.workspace, workspace);
-  assert.equal(descriptor.serviceId, instance);
-  const auth = JSON.parse(await readFile(descriptor.authFile, "utf8"));
-  const principal = auth.principals.find((item) => item.permissions.includes("observe"));
-  assert.ok(principal?.token);
-  const client = new CoreClient({
-    createSocket: () =>
-      new WebSocket(descriptor.endpoint, {
-        headers: { Authorization: `Bearer ${principal.token}` },
-        followRedirects: false,
-      }),
-  });
-  try {
-    await client.connect();
-    return (await client.request("thread/read", { threadId, includeTurns: true })).thread;
-  } finally {
-    client.close();
-  }
+function readCoreThread(threadId) {
+  return observeCoreThread({ ...coreObservation, threadId });
 }
 function assertPreset(configuration, preset) {
   assert.equal(configuration.options.permissionPreset, preset.id);
@@ -539,20 +511,17 @@ console.log("Permission preset GUI evidence:", evidence);
 try {
   await launch();
   facts.startup = await checkBrowserStartup(app, { binary, userHome, scratch: evidence });
-  await app.evaluate(({ dialog }, path) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-  }, workspace);
-  await page.evaluate(() => window.arealDesktop.chooseProject());
-  const connected = await until(
-    async () =>
-      (await state()).projects.find((item) => item.root === workspace && item.state?.connected),
-    "isolated project connected",
+  await openProjectInDesktop(app, page, workspace);
+  await page.getByTestId("chat-input").waitFor({ timeout: 60_000 });
+  projectId = await page.getByTestId("areal-workbench").getAttribute("data-project-id");
+  assert.ok(projectId);
+  const capabilities = await withCore(coreObservation, (client) =>
+    client.request("areal/capabilities", {}),
   );
-  projectId = connected.id;
-  assert.equal(connected.core.features.permissionPresets, true);
-  assert.equal(connected.core.features.permissionFullAccess, true);
+  assert.equal(capabilities.features.permissionPresets, true);
+  assert.equal(capabilities.features.permissionFullAccess, true);
   for (const [index, preset] of presets.entries()) {
-    await createProjectConversation(page, "workspace");
+    await createProjectConversation(page, "demo");
     await assertSelectedPreset(
       index === 0 ? presets[1] : presets[index - 1],
       index === 0
@@ -564,22 +533,20 @@ try {
     const threadId = await send(`permission:${preset.id}`);
     threads.push({ threadId, preset: preset.id });
     const thread = await completed(threadId);
-    const snapshot = await state();
-    assertPreset(project(snapshot).configurations[threadId], preset);
-    const authoritative = await readCoreThread(threadId);
-    assertPreset(authoritative.turns[0].configuration, preset);
+    assertPreset(thread.desktop.configuration, preset);
+    assertPreset(thread.turns[0].configuration, preset);
     assert.equal(
       await readFile(join(workspace, `${preset.id}.txt`), "utf8"),
       `PERMISSION_WRITE_${preset.id}`,
     );
     assert.equal(
-      approvals(snapshot, threadId).length,
+      approvals(thread).length,
       0,
       "ordinary workspace writes require no approval in any preset",
     );
     assert.match(JSON.stringify(thread.turns[0]), new RegExp(`PERMISSION_OK_${preset.id}`));
     await page.getByText(`PERMISSION_OK_${preset.id}`, { exact: true }).waitFor();
-    facts[preset.id] = { thread, configuration: project(snapshot).configurations[threadId] };
+    facts[preset.id] = { thread, configuration: thread.desktop.configuration };
   }
   checks.push(
     "Three UI-selected presets reach the first Core Turn atomically; actual workspace writes complete with zero approval interactions.",
@@ -588,11 +555,11 @@ try {
   await closeOwned();
   const requestCount = requests.length;
   await launch();
+  await createProjectConversation(page, "demo");
   for (const { threadId, preset: id } of threads) {
     await selectConversation(page, threadId);
-    const snapshot = await state();
     const preset = presets.find((item) => item.id === id);
-    assertPreset(project(snapshot).configurations[threadId], preset);
+    assertPreset((await readCoreThread(threadId)).desktop.configuration, preset);
     await page.getByRole("button", { name: "更改权限", exact: true }).click();
     assert.equal(
       await page
@@ -611,7 +578,7 @@ try {
     "All three Core presets and selected menu values survive application quit and reopen without submitting again.",
   );
   await shot("03-reopened-presets");
-  await createProjectConversation(page, "workspace");
+  await createProjectConversation(page, "demo");
   await assertSelectedPreset(
     presets[2],
     "new chat permission preference survives quit and reopen",
@@ -621,18 +588,18 @@ try {
   await choosePreset(presets[0]);
   await until(
     async () =>
-      project(await state()).configurations[threads[2].threadId]?.options?.permissionPreset ===
-      "ask",
+      (await readCoreThread(threads[2].threadId)).desktop.configuration?.options
+        ?.permissionPreset === "ask",
     "existing chat accepts explicit permission change",
   );
-  await createProjectConversation(page, "workspace");
+  await createProjectConversation(page, "demo");
   await assertSelectedPreset(
     presets[0],
     "explicit ask selected in an existing chat becomes the new-chat default",
   );
   await closeOwned();
   await launch();
-  await createProjectConversation(page, "workspace");
+  await createProjectConversation(page, "demo");
   await assertSelectedPreset(
     presets[0],
     "explicit ask preference survives restart",
@@ -690,11 +657,12 @@ try {
     },
     { origin: new URL(siteUrl).origin, modulePath: join(gui, "app/src/core/preview.cjs") },
   );
-  await createProjectConversation(page, "workspace");
+  await createProjectConversation(page, "demo");
   await choosePreset(presets[0]);
   const browserThread = await send("browser:continuous");
   const authorization = await until(
-    async () => approvals(await state(), browserThread).find((item) => item.status === "pending"),
+    async () =>
+      approvals(await readCoreThread(browserThread)).find((item) => item.status === "pending"),
     "initial Core browser authorization",
   );
   assert.equal(authorization.tool, "browser_v1");
@@ -745,7 +713,7 @@ try {
       assert.equal(result.ok, true, JSON.stringify(result));
       return result.value;
     },
-    readThread: async () => project(await state()).state.threads[browserThread],
+    readThread: () => readCoreThread(browserThread),
     projectId,
     threadId: browserThread,
     turnId: browserHistory.turns.at(-1).id,
@@ -781,7 +749,7 @@ try {
       false,
       `actual Core history rejects ${id}`,
     );
-  const browserApprovals = approvals(await state(), browserThread);
+  const browserApprovals = approvals(browserHistory);
   assert.equal(
     browserApprovals.length,
     1,
@@ -895,8 +863,8 @@ try {
     "clients/gui/renderer/src/settings/applicationPreferences.ts",
     "clients/gui/renderer/src/Composer.tsx",
     "clients/gui/renderer/src/DraftComposer.tsx",
-    "services/workbench/src/desktop/core/backend.cjs",
-    "services/workbench/src/desktop/core/service-protocol.cjs",
+    "core/host/src/session_commands.rs",
+    "core/protocol/src/desktop.rs",
     "clients/gui/app/src/core/main.cjs",
     "clients/gui/app/src/core/preview.cjs",
     "core/engine/src/permissions.rs",
@@ -929,7 +897,7 @@ try {
     fixtureVersion: 1,
     entrypoint: "node clients/gui/scripts/permission-presets-smoke.mjs",
     scope:
-      "source Electron + real independent desktop/Core/Runtime + local deterministic SSE model + native synthetic GET site through public-search classification",
+      "source Electron + real Host/Core/Runtime + local deterministic SSE model + native synthetic GET site through public-search classification",
     injectedBoundaries: [
       "Native project picker returns only the owned workspace",
       "Native dialog spy rejects any unexpected local-Origin prompt for the exact synthetic host",
@@ -944,7 +912,12 @@ try {
       "other operating systems",
     ],
   };
-  if (facts.cleanup.at(-1)?.serviceExited) {
+  if (passed) {
+    assert.deepEqual(
+      facts.cleanup.map(({ pid }) => pid),
+      facts.launches.map(({ pid }) => pid),
+    );
+    assert.ok(facts.cleanup.every((entry) => entry.serviceExited && entry.stopRequestId));
     assert.equal(await readFile(join(stateRoot, ".owner"), "utf8"), owner);
     await rm(stateRoot, { recursive: true });
     manifest.stateRemoved = true;

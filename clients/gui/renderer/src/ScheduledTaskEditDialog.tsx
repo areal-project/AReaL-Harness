@@ -151,217 +151,225 @@ export function ScheduledTaskDialog({
   const effortName = (value: string) => (effortIds[value] ? t(effortIds[value]) : value);
   return (
     <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
-      <DialogContent className="scheduled-edit max-w-md" data-scheduled-edit={task?.id ?? "new"}>
-        <DialogTitle>
-          {t(editing ? "operations.schedules.editTitle" : "operations.schedules.newLabel")}
-        </DialogTitle>
-        <Textarea
-          id="scheduled-edit-objective"
-          aria-label={t("operations.schedules.objective")}
-          placeholder={t("operations.schedules.objectivePlaceholder")}
-          value={form.objective}
-          rows={5}
-          autoFocus={!editing}
-          onChange={(event) => set({ objective: event.target.value })}
-        />
-        <div className="grid gap-2 rounded-control border border-border p-2">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
-            <span id="scheduled-edit-repeat">{t("operations.schedules.repeat")}</span>
-            <Select
-              value={form.repeat}
-              onValueChange={(value) => value && set({ repeat: value as Repeat })}
-            >
-              <SelectTrigger aria-labelledby="scheduled-edit-repeat">
-                <SelectValue>
-                  {(value: string) =>
-                    t(repeatOptions.find(([key]) => key === value)?.[1] ?? repeatOptions[0][1])
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {repeatOptions.map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {t(label)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {form.repeat === "interval" && (
+      <DialogContent size="sm" data-scheduled-edit={task?.id ?? "new"}>
+        <div className="scheduled-edit grid gap-field">
+          <DialogTitle>
+            {t(editing ? "operations.schedules.editTitle" : "operations.schedules.newLabel")}
+          </DialogTitle>
+          <Textarea
+            id="scheduled-edit-objective"
+            aria-label={t("operations.schedules.objective")}
+            placeholder={t("operations.schedules.objectivePlaceholder")}
+            value={form.objective}
+            rows={5}
+            autoFocus={!editing}
+            onChange={(event) => set({ objective: event.target.value })}
+          />
+          <div className="grid gap-2 rounded-control border border-border p-2">
             <div className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
-              <span id="scheduled-edit-every">{t("operations.schedules.every")}</span>
-              <span className="flex flex-wrap items-center gap-1">
-                <Input
-                  id="scheduled-edit-every-count"
-                  className="w-20"
-                  aria-labelledby="scheduled-edit-every"
-                  type="number"
-                  min={1}
-                  value={form.every}
-                  onChange={(event) => set({ every: Number(event.target.value) })}
-                />
-                <Select
-                  value={form.unit}
-                  onValueChange={(value) => value && set({ unit: value as Unit })}
-                >
-                  <SelectTrigger aria-label={t("operations.schedules.every")}>
-                    <SelectValue>
-                      {(value: string) =>
-                        t(
-                          value === "hours"
-                            ? "operations.schedules.hoursUnit"
-                            : "operations.schedules.minutesUnit",
-                        )
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="minutes">{t("operations.schedules.minutesUnit")}</SelectItem>
-                    <SelectItem value="hours">{t("operations.schedules.hoursUnit")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </span>
-            </div>
-          )}
-          {form.repeat === "weekly" && (
-            <div
-              className="flex flex-wrap items-center justify-between gap-2 text-ui-sm"
-              role="group"
-              aria-label={t("operations.schedules.onDays")}
-            >
-              <span>{t("operations.schedules.onDays")}</span>
-              <span className="flex flex-wrap items-center gap-1">
-                {weekdayIds.map((id, index) => {
-                  const day = index + 1;
-                  const on = form.weekdays.includes(day);
-                  return (
-                    <Button
-                      key={id}
-                      size="xs"
-                      variant={on ? "secondary" : "ghost"}
-                      aria-pressed={on}
-                      onClick={() =>
-                        set({
-                          weekdays: on
-                            ? form.weekdays.filter((value) => value !== day)
-                            : [...form.weekdays, day],
-                        })
-                      }
-                    >
-                      {t(id)}
-                    </Button>
-                  );
-                })}
-              </span>
-            </div>
-          )}
-          {(form.repeat === "daily" || form.repeat === "weekly") && (
-            <label className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
-              <span>{t("operations.schedules.at")}</span>
-              <Input
-                id="scheduled-edit-time"
-                type="time"
-                value={form.time}
-                onChange={(event) => set({ time: event.target.value })}
-              />
-            </label>
-          )}
-          {form.repeat === "once" && (
-            <label className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
-              <span>{t("operations.schedules.date")}</span>
-              <Input
-                id="scheduled-edit-at"
-                type="datetime-local"
-                value={form.at}
-                onChange={(event) => set({ at: event.target.value })}
-              />
-            </label>
-          )}
-        </div>
-        <div>
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-expanded={advanced}
-            aria-controls="scheduled-edit-advanced"
-            onClick={() => setAdvanced(!advanced)}
-          >
-            {t("operations.schedules.advanced")}
-          </Button>
-        </div>
-        {advanced && (
-          <div
-            id="scheduled-edit-advanced"
-            className="grid gap-2 rounded-control border border-border p-2"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
-              <span id="scheduled-edit-model">{t("operations.schedules.model")}</span>
+              <span id="scheduled-edit-repeat">{t("operations.schedules.repeat")}</span>
               <Select
-                value={model}
-                disabled={models === null}
-                onValueChange={(value) => {
-                  if (!value) return;
-                  setModel(value);
-                  setEffort("default");
-                }}
+                value={form.repeat}
+                onValueChange={(value) => value && set({ repeat: value as Repeat })}
               >
-                <SelectTrigger aria-labelledby="scheduled-edit-model">
+                <SelectTrigger aria-labelledby="scheduled-edit-repeat">
                   <SelectValue>
                     {(value: string) =>
-                      models?.find((entry) => modelKey(entry) === value)?.displayName ??
-                      t("operations.schedules.modelDefault")
+                      t(repeatOptions.find(([key]) => key === value)?.[1] ?? repeatOptions[0][1])
                     }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="default">{t("operations.schedules.modelDefault")}</SelectItem>
-                  {(models ?? []).map((entry) => (
-                    <SelectItem key={modelKey(entry)} value={modelKey(entry)}>
-                      {entry.displayName}
+                  {repeatOptions.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {t(label)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            {!!selected?.reasoningEffortOptions.length && (
+            {form.repeat === "interval" && (
               <div className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
-                <span id="scheduled-edit-effort">{t("operations.schedules.effort")}</span>
-                <Select value={effort} onValueChange={(value) => value && setEffort(value)}>
-                  <SelectTrigger aria-labelledby="scheduled-edit-effort">
+                <span id="scheduled-edit-every">{t("operations.schedules.every")}</span>
+                <span className="flex flex-wrap items-center gap-1">
+                  <Input
+                    id="scheduled-edit-every-count"
+                    className="w-20"
+                    aria-labelledby="scheduled-edit-every"
+                    type="number"
+                    min={1}
+                    value={form.every}
+                    onChange={(event) => set({ every: Number(event.target.value) })}
+                  />
+                  <Select
+                    value={form.unit}
+                    onValueChange={(value) => value && set({ unit: value as Unit })}
+                  >
+                    <SelectTrigger aria-label={t("operations.schedules.every")}>
+                      <SelectValue>
+                        {(value: string) =>
+                          t(
+                            value === "hours"
+                              ? "operations.schedules.hoursUnit"
+                              : "operations.schedules.minutesUnit",
+                          )
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="minutes">
+                        {t("operations.schedules.minutesUnit")}
+                      </SelectItem>
+                      <SelectItem value="hours">{t("operations.schedules.hoursUnit")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </span>
+              </div>
+            )}
+            {form.repeat === "weekly" && (
+              <div
+                className="flex flex-wrap items-center justify-between gap-2 text-ui-sm"
+                role="group"
+                aria-label={t("operations.schedules.onDays")}
+              >
+                <span>{t("operations.schedules.onDays")}</span>
+                <span className="flex flex-wrap items-center gap-1">
+                  {weekdayIds.map((id, index) => {
+                    const day = index + 1;
+                    const on = form.weekdays.includes(day);
+                    return (
+                      <Button
+                        key={id}
+                        size="xs"
+                        variant={on ? "secondary" : "ghost"}
+                        aria-pressed={on}
+                        onClick={() =>
+                          set({
+                            weekdays: on
+                              ? form.weekdays.filter((value) => value !== day)
+                              : [...form.weekdays, day],
+                          })
+                        }
+                      >
+                        {t(id)}
+                      </Button>
+                    );
+                  })}
+                </span>
+              </div>
+            )}
+            {(form.repeat === "daily" || form.repeat === "weekly") && (
+              <label className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
+                <span>{t("operations.schedules.at")}</span>
+                <Input
+                  id="scheduled-edit-time"
+                  type="time"
+                  value={form.time}
+                  onChange={(event) => set({ time: event.target.value })}
+                />
+              </label>
+            )}
+            {form.repeat === "once" && (
+              <label className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
+                <span>{t("operations.schedules.date")}</span>
+                <Input
+                  id="scheduled-edit-at"
+                  type="datetime-local"
+                  value={form.at}
+                  onChange={(event) => set({ at: event.target.value })}
+                />
+              </label>
+            )}
+          </div>
+          <div>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-expanded={advanced}
+              aria-controls="scheduled-edit-advanced"
+              onClick={() => setAdvanced(!advanced)}
+            >
+              {t("operations.schedules.advanced")}
+            </Button>
+          </div>
+          {advanced && (
+            <div
+              id="scheduled-edit-advanced"
+              className="grid gap-2 rounded-control border border-border p-2"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
+                <span id="scheduled-edit-model">{t("operations.schedules.model")}</span>
+                <Select
+                  value={model}
+                  disabled={models === null}
+                  onValueChange={(value) => {
+                    if (!value) return;
+                    setModel(value);
+                    setEffort("default");
+                  }}
+                >
+                  <SelectTrigger aria-labelledby="scheduled-edit-model">
                     <SelectValue>
                       {(value: string) =>
-                        value === "default" ? t("chat.composer.serviceDefault") : effortName(value)
+                        models?.find((entry) => modelKey(entry) === value)?.displayName ??
+                        t("operations.schedules.modelDefault")
                       }
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="default">{t("chat.composer.serviceDefault")}</SelectItem>
-                    {selected.reasoningEffortOptions.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {effortName(option)}
+                    <SelectItem value="default">
+                      {t("operations.schedules.modelDefault")}
+                    </SelectItem>
+                    {(models ?? []).map((entry) => (
+                      <SelectItem key={modelKey(entry)} value={modelKey(entry)}>
+                        {entry.displayName}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            )}
-            <label className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
-              <span>{t("operations.schedules.newThreadEachRun")}</span>
-              <Switch checked={newThread} onCheckedChange={setNewThread} />
-            </label>
-          </div>
-        )}
-        {error && <p role="alert">{error}</p>}
-        <DialogFooter>
-          <Button variant="ghost" disabled={saving} onClick={onClose}>
-            {t("operations.schedules.cancelEdit")}
-          </Button>
-          <Button disabled={saving || !form.objective.trim()} onClick={() => void save()}>
-            {saving
-              ? t("operations.schedules.saving")
-              : t(editing ? "operations.schedules.save" : "operations.schedules.create")}
-          </Button>
-        </DialogFooter>
+              {!!selected?.reasoningEffortOptions.length && (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
+                  <span id="scheduled-edit-effort">{t("operations.schedules.effort")}</span>
+                  <Select value={effort} onValueChange={(value) => value && setEffort(value)}>
+                    <SelectTrigger aria-labelledby="scheduled-edit-effort">
+                      <SelectValue>
+                        {(value: string) =>
+                          value === "default"
+                            ? t("chat.composer.serviceDefault")
+                            : effortName(value)
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">{t("chat.composer.serviceDefault")}</SelectItem>
+                      {selected.reasoningEffortOptions.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {effortName(option)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <label className="flex flex-wrap items-center justify-between gap-2 text-ui-sm">
+                <span>{t("operations.schedules.newThreadEachRun")}</span>
+                <Switch checked={newThread} onCheckedChange={setNewThread} />
+              </label>
+            </div>
+          )}
+          {error && <p role="alert">{error}</p>}
+          <DialogFooter>
+            <Button variant="ghost" disabled={saving} onClick={onClose}>
+              {t("operations.schedules.cancelEdit")}
+            </Button>
+            <Button disabled={saving || !form.objective.trim()} onClick={() => void save()}>
+              {saving
+                ? t("operations.schedules.saving")
+                : t(editing ? "operations.schedules.save" : "operations.schedules.create")}
+            </Button>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

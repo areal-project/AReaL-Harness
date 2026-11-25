@@ -5,10 +5,21 @@
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-gutter: stable;
   padding: calc(var(--spacing-field) * 4) calc(var(--spacing-field) * 2);
   background: var(--color-background);
   box-sizing: border-box;
+}
+@media not all and ((prefers-contrast: more) or (forced-colors: active)) {
+  .settings-workspace,
+  .settings-page {
+    scrollbar-width: none;
+  }
+  .settings-workspace::-webkit-scrollbar,
+  .settings-page::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
 }
 
 .settings-workspace .settings-page {
@@ -32,7 +43,7 @@
 
 .settings-workspace .settings-page-title,
 .settings-workspace .settings-page > h1 {
-  font-size: var(--text-fixed-page-title);
+  font-size: var(--text-page-title);
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-title);
   letter-spacing: var(--tracking-heading-tight);
@@ -49,7 +60,7 @@
 
 @media (max-width: 640px) {
   .settings-workspace {
-    padding: 16px 16px 32px;
+    padding: var(--spacing-field) var(--spacing-field) calc(var(--spacing-field) * 2);
   }
 }
 
@@ -57,21 +68,22 @@
   flex: 1;
   overflow: auto;
   width: 100%;
-  max-width: 808px;
+  max-width: calc(var(--spacing-inline) * 101);
   margin: 0 auto;
-  padding: 20px 20px 40px;
+  padding: calc(var(--spacing-inline) * 5 / 2) calc(var(--spacing-inline) * 5 / 2)
+    calc(var(--spacing-inline) * 5);
 }
 .settings-page h1 {
-  font-size: var(--text-ui-hero);
+  font-size: var(--text-page-title);
   font-weight: 400;
   line-height: 1.2;
-  margin: 0 0 32px;
+  margin: 0 0 calc(var(--spacing-field) * 2);
 }
 .settings-page h2 {
   font-size: var(--text-ui-base);
   font-weight: 500;
   line-height: 1.5;
-  margin: 0 0 12px;
+  margin: 0 0 calc(var(--spacing-inline) * 3 / 2);
 }
 .settings-page p {
   color: var(--color-foreground-subtle);
@@ -79,7 +91,7 @@
 }
 @media (max-width: 1100px) {
   .settings-page {
-    padding: 0 24px 32px;
+    padding: 0 var(--spacing-section) calc(var(--spacing-field) * 2);
   }
 }
 
@@ -87,6 +99,142 @@
   padding-top: var(--spacing-panel);
 }
 .settings-workspace[data-width="wide"] > .settings-page {
-  max-width: 1200px;
+  max-width: calc(var(--spacing-inline) * 150);
   gap: var(--spacing-panel);
+}
+
+.settings-group-card[data-layout="grid"] > .settings-group-content {
+  display: grid;
+  gap: var(--spacing-field);
+  padding: var(--spacing-panel);
+}
+.settings-group-card[data-layout="stack"] > .settings-group-content {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-panel);
+}
+.settings-group-card[data-layout="stack-gap"] > .settings-group-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-panel);
+  padding: var(--spacing-panel);
+}
+
+/* Codex 风格居中设置弹窗（保留底层工作台上下文与毛玻璃虚化遮罩）。 */
+.settings-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--layer-dialog);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-section);
+  background: var(--color-dialog-backdrop);
+  backdrop-filter: var(--material-backdrop-filter);
+  -webkit-app-region: no-drag;
+}
+
+.settings-modal-dialog {
+  position: relative;
+  display: flex;
+  width: min(calc(var(--reading-width) + var(--spacing-inline) * 39), 100%);
+  height: min(calc(var(--spacing-inline) * 90), calc(100dvh - var(--spacing-section) * 2));
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-dialog);
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  background: var(--color-settings-modal-surface);
+  box-shadow: var(--shadow-dialog);
+}
+
+.settings-modal-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-settings-modal-surface);
+}
+
+.settings-modal-close {
+  position: absolute;
+  top: var(--spacing-3);
+  right: var(--spacing-3);
+  z-index: 4;
+}
+
+.settings-modal-dialog .settings-workspace {
+  padding: calc(var(--spacing-field) * 3) calc(var(--spacing-field) * 3)
+    calc(var(--spacing-field) * 2.5);
+  background: transparent;
+}
+
+.settings-modal-dialog .settings-workspace .settings-page {
+  max-width: calc(var(--spacing-inline) * 76);
+  gap: var(--spacing-section);
+}
+
+.settings-modal-dialog .settings-workspace .settings-page-title,
+.settings-modal-dialog .settings-workspace .settings-page > h1 {
+  font-size: var(--text-heading-app);
+  font-weight: var(--ui-font-weight);
+  letter-spacing: var(--tracking-heading-tight);
+}
+
+.settings-modal-dialog .settings-workspace[data-width="wide"] > .settings-page {
+  max-width: 100%;
+}
+
+.settings-modal-dialog .settings-group-card:not([data-layout]) {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.settings-modal-dialog .settings-group-card:not([data-layout]) .settings-field-row {
+  padding-inline: 0;
+  border-radius: var(--radius-control);
+}
+
+.settings-modal-dialog .settings-group-card:not([data-layout]) .settings-field-row:hover {
+  background: transparent;
+}
+
+.settings-modal-dialog .settings-group-card:not([data-layout]) .settings-field-row::after {
+  left: 0;
+  right: 0;
+  height: var(--border-width-default);
+}
+
+.settings-modal-dialog
+  .settings-group-card:not([data-layout])
+  .settings-field-row:last-child::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--border-width-default);
+  background: var(--color-border-subtle);
+  pointer-events: none;
+}
+
+@media (max-width: 760px) {
+  .settings-modal-overlay {
+    padding: var(--spacing-inline);
+  }
+  .settings-modal-dialog {
+    flex-direction: column;
+    height: calc(100dvh - var(--spacing-field));
+  }
+  .settings-modal-sidebar {
+    width: 100%;
+    border-right: 0;
+    border-bottom: var(--border-width-default) solid var(--color-border-hairline);
+  }
+  .settings-modal-dialog .settings-workspace {
+    padding: var(--spacing-field);
+  }
 }

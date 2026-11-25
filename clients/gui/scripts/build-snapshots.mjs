@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-const require = createRequire(new URL("../packages/gen-ui/package.json", import.meta.url));
+const require = createRequire(new URL("../packages/browser-data/package.json", import.meta.url));
 const { build, transformSync } = require("esbuild");
 const gui = fileURLToPath(new URL("..", import.meta.url));
 // Main 的 TypeScript 都从这里构建成 CommonJS，产物进 src 内已忽略的 build/ 或 generated/，
@@ -27,7 +27,11 @@ results.push(
   await build({
     metafile: true,
     absWorkingDir: gui,
-    entryPoints: ["app/src/ipc/host-ticket.ts", "app/src/ipc/window-close.ts"],
+    entryPoints: [
+      "app/src/ipc/host-ticket.ts",
+      "app/src/ipc/window-close.ts",
+      "app/src/ipc/provider-key.ts",
+    ],
     outdir: "app/src/ipc/generated",
     outExtension: { ".js": ".cjs" },
     bundle: true,
@@ -35,6 +39,21 @@ results.push(
     format: "cjs",
     target: "node22",
     external: ["electron", "@areal/client/node"],
+    loader: { ".html": "text" },
+  }),
+);
+results.push(
+  await build({
+    metafile: true,
+    absWorkingDir: gui,
+    entryPoints: ["app/src/core/native-host-transport.ts", "app/src/core/native-browser-tools.ts"],
+    outdir: "app/src/core/generated",
+    outExtension: { ".js": ".cjs" },
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    target: "node22",
+    external: ["@areal/client/node", "@areal/browser-automation/host-tool"],
   }),
 );
 results.push(
@@ -42,17 +61,25 @@ results.push(
     metafile: true,
     absWorkingDir: gui,
     entryPoints: [
-      "../../services/workbench/src/host-library-store.ts",
-      "../../services/workbench/src/host-core-client.ts",
-      "../../services/workbench/src/native-host-transport.ts",
+      "app/src/core/bundle-guard.ts",
+      "app/src/core/window-controller.ts",
+      "app/src/core/quit-coordinator.ts",
+      "app/src/core/desktop-ipc-handlers.ts",
     ],
-    outdir: "../../services/workbench/src/generated",
+    outdir: "app/src/core/generated",
     outExtension: { ".js": ".cjs" },
     bundle: true,
     platform: "node",
     format: "cjs",
     target: "node22",
-    external: ["@areal/client/node"],
+    external: [
+      "electron",
+      "@areal/*",
+      "../*.cjs",
+      "../../*.cjs",
+      "../../ipc/generated/*.cjs",
+      "../../update/*.cjs",
+    ],
   }),
 );
 const built = new Set(results.flatMap((result) => Object.keys(result.metafile.inputs)));

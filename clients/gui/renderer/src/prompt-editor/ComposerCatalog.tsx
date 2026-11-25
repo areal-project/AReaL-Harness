@@ -7,7 +7,14 @@ import type { AppSlashCommand } from "../slashCommandHelpers.js";
 import { SearchIcon } from "../interfaceIcons.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 
-const CATALOG_GROUPS = ["commands", "功能", "会话", "应用", "Skills", "files"] as const;
+const CATALOG_GROUPS = [
+  "commands",
+  "features",
+  "conversations",
+  "apps",
+  "Skills",
+  "files",
+] as const;
 
 export interface ComposerCatalogEntry extends AppSlashCommand {
   group: (typeof CATALOG_GROUPS)[number];
@@ -40,7 +47,8 @@ export const filterCatalog = (entries: readonly ComposerCatalogEntry[], query: s
       ].some((value) => value.toLowerCase().includes(normalized)),
     )
     .filter(
-      (entry) => normalized.length > 0 || entry.group !== "会话" || recentConversations++ < 20,
+      (entry) =>
+        normalized.length > 0 || entry.group !== "conversations" || recentConversations++ < 20,
     )
     .sort((a, b) => CATALOG_GROUPS.indexOf(a.group) - CATALOG_GROUPS.indexOf(b.group));
 };
@@ -140,11 +148,11 @@ export function ComposerCatalog({
                 ? t("chat.composer.filesGroup")
                 : group === "commands"
                   ? t("chat.composer.commandsGroup")
-                  : group === "会话"
+                  : group === "conversations"
                     ? t("chat.composer.conversationsGroup")
-                    : group === "应用"
+                    : group === "apps"
                       ? (catalog.appGroupLabel ?? catalog.label ?? t("chat.composer.appsGroup"))
-                      : group === "功能"
+                      : group === "features"
                         ? t("chat.composer.actionsGroup")
                         : group
             }
@@ -155,11 +163,11 @@ export function ComposerCatalog({
                   ? t("chat.composer.filesGroup")
                   : group === "commands"
                     ? t("chat.composer.commandsGroup")
-                    : group === "会话"
+                    : group === "conversations"
                       ? t("chat.composer.conversationsGroup")
-                      : group === "应用"
+                      : group === "apps"
                         ? (catalog.appGroupLabel ?? catalog.label ?? t("chat.composer.appsGroup"))
-                        : group === "功能"
+                        : group === "features"
                           ? t("chat.composer.actionsGroup")
                           : group}
                 {group === "Skills" && <span>{t("chat.composer.addToCurrentMessage")}</span>}
@@ -206,11 +214,13 @@ export function ComposerCatalog({
                   id={`${id}-${i}`}
                   key={row.value}
                   type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full"
                   role="option"
                   aria-selected={i === index}
                   aria-disabled={row.disabled}
                   tabIndex={-1}
-                  className="composer-catalog-row"
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseMove={() => onIndex(i)}
                   onClick={() => {

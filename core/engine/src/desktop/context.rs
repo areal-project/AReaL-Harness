@@ -125,15 +125,16 @@ impl Engine {
                 );
                 state.compacting = true;
                 let activation = id();
-                state.compaction_owner = Some(crate::desktop::mcp_apps::CallOwner {
+                state.compaction_owner = Some(crate::desktop::mcp_interactions::CallOwner {
                     token: activation.clone(),
-                    scope: crate::desktop::mcp_apps::CallOwnerScope::CompactionHook { activation },
+                    scope: crate::desktop::mcp_interactions::CallOwnerScope::CompactionHook {
+                        activation,
+                    },
                     cancellation: cancel.clone(),
                     identity,
                     thread: thread_id.clone(),
                     turn: String::new(),
                     call: String::new(),
-                    instance: None,
                 });
             }
             drop(admission);

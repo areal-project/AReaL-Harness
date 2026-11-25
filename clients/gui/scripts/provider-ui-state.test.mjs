@@ -41,29 +41,6 @@ test("API billing and custom-service billing are explicitly distinguished", () =
   );
 });
 
-import { AppProviders } from "@areal/workbench-service/desktop/core/providers.cjs";
-test("busy provider application rejects before changing configuration or restarting projects", async () => {
-  let restarted = false;
-  const backend = {
-    providerUpdating: false,
-    resourcesUpdating: false,
-    activeCommands: 0,
-    starting: new Set(),
-    hasWork: () => true,
-    restartProject: async () => {
-      restarted = true;
-    },
-  };
-  const app = new AppProviders(backend, {});
-  const saved = { revision: "fixture", data: [{ id: "fixture" }] };
-  app.config.value = saved;
-  app.config.current = async () => assert.fail("busy operation must not read/write configuration");
-  await assert.rejects(app.apply({ expectedRevision: "fixture" }), /等待任务/);
-  assert.equal(app.config.value, saved);
-  assert.equal(restarted, false);
-  assert.equal(backend.providerUpdating, false);
-});
-
 import { newConnectionDraft } from "../renderer/src/settings/provider-ui-state.js";
 test("service definition identity never becomes a saved connection identity", () => {
   const definition = {

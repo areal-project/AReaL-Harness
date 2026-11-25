@@ -1,5 +1,7 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { createHoverTooltipTracker } from "./tooltip.js";
+import { TitleTooltip, createHoverTooltipTracker } from "./tooltip.js";
 
 function scrollTarget() {
   const listeners = new Set<() => void>();
@@ -41,5 +43,28 @@ describe("hover tooltip scroll dismissal", () => {
 
     page.scroll();
     expect(close).not.toHaveBeenCalled();
+  });
+});
+
+// R-TOOLTIP-001: 提示只补充说明，不替代按钮可见/可访问名称，并保留 aria-description 关联。
+describe("TitleTooltip semantics (R-TOOLTIP-001)", () => {
+  it("attaches aria-description without clobbering aria-label and returns child unchanged when empty", () => {
+    const withTitle = renderToStaticMarkup(
+      createElement(TitleTooltip, {
+        title: "More details",
+        children: createElement("button", { type: "button", "aria-label": "Refresh" }, "Refresh"),
+      }),
+    );
+    expect(withTitle).toContain('aria-label="Refresh"');
+    expect(withTitle).toContain('aria-description="More details"');
+
+    const empty = renderToStaticMarkup(
+      createElement(TitleTooltip, {
+        title: "",
+        children: createElement("button", { type: "button", "aria-label": undefined }, "Plain"),
+      }),
+    );
+    expect(empty).toContain(">Plain<");
+    expect(empty).not.toContain("aria-description");
   });
 });

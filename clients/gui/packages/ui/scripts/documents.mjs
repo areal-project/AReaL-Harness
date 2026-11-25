@@ -322,15 +322,69 @@ export async function buildDocuments(check = false) {
     ) + "\n",
     check,
   );
-  const index =
-    `# ${pkg.name} ${pkg.version}\n\nLocal workspace package; private, not published.\n\n- [Agent guide](docs/ui/agent-guide.md): adoption order, source owners and verification.\n- [Skill: areal-ui-guide](docs/ui/areal-ui-guide.md): reading order, override-your-priors table and component migration steps.\n- [Skill: areal-ui-critique](docs/ui/areal-ui-critique.md): evidence-first visual review in light and dark themes.\n- [Token reference](docs/ui/tokens.md): every CSS variable with default value and purpose.\n` +
-    components
-      .map(
-        (component) =>
-          `- [${component.title}](docs/ui/${component.id}.md): ${component.summary} (${component.status}, @areal/ui${component.entry === "index" ? "" : `/${component.entry}`}).`,
-      )
-      .join("\n") +
-    "\n";
+  const patternCoreIds = new Set([
+    "code-viewer",
+    "confirm-dialog",
+    "diff-viewer",
+    "empty-state",
+    "feedback-notice",
+    "hover-actions",
+    "settings-disclosure",
+  ]);
+  const formatLine = (component) =>
+    `- [${component.title}](docs/ui/${component.id}.md): ${component.summary} (${component.status}, @areal/ui${component.entry === "index" ? "" : `/${component.entry}`}).`;
+  const l1Core = components.filter((c) => c.layer === "core" && !patternCoreIds.has(c.id));
+  const l2Patterns = components.filter(
+    (c) => (c.layer === "core" && patternCoreIds.has(c.id)) || c.layer === "settings",
+  );
+  const l3Conversation = components.filter((c) => c.layer === "conversation");
+  const l3Workbench = components.filter((c) => c.layer === "workbench");
+  const l3Worktree = components.filter((c) => c.layer === "worktree");
+  const index = [
+    `# ${pkg.name} ${pkg.version}`,
+    "",
+    "Local workspace package; private, not published.",
+    "",
+    "## Start Here",
+    "",
+    "- [Agent guide](docs/ui/agent-guide.md): adoption order, source owners and verification.",
+    "- [Skill: areal-ui-guide](docs/ui/areal-ui-guide.md): Step 0 UX brief, component decision tree, override-your-priors and migration steps.",
+    "- [Skill: areal-ui-critique](docs/ui/areal-ui-critique.md): evidence-first visual review, blind cognitive walkthrough and interaction checks.",
+    "- [Token reference](docs/ui/tokens.md): semantic CSS variables with default value and purpose.",
+    "",
+    "## Component Selection Decision Tree",
+    "",
+    "- **Transient feedback (non-blocking, auto-dismiss / undo)** -> `NotificationToast`",
+    "- **Persistent inline / section status with recovery action** -> `FeedbackNotice`",
+    "- **Static explanation / approval reason / impact hint** -> `Callout`",
+    "- **Irreversible destructive confirmation (verb + result buttons)** -> `ConfirmDialog` (or `Dialog`)",
+    "- **Lightweight contextual actions / menus** -> `Popover` / `DropdownMenu` / `ContextMenu`",
+    "- **Contextual inspection / editing preserving main view** -> `SidePaneFrame` / `Sheet`",
+    "- **Focused blocking modal task** -> `Dialog` / `SettingsDialog`",
+    "- **Empty / first-run state with CTA** -> `EmptyState`",
+    "- **Selection**: boolean -> `Switch`; 2-3 modes -> `SettingsSegmentedTabs`; sibling views -> `Tabs`; 4+ options -> `Select`; searchable list -> `Command`",
+    "- **Progressive disclosure** -> `Disclosure` / `SettingsDisclosure`",
+    "",
+    "## L1 · Core Primitives (`@areal/ui`)",
+    "",
+    ...l1Core.map(formatLine),
+    "",
+    "## L2 · Reusable UX & Settings Patterns (`@areal/ui`, `@areal/ui/compositions`)",
+    "",
+    ...l2Patterns.map(formatLine),
+    "",
+    "## L3 · Domain Compositions (`@areal/ui/compositions`, scoped to their domain)",
+    "",
+    "### Conversation",
+    ...l3Conversation.map(formatLine),
+    "",
+    "### Workbench",
+    ...l3Workbench.map(formatLine),
+    "",
+    "### Worktree",
+    ...l3Worktree.map(formatLine),
+    "",
+  ].join("\n");
   await writeOrCheck(resolve(root, "dist/llms.txt"), index, check);
   if (!check)
     for (const path of srcFiles.filter((path) => path.endsWith(".css"))) {

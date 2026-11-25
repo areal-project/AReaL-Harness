@@ -15,9 +15,26 @@ const observed = vi.hoisted(() => ({
 vi.mock("./prompt-editor/ChatPromptEditor.js", () => ({
   ChatPromptEditor: (props: EditorProps) => {
     observed.editor = props;
-    return createElement("div", {}, props.betweenCancelAndSubmitAction);
+    return createElement("div", {}, props.topContent, props.betweenCancelAndSubmitAction);
   },
 }));
+
+it("keeps the composer draft editable but blocks execution when history alone is ready", () => {
+  const markup = renderToStaticMarkup(
+    createElement(ConversationComposer, {
+      project: { models: [], executionError: "invalid configuration" },
+      workspacePath: "/workspace",
+      taskId: "thread",
+      submitLabel: "Send",
+      onConfigureModel: () => {},
+      onSubmit: () => {},
+    }),
+  );
+  expect(markup).toContain("recovery.executionUnavailable");
+  expect(observed.editor?.submitDisabled).toBe(true);
+  expect(observed.editor?.submitDisabledReason).toBeUndefined();
+  expect(observed.editor?.disabled).not.toBe(true);
+});
 vi.mock("./ComposerModelMenu.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./ComposerModelMenu.js")>()),
   ComposerModelMenu: (props: MenuProps) => {
@@ -85,7 +102,9 @@ describe("conversation explicit effort", () => {
       result.editor.onSubmit("retained draft");
       expect(result.submit).toHaveBeenCalledWith("retained draft");
       result.menu.onEffortChange!("max");
-      expect(result.configure).toHaveBeenCalledWith({ parameters: { reasoningEffort: "max" } });
+      expect(result.configure).toHaveBeenCalledWith({
+        parameters: { reasoningEffort: "max" },
+      });
     },
   );
 
@@ -101,7 +120,9 @@ describe("conversation explicit effort", () => {
     result.editor.onSubmit("retained draft");
     expect(result.submit).toHaveBeenCalledWith("retained draft");
     result.menu.onEffortChange!("default");
-    expect(result.configure).toHaveBeenCalledWith({ parameters: { reasoningEffort: "default" } });
+    expect(result.configure).toHaveBeenCalledWith({
+      parameters: { reasoningEffort: "default" },
+    });
   });
 });
 
@@ -115,14 +136,26 @@ describe("conversation independent Fast parameters", () => {
       createElement(ConversationComposer, {
         project: {
           models: [
-            { providerId: "fixture", modelId: "one", parameters: { serviceTier: "fast" } },
-            { providerId: "fixture", modelId: "two", parameters: { reasoningEffort: "low" } },
+            {
+              providerId: "fixture",
+              modelId: "one",
+              parameters: { serviceTier: "fast" },
+            },
+            {
+              providerId: "fixture",
+              modelId: "two",
+              parameters: { reasoningEffort: "low" },
+            },
           ],
         },
         modelConfig: {
           model: { providerId: "fixture", modelId: "one" },
           parameters,
-          resolvedParameters: { reasoningEffort: "high", ...parameters, ...resolvedParameters },
+          resolvedParameters: {
+            reasoningEffort: "high",
+            ...parameters,
+            ...resolvedParameters,
+          },
         },
         workspacePath: "/workspace",
         taskId: "thread",

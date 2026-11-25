@@ -1,5 +1,5 @@
 import { TitleTooltip } from "../../components/tooltip/tooltip.js";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { SettingsSearchInput } from "../../settings/settings-search-input/settings-search-input.js";
 import { NavigationSidebar } from "../workbench-shell/workbench-shell.js";
@@ -25,6 +25,7 @@ export function SettingsNavigation({
   navigationBusy = false,
   backIcon,
   forwardIcon,
+  variant = "sidebar",
 }: {
   groups: readonly SettingsNavigationGroup[];
   activeId: string;
@@ -47,6 +48,7 @@ export function SettingsNavigation({
   navigationBusy?: boolean;
   backIcon: ReactNode;
   forwardIcon: ReactNode;
+  variant?: "sidebar" | "modal";
 }) {
   const [query, setQuery] = useState("");
   const needle = query.trim().toLocaleLowerCase(locale);
@@ -66,31 +68,18 @@ export function SettingsNavigation({
     }))
     .filter((group) => group.items.length);
 
-  return (
-    <NavigationSidebar
-      className="settings-sidebar"
-      width={width}
-      rail={rail}
-      footer={footer}
-      chrome={
-        <div className="workspace-navigation">
-          <TitleTooltip title={labels.back}>
-            <button
-              type="button"
-              className="icon-button settings-back"
-              aria-label={labels.back}
-              disabled={navigationBusy}
-              onClick={onBack}
-            >
-              {backIcon}
-            </button>
-          </TitleTooltip>
-          <button type="button" className="icon-button" aria-label={labels.forward} disabled>
-            {forwardIcon}
-          </button>
-        </div>
-      }
-    >
+  // 搜索过滤后若当前页不在命中列表内，自动切到首个命中页，避免右侧停留在不相关设置页。
+  const firstMatchedId = needle ? visibleGroups[0]?.items[0]?.id : undefined;
+  const activeVisible =
+    !needle || visibleGroups.some((group) => group.items.some((item) => item.id === activeId));
+  useEffect(() => {
+    if (firstMatchedId && !activeVisible && !navigationBusy) {
+      onSelect(firstMatchedId);
+    }
+  }, [firstMatchedId, activeVisible, navigationBusy, onSelect]);
+
+  const navigationBody = (
+    <>
       <div className="settings-sidebar-header">
         <h1 className="settings-sidebar-title">{labels.title}</h1>
         <SettingsSearchInput
@@ -103,7 +92,31 @@ export function SettingsNavigation({
           clearLabel={labels.clear}
         />
       </div>
-      <nav className="settings-category-navigation" aria-label={labels.navigation}>
+      <nav
+        className="settings-category-navigation"
+        aria-label={labels.navigation}
+        onKeyDown={(event) => {
+          if (
+            event.defaultPrevented ||
+            !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)
+          )
+            return;
+          const items = Array.from(
+            event.currentTarget.querySelectorAll<HTMLButtonElement>(
+              "button.settings-navigation-item:not(:disabled)",
+            ),
+          );
+          if (!items.length) return;
+          const current = items.indexOf(document.activeElement as HTMLButtonElement);
+          let next = 0;
+          if (event.key === "ArrowDown") next = current < 0 ? 0 : (current + 1) % items.length;
+          else if (event.key === "ArrowUp")
+            next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
+          else if (event.key === "End") next = items.length - 1;
+          event.preventDefault();
+          items[next]?.focus();
+        }}
+      >
         {visibleGroups.map((group) => (
           <section key={group.id} aria-label={group.label}>
             <div className="settings-group-label">{group.label}</div>
@@ -131,6 +144,43 @@ export function SettingsNavigation({
           </p>
         )}
       </nav>
+    </>
+  );
+
+  if (variant === "modal") {
+    return (
+      <aside className="settings-sidebar settings-modal-sidebar" data-settings-variant="modal">
+        {navigationBody}
+      </aside>
+    );
+  }
+
+  return (
+    <NavigationSidebar
+      className="settings-sidebar"
+      width={width}
+      rail={rail}
+      footer={footer}
+      chrome={
+        <div className="workspace-navigation">
+          <TitleTooltip title={labels.back}>
+            <button
+              type="button"
+              className="icon-button settings-back"
+              aria-label={labels.back}
+              disabled={navigationBusy}
+              onClick={onBack}
+            >
+              {backIcon}
+            </button>
+          </TitleTooltip>
+          <button type="button" className="icon-button" aria-label={labels.forward} disabled>
+            {forwardIcon}
+          </button>
+        </div>
+      }
+    >
+      {navigationBody}
     </NavigationSidebar>
   );
 }

@@ -146,7 +146,7 @@ body {
   --color-tab: var(--color-neutral-100);
   --color-tab-active: var(--color-white);
   --color-tab-border: var(--color-border);
-  --color-secondary-hover: color-mix(in srgb, var(--color-foreground) 10%, transparent);
+  --color-secondary-hover: var(--color-button-hover);
   --color-interaction-ask-surface: var(--color-sky-50);
   --color-interaction-ask-foreground: var(--color-sky-700);
   --color-interaction-ask-fill: color-mix(in oklab, var(--color-green-500) 20%, transparent);
@@ -202,7 +202,11 @@ body {
 }
 
 .dark {
-  --color-composer-action-bar: rgba(255, 255, 255, 0.032);
+  --color-composer-action-bar: color-mix(
+    in oklab,
+    var(--color-surface-composer) 76%,
+    var(--color-background)
+  );
   --color-trajectory-user: #60a5fa;
   --color-trajectory-assistant: #2dd4bf;
   --color-trajectory-reasoning: #a78bfa;
@@ -413,7 +417,11 @@ body {
 }
 
 .theme-areal-dark {
-  --color-composer-action-bar: rgba(255, 255, 255, 0.032);
+  --color-composer-action-bar: color-mix(
+    in oklab,
+    var(--color-surface-composer) 76%,
+    var(--color-background)
+  );
   --color-trajectory-user: #60a5fa;
   --color-trajectory-assistant: #2dd4bf;
   --color-trajectory-reasoning: #a78bfa;
@@ -638,44 +646,11 @@ body {
   will-change: opacity;
 }
 
-/*  Radix Collapsible 在测量 closed 高度时会写入 inline animation-name:none。
-   assistant 历史区自动结束收起需要在延迟卸载期间继续播放高度动画，
-   所以这里用 !important 覆盖 Radix 的 inline style，只作用于显式标记的收起窗口。 */
-[data-zcode-collapsible-animate-close="true"][data-state="closed"] {
-  animation: zcode-collapsible-up var(--motion-slow) var(--ease-in-out) forwards !important;
-}
-
-[data-zcode-collapsible-animate-close="true"][data-state="closed"] > * {
-  animation: zcode-collapsible-fade-out var(--motion-slow) var(--ease-in-out) forwards !important;
-}
-
-@keyframes zcode-collapsible-up {
-  from {
-    height: var(--radix-collapsible-content-height);
-  }
-
-  to {
-    height: 0;
-  }
-}
-
-@keyframes zcode-collapsible-fade-out {
-  from {
-    opacity: 1;
-  }
-
-  to {
-    opacity: 0;
-  }
-}
-
 @scope (:root[data-reduced-motion="true"]) {
   [data-zcode-stream-animate="true"],
   [data-zcode-stream-marker-animate="true"]::marker,
   [data-zcode-tool-stream-animate="true"],
-  [data-zcode-chat-loading-animate="true"],
-  [data-zcode-collapsible-animate-close="true"][data-state="closed"],
-  [data-zcode-collapsible-animate-close="true"][data-state="closed"] > * {
+  [data-zcode-chat-loading-animate="true"] {
     animation: none;
   }
 }
@@ -778,44 +753,6 @@ body {
   .areal-task-interaction-countdown-fill {
     animation: none;
     transform: scaleX(var(--zcode-interaction-progress, 1));
-  }
-}
-
-.areal-update-charge-progress [data-slot="progress-indicator"] {
-  position: relative;
-  overflow: hidden;
-}
-
-.areal-update-charge-progress [data-slot="progress-indicator"]::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  top: 0;
-  width: min(3.5rem, 70%);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in oklab, var(--color-primary-foreground) 62%, transparent),
-    transparent
-  );
-  animation: zcode-update-charge-sweep var(--motion-cycle) var(--ease-in-out) var(--motion-loop);
-  transform: translateX(-120%);
-}
-
-@keyframes zcode-update-charge-sweep {
-  0% {
-    opacity: 0.35;
-    transform: translateX(-120%);
-  }
-
-  50% {
-    opacity: 0.9;
-  }
-
-  100% {
-    opacity: 0.35;
-    transform: translateX(260%);
   }
 }
 
@@ -951,22 +888,4 @@ body {
   .areal-update-floating {
     display: block;
   }
-}
-
-.gen-ui-card {
-  margin-block: var(--spacing-section);
-  min-width: 0;
-}
-.gen-ui-card > header {
-  justify-content: space-between;
-  gap: var(--spacing-inline);
-}
-.gen-ui-card > p,
-.gen-ui-confirmation {
-  padding-block: var(--spacing-field);
-}
-.gen-ui-confirmation textarea {
-  width: 100%;
-  min-height: 80px;
-  margin-block: var(--spacing-field);
 }

@@ -8,6 +8,8 @@ export type DisclosureProps = {
   label: string;
   presentation?: "collapsible" | "inline";
   displayLabel?: string;
+  /** 可选低对比度行内元信息（如耗时汇总），位于标题之后、展开箭头之前。 */
+  meta?: ReactNode;
   children: ReactNode;
   icon?: ReactNode;
   indicator?: ReactNode;
@@ -22,6 +24,7 @@ export type DisclosureProps = {
 export function Disclosure({
   label,
   displayLabel,
+  meta,
   children,
   icon,
   indicator,
@@ -53,6 +56,7 @@ export function Disclosure({
       >
         {icon}
         <span>{displayLabel ?? label}</span>
+        {meta}
         <span className="areal-disclosure-indicator">
           {indicator ?? <ChevronRightIcon size={14} />}
         </span>

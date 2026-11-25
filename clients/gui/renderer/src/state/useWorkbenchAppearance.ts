@@ -3,6 +3,7 @@ import { currentErrorText } from "../errors/currentErrorText.js";
 import { applyThemeWithoutTransitions } from "@areal/ui/theme";
 import type { PlatformServices } from "../services.js";
 import { useAppearance } from "../settings/applicationPreferences.js";
+import { markRendererStartup } from "./startupTiming.js";
 
 export function useWorkbenchAppearance(
   services: PlatformServices,
@@ -19,7 +20,28 @@ export function useWorkbenchAppearance(
   const [dark, setDark] = useState(false);
   useAppearance(dark);
   const [theme, setTheme] = useState(() => localStorage.getItem("areal-gui:theme") ?? "data-dense");
-  const [sidebar, setSidebar] = useState(() => !matchMedia("(max-width: 640px)").matches);
+  const [sidebar, setSidebarState] = useState(() => !matchMedia("(max-width: 640px)").matches);
+  const autoCollapsed = useRef(false);
+  const setSidebar: typeof setSidebarState = (next) => {
+    autoCollapsed.current = false;
+    setSidebarState(next);
+  };
+  useEffect(() => {
+    const query = matchMedia("(max-width: 640px)");
+    const onChange = (event: MediaQueryListEvent) => {
+      if (event.matches) {
+        setSidebarState((open) => {
+          if (open) autoCollapsed.current = true;
+          return false;
+        });
+      } else if (autoCollapsed.current) {
+        autoCollapsed.current = false;
+        setSidebarState(true);
+      }
+    };
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = Number(localStorage.getItem("areal-gui:sidebar-width"));
     return Number.isFinite(saved) && saved >= 240 && saved <= 520 ? saved : 320;
@@ -70,7 +92,10 @@ export function useWorkbenchAppearance(
         applyTheme(next);
       })
       .catch((cause) => onError(currentErrorText(cause)))
-      .finally(() => setThemeReady(true));
+      .finally(() => {
+        markRendererStartup("theme_ready");
+        setThemeReady(true);
+      });
   }, [theme, services]);
   return {
     dark,

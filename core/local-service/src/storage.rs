@@ -126,22 +126,41 @@ pub fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
 }
 
 pub fn write(path: &Path, value: &impl Serialize) -> Result<()> {
+    let _ = write_returning_metadata(path, value)?;
+    Ok(())
+}
+
+/// 原子写盘并返回落盘文件句柄的元数据，供调用方把缓存印记绑定到实际写入的 inode。
+pub fn write_returning_metadata(
+    path: &Path,
+    value: &impl Serialize,
+) -> Result<Option<std::fs::Metadata>> {
     let mut bytes = serde_json::to_vec(value)?;
     bytes.push(b'\n');
-    write_bytes(path, &bytes)
+    write_bytes_returning_metadata(path, &bytes)
 }
 
 /// 同目录临时文件 + fsync + 改名 + fsync 目录；临时文件名以 `.tmp` 开头，见 `json_records`。
 pub fn write_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    let _ = write_bytes_returning_metadata(path, bytes)?;
+    Ok(())
+}
+
+/// 同目录临时文件 + fsync + 改名 + fsync 目录；返回改名后同一文件句柄的元数据。
+/// 若改名与目录同步均已成功，仅元数据读取失败时返回 Ok(None)，不把已落盘的写入转成失败。
+pub fn write_bytes_returning_metadata(
+    path: &Path,
+    bytes: &[u8],
+) -> Result<Option<std::fs::Metadata>> {
     let parent = path.parent().context("missing parent")?;
     let mut file = tempfile::NamedTempFile::new_in(parent)?;
     file.as_file()
         .set_permissions(std::fs::Permissions::from_mode(0o600))?;
     file.write_all(bytes)?;
     file.as_file().sync_all()?;
-    file.persist(path)?;
+    let persisted = file.persist(path)?;
     File::open(parent)?.sync_all()?;
-    Ok(())
+    Ok(persisted.metadata().ok())
 }
 
 /// 读当前用户拥有的普通文件，不限大小、不要求 0600；不存在返回 None。

@@ -161,3 +161,74 @@ async fn creation_recovery_incomplete_or_changed_evidence_remains_unknown() {
         }
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn first_message_creation_preserves_turn_after_lost_outcome_and_rejects_changed_intent() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        let command = uuid::Uuid::new_v4().to_string();
+        let params = json!({"firstMessage":{"text":"first original message","model":{"providerId":"fixture","modelId":"fixture"},"parameters":{"reasoningEffort":"high"},"options":{"permissionPreset":"ask"}}});
+        let request = f.request("session.create", params.clone(), Some(&command));
+        let creating = Fixture::dispatch(f.session("a"), request.clone());
+        f.call("areal/capabilities").await.reply(json!({"features":{"threadStartFirstInput":true,"threadStartAdmissionGuard":true,"permissionPresets":true,"threadCreationJournal":{"binding":binding()}},"methods":["areal/thread/start","areal/request/read"]}));
+        let held = f.call("areal/thread/start").await;
+        assert_eq!(held.request["params"]["firstInput"].as_array().unwrap().len(), 1);
+        assert_eq!(held.request["params"]["firstInput"][0]["text"], "first original message");
+        assert_eq!(held.request["params"]["model"], params["firstMessage"]["model"]);
+        assert_eq!(held.request["params"]["parameters"]["reasoningEffort"], "high");
+        let (_, pending) = f.host.journal.native_snapshot("project").unwrap();
+        let record = &pending["pending"][0];
+        let operation = record["operationId"].clone();
+        let digest = record["nativeDigest"].clone();
+        crate::journal::FAIL_RECORD_WRITES.with(|fail| fail.set(true));
+        held.reply(json!({"thread":{"id":"created-thread"},"turn":{"id":"first-turn"}}));
+        let (_, unknown) = creating.await.unwrap();
+        crate::journal::FAIL_RECORD_WRITES.with(|fail| fail.set(false));
+        assert_eq!(unknown.unwrap()["admissionState"], "unknown");
+
+        let reading = Fixture::dispatch(f.session("a"), f.request("command.read", json!({"commandId":command}), None));
+        f.call("areal/capabilities").await.reply(json!({"features":{"threadCreationJournal":{"binding":current_binding()}}}));
+        f.call("areal/request/read").await.reply(json!({"data":[{"requestId":operation,"method":"areal/thread/start","digest":digest,"identity":"store","status":"completed","threadId":"created-thread","turnId":"first-turn","result":{"threadId":"created-thread","turnId":"first-turn"},"operation":{"requestId":operation,"method":"areal/thread/start","target":{"kind":"thread","threadId":"created-thread"}}}]}));
+        let (_, recovered) = reading.await.unwrap();
+        let recovered = recovered.unwrap();
+        assert_eq!(recovered["admissionState"], "accepted");
+        assert_eq!(recovered["threadId"], "created-thread");
+        assert_eq!(recovered["turnId"], "first-turn");
+        assert_eq!(recovered["receipt"]["result"]["turnId"], "first-turn");
+        let (_, duplicate) = Fixture::dispatch(f.session("a"), request).await.unwrap();
+        assert_eq!(duplicate.unwrap(), recovered);
+        let (_, changed) = Fixture::dispatch(f.session("a"), f.request("session.create", json!({"firstMessage":{"text":"changed"}}), Some(&command))).await.unwrap();
+        assert_eq!(changed.unwrap_err().to_string(), "COMMAND_CONFLICT");
+        assert!(f.calls.try_recv().is_err());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn first_message_creation_requires_core_capability_and_permission() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        let creating = Fixture::dispatch(f.session("a"), f.request("session.create", json!({"firstMessage":{"text":"first"}}), Some(&uuid::Uuid::new_v4().to_string())));
+        f.call("areal/capabilities").await.reply(json!({"features":{"threadStartAdmissionGuard":true,"permissionPresets":true,"threadCreationJournal":{"binding":binding()}},"methods":["areal/thread/start","areal/request/read"]}));
+        assert_eq!(creating.await.unwrap().1.unwrap_err().to_string(), "CORE_INCOMPATIBLE");
+        assert!(f.calls.try_recv().is_err());
+        f.grant("a", |grant| grant["capabilities"] = json!(["observe", "submit"]));
+        let (_, denied) = Fixture::dispatch(f.session("a"), f.request("session.create", json!({"firstMessage":{"text":"first","options":{"permissionPreset":"fullAccess"}}}), Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
+        assert_eq!(denied.unwrap_err().to_string(), "FORBIDDEN");
+        assert!(f.calls.try_recv().is_err());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn first_message_creation_accepts_explicit_default_reasoning() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        let creating = Fixture::dispatch(f.session("a"), f.request("session.create", json!({"firstMessage":{"text":"first default","parameters":{"reasoningEffort":"default"}}}), Some(&uuid::Uuid::new_v4().to_string())));
+        f.call("areal/capabilities").await.reply(json!({"features":{"threadStartFirstInput":true,"threadStartAdmissionGuard":true,"permissionPresets":true,"threadCreationJournal":{"binding":binding()}},"methods":["areal/thread/start","areal/request/read"]}));
+        let call = f.call("areal/thread/start").await;
+        assert_eq!(call.request["params"]["parameters"]["reasoningEffort"], "default");
+        call.reply(json!({"thread":{"id":"created-thread"},"turn":{"id":"first-turn"}}));
+        let result = creating.await.unwrap().1.unwrap();
+        assert_eq!(result["turnId"], "first-turn");
+        assert_eq!(result["admissionState"], "accepted");
+    }).await;
+}

@@ -255,7 +255,6 @@ impl Engine {
             Some(tools::Backend::Client) => (
                 bindings.host.as_ref().map(|host| host.id().to_owned()),
                 bindings.host.is_some()
-                    && tool != "computer_v1"
                     && !(tool == "browser_v1" && args["operation"] == "describe"),
             ),
             // MCP 尚未提供可验证的连接代际，只允许单次回答。

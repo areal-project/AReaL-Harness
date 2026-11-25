@@ -24,22 +24,29 @@ test("public UI Skills retain content scanning and do not admit private Skills",
       await readFile(new URL("./verify-public.mjs", import.meta.url)),
     );
     await put(
-      "../../services/workbench/src/assets/builtin-skills/openai-skill-creator.source.json",
+      "packages/workbench/assets/builtin-skills/openai-skill-creator.source.json",
       JSON.stringify({ files: [] }),
     );
     for (const path of [
+      "AGENTS.md",
       "app/LICENSE",
       "renderer/ZCODE-LICENSE",
       "licenses/material-icon-theme-LICENSE",
       "THIRD-PARTY-NOTICES.md",
-      "../../services/workbench/src/assets/builtin-skills/openai-skill-creator/LICENSE.txt",
-      "../../services/workbench/src/assets/builtin-skills/openai-skill-creator/SKILL.md",
+      "packages/workbench/assets/builtin-skills/openai-skill-creator/LICENSE.txt",
+      "packages/workbench/assets/builtin-skills/openai-skill-creator/SKILL.md",
       "packages/ui/skills/areal-ui-guide/SKILL.md",
       "packages/ui/skills/areal-ui-critique/SKILL.md",
     ])
       await put(path, "Public distribution content\n");
     const accepted = check();
     assert.equal(accepted.status, 0, accepted.stderr);
+    const unexpectedAgents = "packages/ui/AGENTS.md";
+    await put(unexpectedAgents, "Private nested instructions\n");
+    const rejectedAgents = check();
+    assert.notEqual(rejectedAgents.status, 0);
+    assert.match(rejectedAgents.stderr, /Private artifact: packages\/ui\/AGENTS\.md/);
+    await rm(join(gui, unexpectedAgents));
     const unexpected = "packages/ui/skills/private/SKILL.md";
     await put(unexpected, "Private agent instructions\n");
     const rejected = check();

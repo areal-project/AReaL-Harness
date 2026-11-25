@@ -311,6 +311,13 @@ async fn sigkill_windows_preserve_original_admission_without_replay() {
         if created {
             assert_eq!(result["data"].as_array().unwrap().len(), 1, "{point}");
             assert_eq!(result["data"][0]["status"], "completed", "{point}");
+            let thread_id = result["data"][0]["result"]["threadId"].as_str().unwrap();
+            let saved = engine.read(thread_id, true).await.unwrap();
+            assert_eq!(saved.turns.len(), 1, "{point}");
+            assert_eq!(
+                result["data"][0]["result"]["turnId"], saved.turns[0].id,
+                "{point}"
+            );
         } else if point == "afterAdmission" {
             assert_eq!(result["data"][0]["state"], "unknown");
             assert_eq!(result["data"][0]["status"], "admitted");
@@ -355,8 +362,12 @@ async fn creation_crash_worker() {
         .unwrap();
     *engine.desktop.submissions.crash_point.lock().unwrap() =
         Some(std::env::var("AREAL_CREATION_CRASH_POINT").unwrap());
+    let mut input = request(&binding);
+    input.first_input = Some(vec![areal_protocol::Input::text(
+        "first message before crash",
+    )]);
     engine
-        .create_configured("owner".into(), request(&binding), Arc::new(Host))
+        .create_configured("owner".into(), input, Arc::new(Host))
         .await
         .unwrap();
     panic!("requested crash point was not reached");

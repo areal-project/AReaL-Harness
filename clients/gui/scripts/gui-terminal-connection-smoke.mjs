@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect } from "../../../examples/desktop-api/client.mjs";
+import { stopAndAssertFixtureHost } from "./application-cleanup.mjs";
 
 const { HostClient } = createRequire(new URL("../app/package.json", import.meta.url))(
   "@areal/client/node",
@@ -20,6 +21,21 @@ const home = join(root, "host");
 const workspace = join(root, "workspace");
 const user = join(root, "user");
 const scratch = join(root, "scratch");
+const projectAlias = "aaaaaaaaaaaaaaaaaaaaaaaa";
+const nativeSource = {
+  profile: join(root, "profile"),
+  coreHome: join(root, "core"),
+  legacyServiceHome: join(root, "services"),
+};
+const dataDir = join(nativeSource.coreHome, projectAlias, "state");
+const fixtureEnv = {
+  PATH: process.env.PATH,
+  HOME: user,
+  AREAL_HARNESS_HOME: user,
+  AREAL_HARNESS_SERVICE_HOME: home,
+  AREAL_CORE_HOME: nativeSource.coreHome,
+  AREAL_GUI_USER_DATA: nativeSource.profile,
+};
 for (const path of [home, workspace, user, scratch]) await mkdir(path, { mode: 0o700 });
 const deployment = join(root, "deployment.json");
 const config = join(user, "terminal-config.toml");
@@ -53,7 +69,18 @@ const host = new HostClient();
 const owners = [];
 const checks = [];
 let observer;
+let independent;
 let service;
+let stop;
+for (const key of Object.keys(process.env)) {
+  if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE")
+    delete process.env[key];
+}
+Object.assign(process.env, fixtureEnv);
+
+function stopHost() {
+  return (stop ??= stopAndAssertFixtureHost(binary, fixtureEnv, root));
+}
 
 async function until(check, message) {
   const deadline = Date.now() + 20000;
@@ -65,32 +92,34 @@ async function until(check, message) {
   }
 }
 
-async function terminalOwner(descriptor) {
-  const ownerRoot = join(root, `main-owner-${owners.length}`),
-    nativeSource = {
-      profile: join(ownerRoot, "profile"),
-      coreHome: join(ownerRoot, "gui-core"),
-      legacyServiceHome: join(ownerRoot, "services"),
-    };
+async function importTerminalSource() {
   for (const path of Object.values(nativeSource))
     await mkdir(path, { recursive: true, mode: 0o700 });
-  await writeFile(join(nativeSource.coreHome, "projects.json"), "[]");
+  await writeFile(
+    join(nativeSource.coreHome, "projects.json"),
+    JSON.stringify([{ id: projectAlias, root: workspace }]),
+    { mode: 0o600 },
+  );
   const setup = new HostClient();
-  let sourceId;
   try {
     await setup.connect(home);
     await setup.attachSource(nativeSource);
     const result = await setup.importSource(randomUUID(), nativeSource);
     assert.equal(result.kind, "ready");
-    sourceId = (await setup.sourceState(nativeSource)).sourceId;
+    assert.equal(result.receipt.bindings[0].projectId, "terminal-project");
+    return (await setup.sourceState(nativeSource)).sourceId;
   } finally {
     setup.close();
   }
+}
+
+function terminalOwner(sourceId) {
   const options = {
     binary,
     home: nativeSource.coreHome,
     guiProfile: nativeSource.profile,
     hostHome: home,
+    harnessHome: nativeSource.legacyServiceHome,
     userHome: user,
     configHome: user,
     config,
@@ -98,18 +127,31 @@ async function terminalOwner(descriptor) {
 
   const source = `
     const {createNativeHostTransport}=require(process.argv[1]);
-    const {HostCoreClient}=require(process.argv[2]);
-    const config=JSON.parse(process.argv[3]);
-    const backend={host:{sourceId:config.sourceId,home:config.home},hostCoreClients:new Map()};
-    let transport,client;
-    const ready=(async()=>{transport=await createNativeHostTransport(backend,config.options);client=new HostCoreClient({host:transport.call,sourceId:config.sourceId,projectId:config.projectId,scope:'terminal'});backend.hostCoreClients.set('terminal',client);await client.connect();})();
+    const config=JSON.parse(process.argv[2]);
+    const ready=createNativeHostTransport({
+      home:config.home,
+      sourceId:config.sourceId,
+      launch:config.options,
+      onCallback:()=>Promise.reject(new Error("No browser owner")),
+      onEvent:()=>{},
+      onClosed:()=>{},
+    }).then(transport=>({transport}),error=>({error}));
     process.on("message", async ({id, request}) => {
-      if (request === "close") {
-        await ready;client.close();transport.close();
-        process.send({id, result: true}, () => process.exit(0));
-        return;
+      try {
+        const {transport,error}=await ready;
+        if (error) throw error;
+        if (request === "close") {
+          transport.close();
+          process.send({id, result: true}, () => process.exit(0));
+          return;
+        }
+        const result=await transport.call("terminal.command", {
+          ...request,
+          projectId:config.projectAlias,
+          guiOwned:true,
+        });
+        process.send({id,result});
       }
-      try {await ready;process.send({id,result:await client.request(request.method,request.params)}); }
       catch (error) { process.send({id, error: {message: error.message, code: error.code}}); }
     });
   `;
@@ -118,9 +160,8 @@ async function terminalOwner(descriptor) {
     [
       "-e",
       source,
-      join(repository, "services/workbench/src/generated/native-host-transport.cjs"),
-      join(repository, "services/workbench/src/generated/host-core-client.cjs"),
-      JSON.stringify({ sourceId, home, options, projectId: descriptor.projectId }),
+      join(repository, "clients/gui/app/src/core/generated/native-host-transport.cjs"),
+      JSON.stringify({ sourceId, home, options, projectAlias }),
     ],
     {
       env: { PATH: process.env.PATH, HOME: user },
@@ -157,12 +198,18 @@ async function terminalOwner(descriptor) {
         reject(new Error("terminal owner response timeout; query original receipt"));
       }, 20000);
       pending.set(id, { resolve, reject, timer });
-      child.send({ id, request });
+      child.send({ id, request }, (error) => {
+        if (!error || !pending.delete(id)) return;
+        clearTimeout(timer);
+        reject(
+          new Error(`Terminal owner IPC failed: ${error.message}\n${stderr}`, { cause: error }),
+        );
+      });
     });
   const owner = {
     child,
     exited,
-    request: (method, params) => send({ ...descriptor, method, params }),
+    request: (operation, params) => send({ operation, ...params }),
     close: () => send("close"),
   };
   owners.push(owner);
@@ -174,10 +221,11 @@ try {
   await host.registerProject(randomUUID(), {
     projectId: "terminal-project",
     workspace,
-    dataDir: join(root, "state"),
+    dataDir,
     source: { kind: "cli" },
     defaultBinding: true,
   });
+  const sourceId = await importTerminalSource();
   ({ service } = await host.ensureProject(randomUUID(), "terminal-project", {
     workspace,
     cwd: workspace,
@@ -189,7 +237,7 @@ try {
     credentialNames: [],
     options: {
       workspace,
-      data_dir: join(root, "state"),
+      data_dir: dataDir,
       scratch,
       allow_write: true,
       allow_network: false,
@@ -201,14 +249,9 @@ try {
     },
   }));
   observer = await connect(service.endpoint, service.authFile);
+  independent = await connect(service.endpoint, service.authFile);
   assert.equal((await observer.call("areal/capabilities")).features.connectionProcesses, true);
-  const descriptor = {
-    projectId: "terminal-project",
-    serviceId: service.serviceId,
-    generation: service.generation,
-  };
-  const a = await terminalOwner(descriptor);
-  const b = await terminalOwner(descriptor);
+  const a = terminalOwner(sourceId);
   const thread = (
     await observer.call("areal/thread/start", {
       requestId: randomUUID(),
@@ -234,27 +277,30 @@ try {
     timeoutMs: 30000,
   };
   await assert.rejects(
-    a.request("areal/process/start", { ...request, threadId: legacy, requestId: randomUUID() }),
+    a.request("processStart", { ...request, threadId: legacy, requestId: randomUUID() }),
     /profile.*connection/i,
   );
   assert.deepEqual((await observer.call("areal/process/list", { threadId: legacy })).data, []);
   checks.push("legacy-profile-does-not-gain-connection-process-permission");
 
   const originalId = randomUUID();
-  const first = await a.request("areal/process/start", { ...request, requestId: originalId });
-  const second = await b.request("areal/process/start", { ...request, requestId: randomUUID() });
+  const first = await a.request("processStart", { ...request, requestId: originalId });
+  const second = await independent.call("areal/process/start", {
+    ...request,
+    requestId: randomUUID(),
+  });
   const ordinary = await observer.call("areal/process/start", {
     ...request,
     lifetime: "thread",
     requestId: randomUUID(),
   });
-  await a.request("areal/process/write", {
+  await a.request("processWrite", {
     threadId: thread,
     id: first.id,
     requestId: randomUUID(),
     dataBase64: Buffer.from("printf connection-terminal-; printf 'ready\\n'\n").toString("base64"),
   });
-  await a.request("areal/process/resize", {
+  await a.request("processResize", {
     threadId: thread,
     id: first.id,
     requestId: randomUUID(),
@@ -264,7 +310,7 @@ try {
   let text = "";
   let cursor;
   await until(async () => {
-    const output = await a.request("areal/process/read", {
+    const output = await a.request("processOutput", {
       threadId: thread,
       id: first.id,
       ...(cursor ? { after: cursor } : {}),
@@ -297,18 +343,36 @@ try {
   assert.equal((await host.status()).projects[0].service.generation, service.generation);
   checks.push("main-owner-sigkill-cleans-only-its-process-without-stopping-core");
 
-  const receipt = await b.request("areal/request/read", {
-    threadId: thread,
-    requestId: originalId,
-  });
-  assert.equal(receipt.data.find((entry) => entry.requestId === originalId).result.id, first.id);
+  const b = terminalOwner(sourceId);
+  const receipt = await until(async () => {
+    const value = await b.request("processSubmission", {
+      threadId: thread,
+      requestId: originalId,
+    });
+    return value.confirmed && value;
+  }, "successor attachment can observe the original process receipt");
+  assert.equal(receipt.confirmed, true);
+  assert.equal(receipt.result.id, first.id);
+  assert.equal(receipt.result.closed, true);
   checks.push("lost-owner-original-request-recovery-keeps-same-process-identity");
+  const successor = await b.request("processStart", { ...request, requestId: randomUUID() });
   await b.close();
   assert.equal((await b.exited).code, 0);
   await until(async () => {
     const processes = (await observer.call("areal/process/list", { threadId: thread })).data;
-    return processes.find((process) => process.id === second.id).cleanupConfirmed;
+    return processes.find((process) => process.id === successor.id).cleanupConfirmed;
   }, "graceful terminal owner disconnect releases its Runtime scope");
+  assert.equal(
+    (await observer.call("areal/process/list", { threadId: thread })).data.find(
+      (process) => process.id === second.id,
+    ).cleanupConfirmed,
+    false,
+  );
+  await independent.call("areal/process/terminate", {
+    threadId: thread,
+    id: second.id,
+    requestId: randomUUID(),
+  });
   assert.equal(
     (await observer.call("areal/process/list", { threadId: thread })).data.find(
       (process) => process.id === ordinary.id,
@@ -321,12 +385,8 @@ try {
     requestId: randomUUID(),
   });
   checks.push("graceful-disconnect-preserves-ordinary-thread-resource");
-  const stopped = await host.request("host.stop", {
-    requestId: randomUUID(),
-    expectedGeneration: host.generation,
-    strategy: "ifIdle",
-  });
-  assert.equal(stopped.state, "completed");
+  const stopped = await stopHost();
+  checks.push("original-host-stop-receipt-and-process-exits-confirmed");
   const result = {
     root,
     binary,
@@ -334,17 +394,13 @@ try {
       .update(await readFile(binary))
       .digest("hex"),
     checks,
+    stopRequestId: stopped.requestId,
     owners: owners.map(({ child }) => ({
       pid: child.pid,
       code: child.exitCode,
       signal: child.signalCode,
     })),
-    excluded: [
-      "Electron UI and quit",
-      "Desktop command journal bridge",
-      "real provider",
-      "package",
-    ],
+    excluded: ["Electron UI and quit", "real provider", "package"],
   };
   await writeFile(join(root, "result.json"), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
@@ -355,15 +411,9 @@ try {
     await owner.exited;
   }
   observer?.socket.close();
+  independent?.socket.close();
   try {
-    if (host.socket && !host.socket.destroyed) {
-      const result = await host.request("host.stop", {
-        requestId: randomUUID(),
-        expectedGeneration: host.generation,
-        strategy: "cancel",
-      });
-      assert.equal(result.state, "completed");
-    }
+    if (!stop && host.identity?.pid) await stopHost();
   } finally {
     host.close();
   }

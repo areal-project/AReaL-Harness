@@ -358,10 +358,7 @@ export function PluginCenter({
   const readinessReason = (value: PluginReadiness) =>
     t("settings.pluginCenter.requiredHostToolsUnavailable", {
       tools: value.missingTools.join(", "),
-    }) +
-    (value.missingTools.includes("computer_v1")
-      ? ` ${t("settings.pluginCenter.enableNativeComputerProvider")}`
-      : "");
+    });
   useEffect(() => {
     setPreview((current) => (current?.id === selected ? current : null));
     setInstallReview(false);
@@ -1100,7 +1097,7 @@ export function PluginCenter({
             unstyled
             data-slot={undefined}
             type="submit"
-            className="plugin-center-manage"
+            className="mt-4"
             onClick={() => navigate(onSettings)}
           >
             {t("settings.pluginCenter.manageInstalled")}
@@ -1408,10 +1405,10 @@ export function PluginCenter({
                           })}
                         >
                           <Button
-                            unstyled
-                            data-slot={undefined}
-                            type="submit"
-                            className="plugin-row-info"
+                            type="button"
+                            variant="row"
+                            size="none"
+                            className="min-w-0 flex-1 shrink"
                             ref={(element) => {
                               if (element) pluginRows.current.set(item.id, element);
                               else pluginRows.current.delete(item.id);
@@ -1421,12 +1418,14 @@ export function PluginCenter({
                             })}
                             onClick={() => setSelected(item.id)}
                           >
-                            <span className="plugin-resource-icon">
-                              <Package size={20} />
-                            </span>
-                            <span>
-                              <strong>{item.displayName || item.name}</strong>
-                              <small>{item.description || item.id}</small>
+                            <span className="plugin-row-info">
+                              <span className="plugin-resource-icon">
+                                <Package size={20} />
+                              </span>
+                              <span>
+                                <strong>{item.displayName || item.name}</strong>
+                                <small>{item.description || item.id}</small>
+                              </span>
                             </span>
                           </Button>
                           {listRoute.kind === "installed" ? (
@@ -1454,10 +1453,9 @@ export function PluginCenter({
                             />
                           ) : (
                             <Button
-                              unstyled
-                              data-slot={undefined}
-                              type="submit"
-                              className="plugin-row-action"
+                              type="button"
+                              variant="ghost-subtle"
+                              size={item.installed ? "sm" : "icon"}
                               aria-label={t("settings.pluginCenter.valuePluginValue2", {
                                 value0: item.installed
                                   ? t("settings.pluginCenter.manage")
@@ -2310,9 +2308,10 @@ export function PluginCenter({
                               key={skill.id}
                               label={
                                 <Button
-                                  unstyled
-                                  data-slot={undefined}
-                                  type="submit"
+                                  type="button"
+                                  variant="inline-link"
+                                  size="none"
+                                  align="start"
                                   disabled={
                                     !detail.enabled ||
                                     !requested ||
@@ -2321,7 +2320,6 @@ export function PluginCenter({
                                       detail.installedDigest,
                                     )
                                   }
-                                  className="plugin-skill-link"
                                   onClick={() =>
                                     openSkill({
                                       ...skill,

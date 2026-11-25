@@ -1,4 +1,5 @@
 use super::*;
+use fs2::FileExt;
 #[test]
 #[cfg(target_os = "macos")]
 fn prior_boot_host_activation_records_adoption_without_settling_history() {
@@ -378,6 +379,7 @@ async fn unpublished_cli_import_blocks_journal_read_prepare_and_bound_commit() {
             auth_file: home.join("auth"),
             pid: std::process::id(),
             executable_version: "fixture".into(),
+            executable_digest: None,
         },
         token: "fixture".into(),
         slots: RefCell::new(BTreeMap::from([(
@@ -386,6 +388,7 @@ async fn unpublished_cli_import_blocks_journal_read_prepare_and_bound_commit() {
         )])),
         stop: RefCell::new(None),
         host_stop_gate: Mutex::new(()),
+        clients: Default::default(),
         changes,
         exit: Notify::new(),
         migration: migration.into(),
@@ -397,6 +400,7 @@ async fn unpublished_cli_import_blocks_journal_read_prepare_and_bound_commit() {
         read_models: Default::default(),
         loopback: loopback::Loopback::default(),
         schedules: schedules::Schedules::load(&home).unwrap(),
+        bots: bots::Bots::load(&home).unwrap(),
     });
     let (socket, _peer) = std::os::unix::net::UnixStream::pair().unwrap();
     let connection = ConnectionGuard {
@@ -430,7 +434,7 @@ async fn unpublished_cli_import_blocks_journal_read_prepare_and_bound_commit() {
     }
     drop(lock);
     let ready = host.client_state("gui.import", json!({"requestId":result["requestId"],"expectedGeneration":"generation","source":source}), &connection).unwrap();
-    assert_eq!(ready["kind"], "ready");
+    assert_eq!(ready["kind"], "ready", "{ready}");
     let original_source = host
         .client_state("gui.source", json!({"source":source}), &connection)
         .unwrap();
@@ -729,6 +733,36 @@ async fn unpublished_cli_import_blocks_journal_read_prepare_and_bound_commit() {
         host.slots.borrow()[&gui_registration.project_id].credentials[reference],
         "vault-secret"
     );
+    let mut deferred_cred_gui = gui_input.clone();
+    deferred_cred_gui.request_id = uuid::Uuid::new_v4().to_string();
+    deferred_cred_gui
+        .launch_inputs
+        .as_mut()
+        .unwrap()
+        .credential_names
+        .clear();
+    deferred_cred_gui.credentials.clear();
+    std::fs::write(
+        deferred_cred_gui
+            .launch_inputs
+            .as_ref()
+            .unwrap()
+            .config_home
+            .join("config.toml"),
+        "schema_version=2\n[model]\nprovider='cold'\nname='fixture'\n[model.providers.cold]\nname='Cold'\nendpoint='http://127.0.0.1:1/v1/chat/completions'\nprotocol='chat-completions'\napi_key_env='AREAL_CREDENTIAL_key'\nmodels=[{id='fixture'}]\n",
+    )
+    .unwrap();
+    host.slots
+        .borrow_mut()
+        .get_mut(&gui_registration.project_id)
+        .unwrap()
+        .credentials
+        .clear();
+    let _ = host.ensure_inner(&deferred_cred_gui).await.unwrap_err();
+    assert_eq!(
+        host.slots.borrow()[&gui_registration.project_id].credentials[reference],
+        "vault-secret"
+    );
     host.client_state("vault.replace",json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","slot":credential_slot,"expectedRevision":1,"value":null}),&connection).unwrap();
     assert!(
         host.ensure_inner(&gui_input)
@@ -800,15 +834,70 @@ async fn activation_preserves_status_errors_without_attempting_launch() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn handoff_start_waits_for_the_original_host_lock_before_publishing_a_generation() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let home = root.path().join("home");
+            storage::private_dir(&home).unwrap();
+            let lease = storage::open_private(&home.join("host.lock"), true).unwrap();
+            lease.try_lock_exclusive().unwrap();
+            let bin_dir = std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .to_path_buf();
+            let starting = tokio::task::spawn_local(run_local_mode(
+                RunOptions {
+                    home: home.clone(),
+                    bin_dir,
+                },
+                false,
+                true,
+            ));
+            tokio::task::yield_now().await;
+            assert!(!starting.is_finished());
+            assert!(!home.join("host/host.json").exists());
+            drop(lease);
+            let client = loop {
+                if let Ok(client) = Client::connect_at(home.clone()).await {
+                    break client;
+                }
+                tokio::task::yield_now().await;
+            };
+            client
+                .stop(
+                    &uuid::Uuid::new_v4().to_string(),
+                    &client.identity().generation,
+                    StopStrategy::IfIdle,
+                )
+                .await
+                .unwrap();
+            assert!(matches!(
+                starting.await.unwrap().unwrap(),
+                HostExit::Stopped
+            ));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn authenticated_registry_receipts_survive_restart_without_activation() {
     tokio::task::LocalSet::new().run_until(async {
         let root=tempfile::tempdir().unwrap();let home=root.path().join("home");let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();
         let bin=std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
-        let task=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin.clone()}));
-        let client=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}tokio::task::yield_now().await;};
+        let mut task=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin.clone()}));
+        let client=tokio::time::timeout(Duration::from_secs(15),async {loop {
+            if let Ok(client)=Client::connect_at(home.clone()).await {break client;}
+            if task.is_finished() {
+                let exit=(&mut task).await.unwrap().unwrap_or_else(|error|panic!("initial startup failed before discovery: {error:#}"));
+                panic!("initial startup ended before discovery: {}",match exit {HostExit::Stopped=>"stopped",HostExit::AlreadyRunning=>"alreadyRunning"});
+            }
+            tokio::task::yield_now().await;
+        }}).await.expect("initial startup must publish discovery");
         let run_record=std::fs::read(home.join("host/service-run.json")).unwrap();
         assert!(matches!(run_local(RunOptions {home:home.clone(),bin_dir:bin.clone()}).await.unwrap(),HostExit::AlreadyRunning));
-        assert!(matches!(run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true).await.unwrap(),HostExit::AlreadyRunning));
+        assert!(matches!(run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true,false).await.unwrap(),HostExit::AlreadyRunning));
         assert_eq!(std::fs::read(home.join("host/service-run.json")).unwrap(),run_record);
         let identity=client.identity().clone();assert!(client.status().await.unwrap().projects.is_empty());
         let mut bad=BufReader::new(UnixStream::connect(&identity.socket_path).await.unwrap());
@@ -861,7 +950,7 @@ async fn authenticated_registry_receipts_survive_restart_without_activation() {
         let stop_id=uuid::Uuid::new_v4().to_string();let stop=client.stop(&stop_id,&identity.generation,StopStrategy::IfIdle).await.unwrap();assert_eq!(stop["state"],"completed");assert!(matches!(task.await.unwrap().unwrap(),HostExit::Stopped));
         assert!(!home.join("host/host.json").exists());
         let stopped_record=std::fs::read(home.join("host/stop.json")).unwrap();
-        match run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true).await.unwrap() {
+        match run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true,false).await.unwrap() {
             HostExit::Stopped => {},
             HostExit::AlreadyRunning => panic!("stopped Host retained its exclusive lock"),
         }
@@ -872,8 +961,15 @@ async fn authenticated_registry_receipts_survive_restart_without_activation() {
         assert_eq!(offline["stopIntent"],true);
         assert_eq!(storage::read::<String>(&home.join("host/identity.json")).unwrap(),identity.host_id);
         assert_eq!(crate::operation_offline(&home,&id).unwrap().unwrap(),receipt);
-        let restarted=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin}));
-        let next=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}tokio::task::yield_now().await;};
+        let mut restarted=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin}));
+        let next=tokio::time::timeout(Duration::from_secs(15),async {loop {
+            if let Ok(client)=Client::connect_at(home.clone()).await {break client;}
+            if restarted.is_finished() {
+                let exit=(&mut restarted).await.unwrap().unwrap_or_else(|error|panic!("restart failed before discovery: {error:#}"));
+                panic!("restart ended before discovery: {}",match exit {HostExit::Stopped=>"stopped",HostExit::AlreadyRunning=>"alreadyRunning"});
+            }
+            tokio::task::yield_now().await;
+        }}).await.expect("restart must publish discovery");
         assert_eq!(next.identity().host_id,identity.host_id);assert_ne!(next.identity().generation,identity.generation);assert_eq!(next.list().await.unwrap(),vec![registration]);assert_eq!(next.operation(&id).await.unwrap().unwrap(),receipt);assert_eq!(next.operation(&stop_id).await.unwrap().unwrap()["state"],"completed");assert_eq!(next.status().await.unwrap().state,"running");
         next.stop(&uuid::Uuid::new_v4().to_string(),&next.identity().generation,StopStrategy::IfIdle).await.unwrap();restarted.await.unwrap().unwrap();
     }).await;
@@ -1112,8 +1208,8 @@ async fn host_stop_waits_for_live_activation_before_classifying_pending_admissio
         let root=tempfile::tempdir().unwrap();let home=root.path().canonicalize().unwrap().join("home");
         for path in [&home,&home.join("host/operations"),&home.join("host/projects")] {storage::private_dir(path).unwrap();}
         let mut slots=BTreeMap::new();
-        slots.insert("project".into(),Slot {registration:ProjectRegistration {project_id:"project".into(),workspace:root.path().into(),data_dir:home.join("data"),source:ProjectSource::Cli,default_binding:false},gate: Arc::new(RwLock::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new(),imported_credentials:BTreeSet::new()});
-        let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(), read_models: Default::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
+        slots.insert("project".into(),Slot::imported(ProjectRegistration {project_id:"project".into(),workspace:root.path().into(),data_dir:home.join("data"),source:ProjectSource::Cli,default_binding:false}));
+        let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into(),executable_digest: None},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),clients: Default::default(),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(), read_models: Default::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap(),bots:bots::Bots::load(&home).unwrap()});
         let activation=uuid::Uuid::new_v4().to_string();
         let mut record=Operation {digest:"fixture".into(),receipt:json!({"requestId":activation,"method":"project.ensure","projectId":"project","state":"acceptedPending"}),evidence:Value::Null};
         storage::write(&wire::operation_path(&home,&activation),&record).unwrap();
@@ -1137,8 +1233,8 @@ async fn stop_barrier_closes_pre_admission_awaits_and_reconciliation_observes_bu
         for path in [&home,&home.join("host/operations"),&home.join("host/projects")] {storage::private_dir(path).unwrap();}
         let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();let workspace=workspace.canonicalize().unwrap();
         let mut slots=BTreeMap::new();
-        for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate: Arc::new(RwLock::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new(),imported_credentials:BTreeSet::new()});}
-        let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(), read_models: Default::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
+        for id in ["a","b","c"] {slots.insert(id.into(),Slot::imported(ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false}));}
+        let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into(),executable_digest: None},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),clients: Default::default(),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(), read_models: Default::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap(),bots:bots::Bots::load(&home).unwrap()});
         let registration=host.slots.borrow()["b"].registration.clone();storage::private_dir(&registration.data_dir).unwrap();let instance=Host::service_id(&registration);let directory=storage::registry(&home,&instance).unwrap();storage::private_dir(&directory).unwrap();
         let service:Service=serde_json::from_value(json!({"protocolVersion":1,"serviceId":instance,"generation":uuid::Uuid::new_v4().to_string(),"workspace":workspace,"dataDir":registration.data_dir,"configFingerprint":"fixture","owner":host.owner(),"endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":1,"corePid":1,"state":"stopped"})).unwrap();storage::write(&directory.join("service.json"),&service).unwrap();storage::write(&directory.join("crash.json"),&storage::CrashReceipt {version:1,unexpected_core_exit:true,identity:service.identity.clone(),owner:service.owner.clone(),components:BTreeMap::new(),cleanup_confirmed:true}).unwrap();
         let activation=uuid::Uuid::new_v4().to_string();let record=Operation {digest:"fixture".into(),receipt:json!({"version":1,"requestId":activation,"method":"project.ensure","projectId":"b","state":"acceptedPending"}),evidence:json!({"serviceId":instance,"fingerprint":"fixture","owner":host.owner(),"registration":registration,"previousService":null})};storage::write(&wire::operation_path(&home,&activation),&record).unwrap();
@@ -1157,6 +1253,54 @@ async fn stop_barrier_closes_pre_admission_awaits_and_reconciliation_observes_bu
         drop(startup);assert!(stopping_project.await.unwrap().unwrap_err().to_string().contains("stopInProgress"));assert!(host.receipt(&project_request).unwrap().is_none());drop(held_a);
         assert_eq!(stopping.await.unwrap().unwrap()["state"],"completed");
     }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn startup_reconciles_interrupted_stop_preparation_before_accepting_clients() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for legacy_admission in [true, false] {
+                let root = tempfile::tempdir().unwrap();
+                let home = root.path().canonicalize().unwrap().join("home");
+                storage::private_dir(&home.join("host/operations")).unwrap();
+                let request = uuid::Uuid::new_v4().to_string();
+                let admission = json!({"version":1,"method":"host.stop","requestId":request,
+                    "hostId":uuid::Uuid::new_v4().to_string(),"generation":uuid::Uuid::new_v4().to_string(),
+                    "projectId":"","strategy":"cancel","state":"acceptedPending"});
+                let mut snapshot = admission.clone();
+                snapshot["projects"] = json!([]);
+                snapshot["localRelay"] = json!({"state":"acceptedPending"});
+                if !legacy_admission {
+                    snapshot["preparationPending"] = json!(true);
+                }
+                storage::write(&home.join("host/stop.json"), &snapshot).unwrap();
+                storage::write(&wire::operation_path(&home, &request), &Operation {
+                    digest: "fixture".into(),
+                    receipt: if legacy_admission { admission } else { snapshot },
+                    evidence: Value::Null,
+                }).unwrap();
+                let bin = std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
+                let task = tokio::task::spawn_local(run_local(RunOptions { home: home.clone(), bin_dir: bin }));
+                let client = loop {
+                    if let Ok(client) = Client::connect_at(home.clone()).await { break client; }
+                    assert!(!task.is_finished(), "Host exited during startup");
+                    tokio::task::yield_now().await;
+                };
+                let status = client.status().await.unwrap();
+                assert!(!status.stop_intent, "interrupted preparation must settle before the first status read");
+                assert_eq!(status.state, "running");
+                let original = client.operation(&request).await.unwrap().unwrap();
+                assert_eq!(original["state"], "blocked");
+                assert_eq!(original["preparationInterrupted"], true);
+                assert_eq!(original["requestId"], request);
+                assert_eq!(original["projects"], json!([]));
+                assert_eq!(client.operation(&request).await.unwrap().unwrap(), original);
+                assert_eq!(storage::json_records(&home.join("host/operations"), true).unwrap().len(), 1);
+                task.abort();
+                assert!(task.await.is_err_and(|error| error.is_cancelled()));
+            }
+        })
+        .await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1327,11 +1471,13 @@ async fn restored_host_does_not_settle_an_old_relay_without_original_exit_eviden
             auth_file: home.join("auth"),
             pid: std::process::id(),
             executable_version: "fixture".into(),
+            executable_digest: None,
         },
         token: "fixture".into(),
         slots: RefCell::new(BTreeMap::new()),
         stop: RefCell::new(None),
         host_stop_gate: Mutex::new(()),
+        clients: Default::default(),
         changes,
         exit: Notify::new(),
         migration: crate::migration::Migration::new(&home).unwrap().into(),
@@ -1340,6 +1486,7 @@ async fn restored_host_does_not_settle_an_old_relay_without_original_exit_eviden
         gateway: gateway_owner::Gateway::default(),
         subscriptions: subscriptions::Subscriptions::default(),
         schedules: schedules::Schedules::load(&home).unwrap(),
+        bots: bots::Bots::load(&home).unwrap(),
         power: power::Power::default(),
         read_models: Default::default(),
         loopback: loopback::Loopback::default(),
@@ -1356,4 +1503,217 @@ async fn restored_host_does_not_settle_an_old_relay_without_original_exit_eviden
     current["generation"] = json!(host.identity.generation);
     host.settle_local_relay(&mut current).await;
     assert_eq!(current["localRelay"]["state"], "completed");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn interrupted_host_stop_preparation_recovers_without_replaying_stop() {
+    let directory = tempfile::tempdir().unwrap();
+    let home = directory.path().canonicalize().unwrap();
+    let (changes, _) = watch::channel(0);
+    let host = Host {
+        home: home.clone(),
+        bin: home.clone(),
+        identity: HostIdentity {
+            version: VERSION,
+            host_id: "same-host".into(),
+            generation: "replacement-generation".into(),
+            socket_path: home.join("socket"),
+            auth_file: home.join("auth"),
+            pid: std::process::id(),
+            executable_version: "fixture".into(),
+            executable_digest: None,
+        },
+        token: "fixture".into(),
+        slots: RefCell::new(BTreeMap::new()),
+        stop: RefCell::new(None),
+        host_stop_gate: Mutex::new(()),
+        clients: Default::default(),
+        changes,
+        exit: Notify::new(),
+        migration: crate::migration::Migration::new(&home).unwrap().into(),
+        journal: crate::journal::Journal::new(&home).unwrap(),
+        remote: crate::remote_state::RemoteState::new(&home),
+        gateway: gateway_owner::Gateway::default(),
+        subscriptions: subscriptions::Subscriptions::default(),
+        schedules: schedules::Schedules::load(&home).unwrap(),
+        bots: bots::Bots::load(&home).unwrap(),
+        power: power::Power::default(),
+        read_models: Default::default(),
+        loopback: loopback::Loopback::default(),
+    };
+    storage::private_dir(&home.join("host/operations")).unwrap();
+    let request = uuid::Uuid::new_v4().to_string();
+    let receipt = json!({"version":1,"requestId":request,"method":"host.stop","hostId":"same-host","generation":"original-generation","state":"acceptedPending","projectId":""});
+    let snapshot = json!({"version":1,"requestId":request,"hostId":"same-host","generation":"original-generation","strategy":"cancel","state":"acceptedPending","projects":[],"localRelay":{"state":"acceptedPending"}});
+    storage::write(
+        &wire::operation_path(&home, &request),
+        &Operation {
+            digest: "fixture".into(),
+            receipt,
+            evidence: Value::Null,
+        },
+    )
+    .unwrap();
+    storage::write(&home.join("host/stop.json"), &snapshot).unwrap();
+    *host.stop.borrow_mut() = Some(snapshot);
+    let result = host.reconcile(&request).await.unwrap().unwrap();
+    assert_eq!(result["strategy"], "cancel");
+    assert_eq!(result["projects"], json!([]));
+    assert_eq!(result["state"], "blocked");
+    assert!(host.stop.borrow().is_none());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn status_probe_timeout_does_not_revoke_live_execution_identity() {
+    let root = tempfile::tempdir().unwrap();
+    let host = schedules::tests::fixture(root.path());
+    let registration = host.slots.borrow()["project"].registration.clone();
+    storage::private_dir(&registration.data_dir).unwrap();
+    let lock = storage::open_private(&registration.data_dir.join("service.lock"), true).unwrap();
+    lock.lock_exclusive().unwrap();
+    let directory = storage::registry(&host.home, &Host::service_id(&registration)).unwrap();
+    storage::private_dir(&directory).unwrap();
+    let listener =
+        tokio::net::UnixListener::bind(storage::control_socket(&directory).unwrap()).unwrap();
+    let service: Service = serde_json::from_value(json!({
+        "protocolVersion":1,"serviceId":Host::service_id(&registration),
+        "generation":"original-core","workspace":registration.workspace,
+        "dataDir":registration.data_dir,"configFingerprint":"fixture",
+        "owner":host.owner(),"endpoint":"ws://127.0.0.1:1/","webUrl":"",
+        "authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),
+        "hostPid":500000000,"corePid":500000001,"state":"ready"
+    }))
+    .unwrap();
+    storage::write(&directory.join("service.json"), &service).unwrap();
+    let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+    {
+        let mut slots = host.slots.borrow_mut();
+        let slot = slots.get_mut("project").unwrap();
+        slot.state = "ready".into();
+        slot.service = Some(service.clone());
+        slot.writer = Some(writer);
+        slot.lifetime = Some(Rc::new(lifetime));
+    }
+    // 控制口已接受请求但不回答，确定命中探测超时，而不是伪造进程退出。
+    let (status, accepted) = tokio::join!(host.project_status("project"), listener.accept());
+    let (_connection, _) = accepted.unwrap();
+    assert_eq!(
+        status.state, "ready",
+        "observation timeout must not revoke execution identity"
+    );
+    assert_eq!(
+        host.slots.borrow()["project"]
+            .service
+            .as_ref()
+            .unwrap()
+            .identity,
+        service.identity
+    );
+    let mut foreign = service;
+    foreign.identity.service_id = "different-service".into();
+    storage::write(&directory.join("service.json"), &foreign).unwrap();
+    assert_eq!(
+        host.project_status("project").await.state,
+        "unavailable",
+        "a proven identity mismatch must still invalidate the connection"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn reconcile_pending_blockers_settles_confirmed_stop_and_keeps_unconfirmed_blocker() {
+    let root = tempfile::tempdir().unwrap();
+    let host = schedules::tests::fixture(root.path());
+    let registration = host.slots.borrow()["project"].registration.clone();
+    storage::private_dir(&registration.data_dir).unwrap();
+    let instance = Host::service_id(&registration);
+    let directory = storage::registry(&host.home, &instance).unwrap();
+    storage::private_dir(&directory).unwrap();
+    let service: Service = serde_json::from_value(json!({
+        "protocolVersion":1,"serviceId":instance,"generation":"gen-1",
+        "workspace":registration.workspace,"dataDir":registration.data_dir,
+        "configFingerprint":"fixture","owner":host.owner(),
+        "endpoint":"ws://127.0.0.1:1/","webUrl":"",
+        "authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),
+        "hostPid":1,"corePid":1,"state":"ready"
+    }))
+    .unwrap();
+    storage::write(&directory.join("service.json"), &service).unwrap();
+
+    // 1. 写入一条已落盘的服务回执，Host 侧仍为 admissionUnknown。
+    let settled_req = uuid::Uuid::new_v4().to_string();
+    storage::write_stop_receipt(
+        &directory,
+        &storage::StopReceipt {
+            operation: StopOperation {
+                version: VERSION,
+                request_id: settled_req.clone(),
+                service_id: instance.clone(),
+                generation: "gen-1".into(),
+                cancel: false,
+                state: StopOperationState::Blocked,
+                message: Some("active turns running".into()),
+                lifecycle: None,
+            },
+            service: service.clone(),
+            cleanup_confirmed: false,
+        },
+    )
+    .unwrap();
+    storage::write(
+        &wire::operation_path(&host.home, &settled_req),
+        &Operation {
+            digest: "fixture-1".into(),
+            receipt: json!({
+                "version": VERSION,
+                "requestId": settled_req,
+                "projectId": "project",
+                "serviceId": instance,
+                "serviceGeneration": "gen-1",
+                "strategy": "ifIdle",
+                "state": "admissionUnknown"
+            }),
+            evidence: Value::Null,
+        },
+    )
+    .unwrap();
+
+    let gate = host.gate("project").unwrap();
+    let _guard = gate.write().await;
+    host.reconcile_pending_blockers_locked("project", "next-host-stop")
+        .await
+        .unwrap();
+    host.check_pending("project", "next-host-stop")
+        .await
+        .expect("settled single-project stop must no longer block host.stop");
+    let updated: Operation =
+        storage::read(&wire::operation_path(&host.home, &settled_req)).unwrap();
+    assert_eq!(updated.receipt["state"], "blocked");
+
+    // 2. 若仍存在另一条无服务回执的 admissionUnknown，绝不能漏放。
+    let unknown_req = uuid::Uuid::new_v4().to_string();
+    storage::write(
+        &wire::operation_path(&host.home, &unknown_req),
+        &Operation {
+            digest: "fixture-2".into(),
+            receipt: json!({
+                "version": VERSION,
+                "requestId": unknown_req,
+                "projectId": "project",
+                "serviceId": instance,
+                "serviceGeneration": "gen-1",
+                "strategy": "ifIdle",
+                "state": "admissionUnknown"
+            }),
+            evidence: Value::Null,
+        },
+    )
+    .unwrap();
+    host.reconcile_pending_blockers_locked("project", "next-host-stop")
+        .await
+        .unwrap();
+    let err = host
+        .check_pending("project", "next-host-stop")
+        .await
+        .unwrap_err();
+    assert!(format!("{err:#}").contains(&unknown_req));
 }

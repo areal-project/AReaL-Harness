@@ -19,11 +19,11 @@ const operation = z.object({
   desktopExit: z.string().optional(),
   targets: z.array(target),
 });
-// Historical feature projections remain opaque records; this decoder proves only
-// the shared renderer envelope. ProjectionReader owns history-tree integrity.
+// 这里只校验外壳状态；会话和历史由 Host 读协议校验。
 const snapshotSchema: z.ZodType<Snapshot> = z.object({
   projects: z.array(fields),
   desktopCapabilities: z.object({ currentCommands: z.boolean() }).optional(),
+  verifiedDesktopHost: z.object({ hostId: z.string(), generation: z.string() }).optional(),
   power: z
     .object({ enabled: z.boolean(), active: z.boolean(), error: z.string().nullable() })
     .nullable()
@@ -86,7 +86,6 @@ const snapshotSchema: z.ZodType<Snapshot> = z.object({
     })
     .optional(),
   library: fields.optional(),
-  computerControl: fields.nullable().optional(),
 });
 function isSnapshot(value: unknown): value is Snapshot {
   return snapshotSchema.safeParse(value).success;
@@ -150,11 +149,16 @@ export const readTaskDirectory = (value: unknown) =>
   z.object({ cwd: z.string() }).nullable().parse(value);
 export const readProjectlessDirectory = (value: unknown) =>
   z.object({ directory: z.string() }).nullable().parse(value);
-export const readProjectionMessage = (value: unknown) =>
-  z
-    .object({ requestId: z.number().optional(), frame: z.unknown() })
-    .refine((value) => Object.hasOwn(value, "frame"))
-    .parse(value);
+const fileOpenTargets = z.object({
+  targets: z.array(z.object({ id: z.string(), label: z.string() })),
+  preferred: z.string(),
+  preferredLabel: z.string(),
+});
+
+export function isFileOpenTargets(value: unknown): value is FileOpenTargets {
+  return fileOpenTargets.safeParse(value).success;
+}
+
 export function readFileOpenResult(
   value: unknown,
 ): FileOpenTargets | { saved: boolean } | WorkspaceImage | Record<string, never> {
@@ -164,11 +168,7 @@ export function readFileOpenResult(
         mimeType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"]),
         bytes: z.instanceof(Uint8Array),
       }),
-      z.object({
-        targets: z.array(z.object({ id: z.string(), label: z.string() })),
-        preferred: z.string(),
-        preferredLabel: z.string(),
-      }),
+      fileOpenTargets,
       z.object({ saved: z.boolean() }),
       z.record(z.string(), z.never()),
     ])

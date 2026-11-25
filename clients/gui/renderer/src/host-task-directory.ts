@@ -68,7 +68,9 @@ export function refreshTaskDirectory(
       const rows = new Map<string, unknown[]>();
       for (const row of value.data) {
         if (!object(row) || typeof row.projectId !== "string") continue;
-        const projectId = hostIds.get(row.projectId) ?? row.projectId;
+        const owner =
+          typeof row.executionProjectId === "string" ? row.executionProjectId : row.projectId;
+        const projectId = hostIds.get(owner) ?? owner;
         rows.set(projectId, [...(rows.get(projectId) ?? []), row]);
       }
       tasks.clear();
@@ -76,13 +78,15 @@ export function refreshTaskDirectory(
         tasks.set(projectId, taskDirectory(rows.get(projectId) ?? []));
       publish();
       if (typeof window === "undefined") return;
-      for (const project of changed)
-        if (previous.has(project.projectId))
-          window.dispatchEvent(
-            new CustomEvent("areal-scheduled-tasks-changed", {
-              detail: ids.get(project.projectId) ?? project.projectId,
-            }),
-          );
+      const changedOwners = new Set(
+        changed
+          .filter((project) => previous.has(project.projectId))
+          .map((project) => project.logicalProjectId ?? project.projectId),
+      );
+      for (const owner of changedOwners)
+        window.dispatchEvent(
+          new CustomEvent("areal-scheduled-tasks-changed", { detail: ids.get(owner) ?? owner }),
+        );
     })
     .catch(() => {
       if (!current()) return;

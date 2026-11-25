@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover
 import { GitBranch, GitFork } from "lucide-react";
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { Action, Data } from "./services.js";
-import { WorktreeStatus as StatusView, WorktreeWorkspace } from "@areal/ui/experimental";
+import { WorktreeStatus as StatusView, WorktreeWorkspace } from "@areal/ui/compositions";
 import "./Worktree.css";
 
 const stateMessages = {

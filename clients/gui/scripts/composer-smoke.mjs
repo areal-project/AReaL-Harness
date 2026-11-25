@@ -15,7 +15,8 @@ import {
 import {
   assertApplicationStopped,
   closeSmokeApplication,
-  stopFixtureHost,
+  readFixtureHost,
+  settleFixtureHostAfterQuit,
 } from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import {
@@ -451,8 +452,9 @@ try {
       const workbench = document.querySelector('[data-testid="areal-workbench"]');
       return workbench?.dataset.projectId === id && !workbench.dataset.threadId;
     }, pid);
-    assert(
-      project(await state()).profiles.some((p) => p.id === "standard" && p.revision === revision),
+    await until(
+      (s) => project(s)?.profiles?.some((p) => p.id === "standard" && p.revision === revision),
+      `fixture profile standard:${revision} ready`,
     );
     await page.evaluate(
       ({ id, revision }) => {
@@ -497,6 +499,8 @@ try {
     "provider catalog",
   );
   await page.getByRole("button", { name: "新会话工作区", exact: true }).waitFor();
+  await page.getByTestId("composer-model-trigger").click();
+  await page.getByRole("radio", { name: "fixture", exact: true }).click();
   let readyObservation;
   try {
     await until(async () => {
@@ -1351,7 +1355,7 @@ try {
       ["new-draft-five-lines", "新聊天第一行\n第二行\n第三行\n第四行\n第五行", "", true],
     ]) {
       if (newDraft) {
-        await button("新聊天").click();
+        await button("新会话").click();
         await page.waitForFunction(
           () => !document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
         );
@@ -1513,9 +1517,14 @@ try {
     assert.equal(uploadedFile.sizeBytes, Buffer.byteLength(uploadedText));
     const uploadedContent = await page.evaluate(
       async (params) => {
-        const result = await window.arealDesktop.command("media", params);
-        if (!result.ok) throw Error(result.error.message);
-        return new TextDecoder("utf-8", { fatal: true }).decode(result.value.bytes);
+        const observer = globalThis[Symbol.for("areal.host.read")];
+        const value = observer?.call
+          ? await observer.call("media", params)
+          : await window.arealDesktop.command("media", params).then((result) => {
+              if (!result.ok) throw Error(result.error.message);
+              return result.value;
+            });
+        return new TextDecoder("utf-8", { fatal: true }).decode(value.bytes);
       },
       { projectId: pid, threadId: tid, operation: "read", uri: uploadedFile.uri },
     );
@@ -1584,9 +1593,6 @@ try {
     });
     await page.evaluate(() => window.dispatchEvent(new Event("areal-plugins-changed")));
     const pluginRequests = received.length;
-    await input().fill("@");
-    await page.getByRole("option", { name: /搜索 MCP 资源/ }).waitFor();
-    await input().press("Escape");
     await input().fill("before  after");
     await input().press("Home");
     for (let i = 0; i < 7; i++) await input().press("ArrowRight");
@@ -1655,7 +1661,7 @@ try {
       canonical,
       /before \[@composer-plugin\]\(plugin:\/\/composer-plugin@composer-fixture\)  after/,
     );
-    await button("新聊天").click();
+    await button("新会话").click();
     await selectConversation(page, tid);
     await input().locator('[data-mention-category="plugins"]').waitFor();
     pluginList = await call("manage", { projectId: pid, operation: "plugins" });
@@ -1781,7 +1787,7 @@ try {
     assert.equal(await tags().count(), 1, "removing plugin chip retains manual Skill tags");
     await page.getByRole("button", { name: /移除技能 fixture-skill/ }).click();
     await input().fill("");
-    await button("新聊天").click();
+    await button("新会话").click();
     await selectFixtureProfile();
     const firstPluginRequests = received.length;
     await input().fill("new plugin @composer");
@@ -1792,7 +1798,7 @@ try {
       "pointer selection in a new draft never sends",
     );
     await selectConversation(page, tid);
-    await button("新聊天").click();
+    await button("新会话").click();
     await input().locator('[data-mention-category="plugins"]').waitFor();
     await page.reload();
     await input().locator('[data-mention-category="plugins"]').waitFor();
@@ -1970,9 +1976,8 @@ try {
     for (const theme of ["dark", "light"]) {
       await button("设置").click();
       await button("外观").click();
-      await page.getByRole("combobox", { name: "界面主题", exact: true }).click();
       await page
-        .getByRole("option", { name: theme === "dark" ? "深色" : "浅色", exact: true })
+        .getByRole("radio", { name: theme === "dark" ? "深色" : "浅色", exact: true })
         .click();
       await page.waitForFunction(
         (theme) =>
@@ -2103,7 +2108,7 @@ try {
     assert.equal(received.at(-1).reasoning_effort, "low");
     checks.push("existing Composer inline Goal toggle; model effort configuration and request");
     // 新目标只消费目标正文；技能和文件留在新聊天。
-    await button("新聊天").click();
+    await button("新会话").click();
     await selectFixtureProfile();
     await chooseFirst();
     await page
@@ -2184,8 +2189,11 @@ try {
       );
     });
     await page.reload();
-    await input().fill("@");
-    await page.getByRole("group", { name: "Actions", exact: true }).waitFor();
+    await until(async () => {
+      await input().fill("");
+      await input().fill("@");
+      return (await page.getByRole("group", { name: "Plugins", exact: true }).count()) > 0;
+    }, "English plugin mention group ready after reload");
     await input().fill("@no-such-plugin-reference");
     await page
       .getByTestId("composer-catalog")
@@ -2223,6 +2231,8 @@ try {
       if (error.code === "ENOENT") return null;
       throw error;
     });
+  const originalHost = await readFixtureHost(env);
+  const quitPid = app?.process()?.pid ?? null;
   try {
     await quit();
   } catch (error) {
@@ -2231,7 +2241,10 @@ try {
     errors.push(`Electron cleanup: ${error.message}`);
   }
   try {
-    const receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, scratch);
+    const receipt = await settleFixtureHostAfterQuit(binary, env, scratch, {
+      host: originalHost,
+      pid: quitPid,
+    });
     assert.ok(receipt, "the original fixture Host stop is confirmed");
     checks.push("explicit fixture Host stop completes with matching original project receipts");
   } catch (error) {

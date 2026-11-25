@@ -109,7 +109,7 @@ export const commonMessages = {
     en: "These records come from this task's tool history and do not prove the page was updated.",
   },
   "common.browserVerification.trialActive": {
-    "zh-CN": "页面试改仍在生效，请清除后重新观察再验证。",
+    "zh-CN": "页面试改仍在生效，请清除后重新查看再验证。",
     en: "A trial page edit is still active. Clear it and observe again before verifying.",
   },
   "common.context.otherItems": {
@@ -145,7 +145,7 @@ export const commonMessages = {
   "common.schedules.usageDetails": { "zh-CN": "用量明细", en: "Usage details" },
   "common.hooks.result": { "zh-CN": "钩子结果", en: "Hook result" },
   "common.inspection.help": {
-    "zh-CN": "请先核对实际文件或进程。确认只记录事实，不会重放原操作。",
+    "zh-CN": "请先查看实际文件或进程。确认仅记录现状，不会重放操作。",
     en: "Check the actual files or processes first. Confirming records facts only and never replays the operation.",
   },
   "common.promptEdit.note": {
@@ -191,11 +191,11 @@ export const commonMessages = {
     en: "The backend still has work. When it finishes, use the button below to continue.",
   },
   "common.update.installingHelp": {
-    "zh-CN": "应用即将重启，完成后请在“关于”中核对版本。",
+    "zh-CN": "应用即将重启，完成后可在“关于”中查看版本号。",
     en: "The app will restart shortly. Check the version in About after it reopens.",
   },
   "common.update.reopenHelp": {
-    "zh-CN": "请退出并重新打开应用，核对版本后再检查更新。",
+    "zh-CN": "请退出并重新打开应用，确认版本后再检查更新。",
     en: "Quit and reopen the app, check its version, then check for updates again.",
   },
   "common.update.retryHelp": {
@@ -261,9 +261,8 @@ export const commonMessages = {
     en: "· Manual control only; use region annotations for iframes",
   },
   "common.processes.scriptHelp": {
-    "zh-CN":
-      "在当前项目中以 /bin/sh 执行非交互脚本，不分配终端。最长运行 24 小时，权限由 Core 判定。",
-    en: "Run a non-interactive script with /bin/sh in the current project, without a terminal. The maximum duration is 24 hours. Core determines permissions.",
+    "zh-CN": "在当前项目中以 /bin/sh 执行脚本，不分配终端，最长 24 小时。",
+    en: "Run a non-interactive script with /bin/sh in the current project, without a terminal. Maximum duration is 24 hours.",
   },
   "common.processes.lifetimeHelp": {
     "zh-CN": "随本轮执行的进程在轮次结束时清理；随会话保留的进程需手动清理。",
@@ -273,6 +272,11 @@ export const commonMessages = {
     "zh-CN": "模型凭据不可用。请在模型设置中补充 API Key 后重试。",
     en: "Model credentials are unavailable. Add an API key in model settings, then retry.",
   },
+  "recovery.executionUnavailable": {
+    "zh-CN": "当前执行配置不可用，历史仍可查看。请检查模型设置。",
+    en: "Execution configuration is unavailable. History remains readable. Check model settings.",
+  },
+  "recovery.openModelSettings": { "zh-CN": "前往模型设置", en: "Open model settings" },
   "common.tools.rawRecord": { "zh-CN": "查看工具原始记录", en: "View raw tool record" },
   "common.turn.failed": { "zh-CN": "回合失败", en: "Turn failed" },
   "common.turn.reasoning": { "zh-CN": "思考过程", en: "Reasoning" },
@@ -286,7 +290,7 @@ export const commonMessages = {
     en: "Feedback includes the conversation up to this reply. Refining with an agent also collects that discussion.",
   },
   "common.workgroups.compatibilityHelp": {
-    "zh-CN": "兼容产物只能查看和核对。新的修改请在输入框提交。",
+    "zh-CN": "历史兼容结果仅支持查看，新修改请在输入框提交。",
     en: "Compatibility artifacts are view-only. Submit new changes in the composer.",
   },
   "common.navigation.markRead": { "zh-CN": "标为已读", en: "Mark as read" },
@@ -298,10 +302,6 @@ export const commonMessages = {
   "common.navigation.migrationPending": {
     "zh-CN": "迁移暂未完成，其他项目可继续使用。",
     en: "Migration is pending. Other projects remain available.",
-  },
-  "common.navigation.persistedHistory": {
-    "zh-CN": "当前为只读历史，项目运行状态尚未恢复。",
-    en: "Read-only history. The project's execution state has not been restored.",
   },
   "common.navigation.migrationRecovery": {
     "zh-CN": "请先停止旧版本的任务并退出旧版本，再重新打开此项目检查迁移状态。",
@@ -413,8 +413,8 @@ export const commonMessages = {
   "chat.resources.panel": { "zh-CN": "任务资源面板", en: "Task resources panel" },
   "chat.usage.actual": { "zh-CN": "实际用量", en: "Actual usage" },
   "chat.usage.confirmedNote": {
-    "zh-CN": "Core 已确认的当前任务用量；未报告轮次的消费未知，以下数字不代表最终总消费。",
-    en: "Usage confirmed by Core for the current task. Usage for unreported turns is unknown. The figures below do not represent the final total usage.",
+    "zh-CN": "后台服务已确认的当前任务用量；未报告轮次的消费未知，不代表最终总消费。",
+    en: "Confirmed usage for the current task. Usage for unreported turns is unknown and may not reflect the final total.",
   },
   "chat.usage.inputTokens": { "zh-CN": "输入 Token", en: "Input tokens" },
   "chat.usage.cachedTokens": { "zh-CN": "缓存输入", en: "Cached input" },
@@ -512,8 +512,36 @@ export const commonMessages = {
   "chat.agents.attention": { "zh-CN": "{count} 个待确认", en: "{count} need attention" },
   "chat.agents.noneWorking": { "zh-CN": "暂无运行中的子代理", en: "No subagents working" },
   "chat.agents.title": { "zh-CN": "子代理", en: "Subagents" },
-  "chat.agents.region": { "zh-CN": "子智能体", en: "Subagents" },
-  "chat.agents.more": { "zh-CN": "加载更多子智能体", en: "Load more subagents" },
+  "chat.agents.region": { "zh-CN": "子代理", en: "Subagents" },
+  "chat.agents.more": { "zh-CN": "加载更多子代理", en: "Load more subagents" },
+  "chat.agents.panel": { "zh-CN": "子代理面板", en: "Subagents panel" },
+  "chat.agents.back": { "zh-CN": "返回子代理列表", en: "Back to subagents list" },
+  "chat.agents.close": { "zh-CN": "关闭子代理面板", en: "Close subagents panel" },
+  "chat.agents.historyRegion": { "zh-CN": "子代理历史对话", en: "Subagent conversation history" },
+  "chat.agents.sectionActive": { "zh-CN": "运行中", en: "Active" },
+  "chat.agents.sectionDone": { "zh-CN": "已完成", en: "Done" },
+  "chat.agents.sectionAttention": { "zh-CN": "需要确认", en: "Needs attention" },
+  "chat.agents.emptyCompleted": {
+    "zh-CN": "还没有已完成的子任务",
+    en: "No completed subagents yet",
+  },
+  "chat.agents.emptyCompletedLoaded": {
+    "zh-CN": "已加载列表中没有已完成的子任务",
+    en: "No completed subagents in loaded list",
+  },
+  "chat.agents.emptyRunning": { "zh-CN": "没有运行中的子任务", en: "No running subagents" },
+  "chat.agents.emptyRunningLoaded": {
+    "zh-CN": "已加载列表中没有运行中的子任务",
+    en: "No running subagents in loaded list",
+  },
+  "chat.agents.collapseCompleted": {
+    "zh-CN": "收起已完成子任务",
+    en: "Collapse completed subagents",
+  },
+  "chat.agents.showMoreCompleted": {
+    "zh-CN": "显示另外 {count} 个已完成子任务",
+    en: "Show {count} more completed subagents",
+  },
   "chat.tool.images": { "zh-CN": "已查看 {count} 张图片", en: "Viewed {count} images" },
   "chat.tool.unconfirmed": { "zh-CN": "工具结果待确认", en: "Tool result unconfirmed" },
 
@@ -547,7 +575,7 @@ export const commonMessages = {
     en: "The action did not complete. View the details for the cause.",
   },
   "backend.operationUnconfirmed": {
-    "zh-CN": "操作结果尚未确认，请核对原操作状态。",
+    "zh-CN": "操作结果尚未确认，请先查看原操作状态。",
     en: "The result is not confirmed yet. Check the original action's status.",
   },
   "backend.updateStopped": {
@@ -612,6 +640,11 @@ export const commonMessages = {
   },
   "recovery.checkOriginal": { "zh-CN": "检查操作状态", en: "Check request status" },
   "startup.loading": { "zh-CN": "正在加载…", en: "Loading…" },
+  "startup.openSettings": { "zh-CN": "打开设置", en: "Open settings" },
+  "startup.elapsedHint": {
+    "zh-CN": "启动时间比平时稍长，可打开设置查看状态。",
+    en: "Starting slower than usual. Open settings if needed.",
+  },
   "startup.delayed": {
     "zh-CN": "加载时间较长，历史和草稿已保留。",
     en: "Loading is taking longer. Your history and draft are saved.",
@@ -623,28 +656,26 @@ export const commonMessages = {
   "startup.check": { "zh-CN": "检查后台", en: "Check backend" },
   "startup.reconnect": { "zh-CN": "重新连接后台", en: "Reconnect backend" },
   "startup.recover": { "zh-CN": "恢复后台…", en: "Recover backend…" },
-  "startup.quit": { "zh-CN": "退出界面", en: "Quit interface" },
+  "startup.quit": { "zh-CN": "退出应用", en: "Quit app" },
   "startup.back": { "zh-CN": "返回加载界面", en: "Back to loading" },
-  "startup.connectingProject": { "zh-CN": "正在连接项目…", en: "Connecting to project…" },
   "startup.projectStartFailed": {
     "zh-CN": "项目没有启动成功，可以重试。",
     en: "The project didn't start. Try again.",
   },
-  "startup.readingConversation": { "zh-CN": "正在读取对话…", en: "Reading conversation…" },
   "common.conversation.newInProject": {
-    "zh-CN": "在 {project} 中开始新聊天",
-    en: "Start a new chat in {project}",
+    "zh-CN": "在 {project} 中开始新会话",
+    en: "Start a new conversation in {project}",
   },
   "recovery.creationNotAdmitted": {
-    "zh-CN": "Core 已确认原会话创建未受理，草稿已保留。",
-    en: "Core confirmed that the original conversation creation was not admitted. Your draft is retained.",
+    "zh-CN": "后台已确认原会话未创建，草稿已保留。",
+    en: "Confirmed that the original conversation was not created. Your draft is retained.",
   },
   "recovery.creationRecords": {
-    "zh-CN": "待核对的会话创建",
+    "zh-CN": "待确认的会话创建",
     en: "Unconfirmed conversation creation",
   },
   "recovery.creationRecordDescription": {
-    "zh-CN": "原请求已保留。核对只查询结果，不会重新创建会话。",
+    "zh-CN": "原请求已保留。查看仅查询结果，不会重复创建会话。",
     en: "The original request is kept. Checking only looks up the result and never creates another conversation.",
   },
   "startup.loadingConversation": { "zh-CN": "正在加载对话…", en: "Loading conversation…" },
@@ -749,8 +780,8 @@ export const commonMessages = {
   },
   "chat.composer.configureModels": { "zh-CN": "配置模型", en: "Set up a model" },
   "chat.composer.noModelsGuidance": {
-    "zh-CN": "暂无可用模型，请前往设置 > 模型设置",
-    en: "No models available. Go to Settings > Model settings.",
+    "zh-CN": "暂无可用模型，请前往设置 → 模型设置",
+    en: "No models available. Go to Settings → Models.",
   },
   "chat.composer.chooseModel": { "zh-CN": "选择模型", en: "Choose model" },
   "chat.composer.providers": { "zh-CN": "供应商", en: "Providers" },
@@ -780,7 +811,7 @@ export const commonMessages = {
     en: "Use Add to chat in the file tree, or drag an entry into the composer",
   },
   "chat.composer.workspaceReferencePending": {
-    "zh-CN": "正在核对工作区引用…",
+    "zh-CN": "正在确认工作区引用…",
     en: "Checking workspace reference…",
   },
   "chat.composer.workspaceReferenceCurrentOnly": {
@@ -811,7 +842,7 @@ export const commonMessages = {
     "zh-CN": "松开以引用此文件或目录",
     en: "Release to reference this file or folder",
   },
-  "common.loading": { "zh-CN": "加载中...", en: "Loading..." },
+  "common.loading": { "zh-CN": "加载中…", en: "Loading…" },
   "common.closeDialog": { "zh-CN": "关闭弹窗", en: "Close dialog" },
   "common.close": { "zh-CN": "关闭", en: "Close" },
   "common.resizeSidebar": { "zh-CN": "调整侧栏宽度", en: "Resize sidebar" },
@@ -879,7 +910,7 @@ export const commonMessages = {
     "zh-CN": "夜深啦，别忘了照顾好自己哦",
     en: "It's late. Remember to take care of yourself.",
   },
-  "taskList.newThread": { "zh-CN": "新聊天", en: "New chat" },
+  "taskList.newThread": { "zh-CN": "新会话", en: "New conversation" },
   "settings.modelProvider.apiKeyPlaceholder": { "zh-CN": "输入 API Key", en: "Enter API key" },
   "settings.modelProvider.apiKey": { "zh-CN": "API Key", en: "API key" },
   "settings.modelSettings.apiKeyStored": {
@@ -930,11 +961,12 @@ export const commonMessages = {
   },
   "settings.modelProvider.apiFormat.title.responses": { "zh-CN": "Responses", en: "Responses" },
   "settings.navigation.back": { "zh-CN": "返回应用", en: "Back to app" },
-  "settings.navigation.searchPlaceholder": { "zh-CN": "搜索设置...", en: "Search settings..." },
+  "settings.navigation.searchPlaceholder": { "zh-CN": "搜索设置…", en: "Search settings…" },
   "settings.navigation.empty": { "zh-CN": "没有匹配的设置", en: "No matching settings" },
   "settings.navigation.personal": { "zh-CN": "个人", en: "Personal" },
   "settings.navigation.integrations": { "zh-CN": "集成", en: "Integrations" },
   "settings.navigation.coding": { "zh-CN": "编码", en: "Coding" },
+  "settings.navigation.labs": { "zh-CN": "实验功能", en: "Experimental" },
   "settings.general.title": { "zh-CN": "常规", en: "General" },
   "settings.appearance.title": { "zh-CN": "外观", en: "Appearance" },
   "settings.shortcuts.title": { "zh-CN": "键盘快捷键", en: "Keyboard shortcuts" },
@@ -1019,7 +1051,9 @@ export const commonMessages = {
   "chat.image.zoomIn": { "zh-CN": "放大图片", en: "Zoom in image" },
   "chat.image.actualSize": { "zh-CN": "实际大小 100%", en: "Actual size 100%" },
   "chat.image.fit": { "zh-CN": "适应窗口", en: "Fit to window" },
-  "chat.side.title": { "zh-CN": "侧边聊天", en: "Side Chat" },
+  "chat.side.title": { "zh-CN": "侧边聊天", en: "Side chat" },
+  "chat.side.new": { "zh-CN": "新侧边聊天", en: "New side chat" },
+  "chat.side.related": { "zh-CN": "相关侧边聊天", en: "Related side chats" },
   "chat.side.numbered": { "zh-CN": "侧边聊天 {ordinal}", en: "Side Chat {ordinal}" },
   "chat.side.history": { "zh-CN": "历史侧边聊天", en: "Previous side chats" },
   "chat.side.btw": { "zh-CN": "顺便问一句", en: "Ask a side question" },
@@ -1035,28 +1069,28 @@ export const commonMessages = {
     "zh-CN": "侧边聊天创建结果尚未确认。",
     en: "Side Chat creation is not yet confirmed.",
   },
-  "chat.side.inspectCreation": { "zh-CN": "核对首问结果", en: "Inspect initial request" },
+  "chat.side.inspectCreation": { "zh-CN": "查看首问结果", en: "Inspect initial request" },
   "chat.side.pendingCreation": {
-    "zh-CN": "首问结果尚未确认，请核对原请求。",
+    "zh-CN": "首问结果尚未确认，请查看原请求状态。",
     en: "The initial request is not yet confirmed. Inspect the original request.",
   },
   "chat.side.missingIdentity": {
-    "zh-CN": "创建回执缺少会话标识，请核对原请求。",
-    en: "The creation receipt has no conversation ID. Inspect the original request.",
+    "zh-CN": "创建结果缺少会话标识，请查看原请求。",
+    en: "The creation result has no conversation ID. Inspect the original request.",
   },
   "chat.side.unknownCreation": {
     "zh-CN": "首问结果尚未确认，不会重新发送。",
     en: "The initial request is not yet confirmed. It will not be sent again.",
   },
   "chat.side.closeUnconfirmed": {
-    "zh-CN": "关闭已请求，资源结算尚未确认。核对原请求后再关闭标签。",
+    "zh-CN": "已请求关闭，资源释放尚未确认，请确认后再关闭标签。",
     en: "Close was requested, but resource cleanup is not confirmed. Inspect the original request before closing the tab.",
   },
   "chat.side.closing": {
     "zh-CN": "正在关闭并等待执行结算…",
     en: "Closing and waiting for execution to settle…",
   },
-  "chat.side.inspectClose": { "zh-CN": "核对关闭状态", en: "Inspect close status" },
+  "chat.side.inspectClose": { "zh-CN": "查看关闭状态", en: "Inspect close status" },
   "chat.side.reading": { "zh-CN": "正在读取侧边聊天…", en: "Loading Side Chat…" },
   "chat.side.noneSent": { "zh-CN": "暂无已发送的侧边聊天", en: "No Side Chats sent yet" },
   "chat.side.ownerMismatch": {
@@ -1159,6 +1193,28 @@ export const commonMessages = {
   },
   "workspace.environment": { "zh-CN": "会话运行环境", en: "Session environment" },
   "workspace.cloud": { "zh-CN": "云端", en: "Cloud" },
+  "cloud.unconfiguredTag": { "zh-CN": "未配置", en: "Not configured" },
+  "cloud.unconfiguredNotice": {
+    "zh-CN": "尚未配置云端服务。请先填写后端地址与 Token，完成后即可启动沙箱。",
+    en: "Cloud service is not configured. Add the backend address and token to start a sandbox.",
+  },
+  "cloud.openSettings": { "zh-CN": "前往云端设置", en: "Open Cloud settings" },
+  "cloud.startingSandbox": {
+    "zh-CN": "正在连接云端并启动沙箱…",
+    en: "Connecting to Cloud and starting sandbox…",
+  },
+  "cloud.startingSandboxElapsed": {
+    "zh-CN": "正在连接云端并启动沙箱… {seconds}s",
+    en: "Connecting to Cloud and starting sandbox… {seconds}s",
+  },
+  "cloud.sandboxReadySending": {
+    "zh-CN": "云端沙箱已就绪（{seconds}s），正在发送…",
+    en: "Cloud sandbox ready ({seconds}s), sending…",
+  },
+  "cloud.draftHint": {
+    "zh-CN": "发送后将在云端启动独立沙箱执行",
+    en: "Starts an isolated Cloud sandbox when you send",
+  },
   "cloud.attachmentsLimit": {
     "zh-CN": "每条消息最多 16 个附件",
     en: "Each message supports up to 16 attachments.",
@@ -1187,11 +1243,11 @@ export const commonMessages = {
   "cloud.send": { "zh-CN": "发送", en: "Send" },
   "cloud.stop": { "zh-CN": "停止", en: "Stop" },
   "cloud.submissionUnknown": {
-    "zh-CN": "提交结果未知，不会自动重发。请重新打开会话并核对历史。",
+    "zh-CN": "提交结果未知，不会自动重发。请重新打开会话查看历史。",
     en: "Submission outcome is unknown and will not be retried automatically. Reconnect and check the conversation history.",
   },
   "cloud.acknowledgeUnknown": {
-    "zh-CN": "已核对，编辑后续消息",
+    "zh-CN": "已确认，编辑后续消息",
     en: "History checked; edit a new message",
   },
   "cloud.retryConnection": { "zh-CN": "重试连接", en: "Retry connection" },
@@ -1222,4 +1278,39 @@ export const commonMessages = {
   "cloud.settings.tokenInput": { "zh-CN": "输入 token", en: "Enter token" },
   "cloud.settings.saving": { "zh-CN": "保存中…", en: "Saving…" },
   "cloud.settings.save": { "zh-CN": "保存", en: "Save" },
+  "common.processes.emptyDescription": {
+    "zh-CN": "运行中的后台命令会显示在这里，方便查看输出或及时停止。",
+    en: "Running background commands appear here so you can inspect output or stop them.",
+  },
+  "common.processes.newCommand": { "zh-CN": "新建命令", en: "New command" },
+  "common.processes.lifetimeTurn": { "zh-CN": "随本轮执行", en: "For this turn" },
+  "common.processes.lifetimeThread": { "zh-CN": "随会话保留", en: "For this conversation" },
+  "common.sideChat.workspaceAccess": { "zh-CN": "文件访问范围", en: "File access scope" },
+  "common.sideChat.workspaceReadOnly": { "zh-CN": "只读当前工作区", en: "Read-only workspace" },
+  "common.sideChat.workspaceReadOnlyUnavailable": {
+    "zh-CN": "只读当前工作区（当前不可用）",
+    en: "Read-only workspace (unavailable)",
+  },
+  "common.sideChat.evidenceOnly": { "zh-CN": "仅会话证据", en: "Conversation evidence only" },
+  "common.hooks.turnDescription": {
+    "zh-CN": "仅包含当前轮次的工具钩子运行记录。",
+    en: "Includes only tool hook runs from the current turn.",
+  },
+  "common.hooks.noResult": { "zh-CN": "暂无返回结果", en: "No return payload" },
+  "common.workgroups.emptyTitle": {
+    "zh-CN": "此项目尚无工作组",
+    en: "No workgroups in this project",
+  },
+  "common.workgroups.emptyDescription": {
+    "zh-CN": "需要多代理协作拆分任务时，可从上方表单启动新的工作组。",
+    en: "Start a workgroup above when you want multiple agents to split a task.",
+  },
+  "common.terminal.lifetimeThread": {
+    "zh-CN": "当前会话",
+    en: "Current conversation",
+  },
+  "common.terminal.lifetimeTurn": {
+    "zh-CN": "当前轮次",
+    en: "Current turn",
+  },
 } as const;

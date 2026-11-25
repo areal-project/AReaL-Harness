@@ -73,7 +73,6 @@ states:
     - settings-snapshots: 设置打开，当前页“SnapShots”，此环境不支持时的说明
     - settings-browser: 设置打开，当前页“浏览器”，打开位置与浏览器数据
     - settings-cloud: 设置打开，当前页“云端”，后端地址与 Token
-    - settings-computer: 设置打开，当前页“电脑控制”，控制方式、系统授权、控制进程
     - settings-worktrees: 设置打开，当前页“工作树”，创建与清理默认值、已有工作树
     - settings-hooks: 设置打开，当前页“钩子”，一条工具钩子，页面说明在标题下
     - settings-models: 设置打开，当前页“模型设置”，一个已启用的供应商
@@ -130,8 +129,6 @@ references:
     - state: settings-browser
       themes: [light, dark]
     - state: settings-cloud
-      themes: [light, dark]
-    - state: settings-computer
       themes: [light, dark]
     - state: settings-worktrees
       themes: [light, dark]

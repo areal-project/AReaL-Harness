@@ -203,7 +203,7 @@ impl Model for RetiredModel {
 }
 
 #[tokio::test]
-async fn configuration_retirement_survives_package_upgrade_for_active_turn_and_app() {
+async fn configuration_retirement_survives_package_upgrade_for_active_turn() {
     let root = tempfile::tempdir().unwrap();
     for path in [".agents/plugins", "pkg/.claude-plugin"] {
         fs::create_dir_all(root.path().join(path)).unwrap();
@@ -255,38 +255,10 @@ async fn configuration_retirement_survives_package_upgrade_for_active_turn_and_a
         .plugin_connection(detail.id.clone(), digest.clone(), true)
         .await
         .unwrap();
-    let apps = engine.mcp_apps_list(None).await.unwrap();
-    let server = apps["data"][0]["serverId"].as_str().unwrap().to_owned();
-    let generation = apps["data"][0]["generation"].as_u64().unwrap();
     let thread = engine
         .create(root.path().to_string_lossy().into_owned())
         .await
         .unwrap();
-    let app = engine
-        .mcp_app_open(
-            "owner".into(),
-            None,
-            thread.id.clone(),
-            server,
-            generation,
-            "app".into(),
-            None,
-            "open".into(),
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-    let request = || {
-        engine.mcp_app_request(
-            "owner".into(),
-            thread.id.clone(),
-            app["instanceId"].as_str().unwrap().into(),
-            generation,
-            json!({"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"ui://app"}}),
-            None,
-        )
-    };
     engine
         .start(
             &thread.id,
@@ -300,10 +272,6 @@ async fn configuration_retirement_survives_package_upgrade_for_active_turn_and_a
         .unwrap()
         .forget();
     engine.plugin_user_configure(configure("R2")).await.unwrap();
-    assert!(
-        request().await.is_err(),
-        "App retained a revoked configuration"
-    );
     model.release.add_permits(1);
     tokio::time::timeout(std::time::Duration::from_secs(5), model.entered.acquire())
         .await
@@ -322,10 +290,6 @@ async fn configuration_retirement_survives_package_upgrade_for_active_turn_and_a
         )
         .await
         .unwrap();
-    assert!(
-        request().await.is_err(),
-        "package update revived the retired App generation"
-    );
     model.release.add_permits(1);
     let finished = tokio::time::timeout(std::time::Duration::from_secs(5), engine.wait(&thread.id))
         .await

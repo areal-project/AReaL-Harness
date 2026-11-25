@@ -1,7 +1,8 @@
 import { useReadOnly } from "../PlatformReadContext.js";
 import React, { useState } from "react";
+import { TitleTooltip } from "@areal/ui";
 import { BugReportDialog } from "../BugReportDialog.js";
-import { Bug, Route } from "lucide-react";
+import { Bot, Bug, Cloud, Route } from "lucide-react";
 import { ApplicationRail } from "../app-shell/ApplicationNavigation.js";
 import { WorkspaceHeader } from "../app-shell/WorkbenchShell.js";
 import { Button } from "../components/ui/button.js";
@@ -24,6 +25,7 @@ import {
 } from "../interfaceIcons.js";
 import { type PlatformServices } from "../services.js";
 import { SettingsPluginIcon } from "../settings/settingsNavIcons.js";
+import { useLabsFeature } from "../settings/labsFeatures.js";
 import { useGuardedNavigation } from "../settings/UnsavedChanges.js";
 import { useTaskWorkspace } from "../state/taskWorkspace.js";
 import { useSessionNavigation } from "../state/useSessionNavigation.js";
@@ -58,22 +60,32 @@ export function WorkbenchRail({
 }) {
   const { t } = useI18n();
   const { project, threadId, recordWorkspaceLocation } = session;
-  const { settingsOpen, pluginsOpen, trajectoryAttention, rememberPluginTask } = surfaces;
+  const { settingsOpen, pluginsOpen, botsOpen, trajectoryAttention, rememberPluginTask } = surfaces;
   const readOnly = useReadOnly();
+  const botsEnabled = useLabsFeature("bots");
   const taskCenterOpen = taskSurface !== null;
   return (
     <ApplicationRail
-      activeId={settingsOpen ? "settings" : pluginsOpen ? "plugins" : (taskSurface ?? "home")}
+      activeId={
+        settingsOpen
+          ? "settings"
+          : pluginsOpen
+            ? "plugins"
+            : botsOpen
+              ? "bots"
+              : (taskSurface ?? "home")
+      }
       items={[
         {
           id: "home",
           label: t("common.navigation.home"),
-          icon: <Home active={!pluginsOpen && !settingsOpen && !taskCenterOpen} />,
+          icon: <Home active={!pluginsOpen && !botsOpen && !settingsOpen && !taskCenterOpen} />,
           onSelect: () =>
             requestNavigation(() => {
               if (taskCenterOpen)
                 recordWorkspaceLocation({ projectId: project?.id ?? "", threadId });
               surfaces.leavePlugins();
+              surfaces.leaveBots();
               tasks.close();
               surfaces.leaveSettings();
             }),
@@ -87,6 +99,7 @@ export function WorkbenchRail({
           onSelect: () =>
             requestNavigation(() => {
               surfaces.leavePlugins();
+              surfaces.leaveBots();
               surfaces.leaveSettings();
               tasks.openCatalog();
               if (matchMedia("(max-width: 640px)").matches) setSidebar(false);
@@ -99,29 +112,48 @@ export function WorkbenchRail({
           onSelect: () =>
             requestNavigation(() => {
               rememberPluginTask();
+              surfaces.leaveBots();
               surfaces.leaveSettings();
               tasks.close();
               surfaces.openMarketplace();
             }),
         },
-      ].filter(
-        (item) =>
+        {
+          id: "bots",
+          label: t("bots.title"),
+          icon: <Bot strokeWidth={1.6} />,
+          onSelect: () =>
+            requestNavigation(() => {
+              surfaces.leavePlugins();
+              surfaces.leaveSettings();
+              tasks.close();
+              surfaces.openBots();
+              if (matchMedia("(max-width: 640px)").matches) setSidebar(false);
+            }),
+        },
+      ].filter((item) => {
+        if (item.id === "bots") {
+          return botsEnabled && (!readOnly || Boolean(services.capabilities?.bots));
+        }
+        return (
           !readOnly ||
           item.id === "home" ||
-          (item.id === "tasks" && services.capabilities?.taskCatalog),
-      )}
+          (item.id === "tasks" && services.capabilities?.taskCatalog)
+        );
+      })}
       footer={
         readOnly && !services.capabilities?.settings?.length ? null : (
           <>
             <UpdateIndicator services={services} />
             <Button
-              variant="ghost"
-              size="icon"
-              className="application-rail-button relative"
+              variant="ghost-subtle"
+              size="rail"
+              active={settingsOpen}
+              className="relative"
               aria-label={t("settings.title")}
               title={t(trajectoryAttention ? "settings.attention" : "settings.title")}
               aria-current={settingsOpen ? "page" : undefined}
-              onClick={() => showPanel("设置")}
+              onClick={() => showPanel("settings")}
             >
               <Settings />
               {trajectoryAttention && (
@@ -154,28 +186,8 @@ export function WorkspaceNavigation({
   return (
     <div className="workspace-navigation">
       <Button
-        unstyled
-        className="icon-button"
-        aria-label={t("common.navigation.back")}
-        title={t("common.navigation.backShortcut")}
-        disabled={taskCenterOpen || workspaceHistory.index <= 0}
-        onClick={() => traverseWorkspaceHistory(-1)}
-      >
-        <NavigationBackIcon size={16} />
-      </Button>
-      <Button
-        unstyled
-        className="icon-button"
-        aria-label={t("common.navigation.forward")}
-        title={t("common.navigation.forwardShortcut")}
-        disabled={taskCenterOpen || workspaceHistory.index >= workspaceHistory.entries.length - 1}
-        onClick={() => traverseWorkspaceHistory(1)}
-      >
-        <NavigationForwardIcon size={16} />
-      </Button>
-      <Button
-        unstyled
-        className="icon-button"
+        variant="ghost"
+        size="icon-sm"
         aria-label={
           sidebar ? t("common.navigation.collapseSidebar") : t("common.navigation.expandSidebar")
         }
@@ -185,6 +197,28 @@ export function WorkspaceNavigation({
       >
         <SidebarToggleIcon />
       </Button>
+      <div className="workspace-history-controls">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("common.navigation.back")}
+          title={t("common.navigation.backShortcut")}
+          disabled={taskCenterOpen || workspaceHistory.index <= 0}
+          onClick={() => traverseWorkspaceHistory(-1)}
+        >
+          <NavigationBackIcon size={16} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("common.navigation.forward")}
+          title={t("common.navigation.forwardShortcut")}
+          disabled={taskCenterOpen || workspaceHistory.index >= workspaceHistory.entries.length - 1}
+          onClick={() => traverseWorkspaceHistory(1)}
+        >
+          <NavigationForwardIcon size={16} />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -212,11 +246,7 @@ export function WorkspaceTaskActions({
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
-            <Button
-              unstyled
-              aria-label={t("common.navigation.taskActions")}
-              className="icon-button"
-            >
+            <Button variant="ghost" size="icon-sm" aria-label={t("common.navigation.taskActions")}>
               <MoreOptionsIcon size={16} />
             </Button>
           }
@@ -229,7 +259,7 @@ export function WorkspaceTaskActions({
           {thread && project && (
             <DropdownMenuItem
               onClick={() => {
-                workspacePanels.selectPanel("调用轨迹");
+                workspacePanels.selectPanel("trajectory");
                 workspacePanels.exposePanel();
               }}
             >
@@ -290,7 +320,19 @@ export function ConversationHeader({
       {!sidebar && !settingsOpen && workspaceNavigation}
       {!pluginsOpen && !settingsOpen && !taskCenterOpen && (!empty || (!thread && !!threadId)) && (
         <div className="header-context">
-          <ProjectFolderIcon />
+          {thread?.cloud ? (
+            <TitleTooltip title={t("resources.cloud")}>
+              <span
+                className="inline-flex shrink-0 items-center text-foreground-subtle"
+                aria-label={t("resources.cloud")}
+                data-testid="header-cloud-badge"
+              >
+                <Cloud className="size-4" aria-hidden="true" />
+              </span>
+            </TitleTooltip>
+          ) : (
+            <ProjectFolderIcon />
+          )}
           <strong className="header-task">{currentTitle}</strong>
         </div>
       )}
@@ -307,7 +349,7 @@ export function ConversationHeader({
                 }
                 onReadAgents={(restore) => {
                   contextReturn.current = restore;
-                  showPanel("子代理");
+                  showPanel("subagents");
                 }}
                 project={project}
                 thread={thread}
@@ -330,7 +372,8 @@ export function ConversationHeader({
                   });
                 }}
                 onPanel={(name) => {
-                  if (name === "改动") setReviewRequest({ owner: panelOwner, scope: "unstaged" });
+                  if (name === "changes")
+                    setReviewRequest({ owner: panelOwner, scope: "unstaged" });
                   showPanel(name);
                 }}
                 onAgent={(id) => showPanel(`agent:${id}`)}
@@ -338,8 +381,9 @@ export function ConversationHeader({
               />
             )}
             <Button
-              unstyled
-              className={`icon-button ${panel ? "active" : ""}`}
+              variant="ghost-subtle"
+              size="icon"
+              active={Boolean(panel)}
               aria-label={t("common.navigation.expandPanel")}
               aria-pressed={Boolean(panel)}
               disabled={!project}

@@ -65,9 +65,12 @@ impl Fixture {
         }
     }
     fn write(&self, key: &str) -> String {
-        let previous = areal_config::models::read(&self.inputs, &[]).unwrap();
-        let update = serde_json::from_value(json!({"expectedRevision":previous.revision,"data":[{"id":"fixture","name":"Fixture","endpoint":"http://127.0.0.1:1/v1/chat/completions","protocol":"chat-completions","enabled":true,"apiKeyEnv":key,"models":[{"id":"fixture","enabled":true,"parameters":{}}],"parameters":{}}],"defaultModel":{"providerId":"fixture","modelId":"fixture"}})).unwrap();
-        areal_config::models::write(&self.inputs, update, &[])
+        Self::write_at(&self.inputs, "http://127.0.0.1:1/v1/chat/completions", key)
+    }
+    fn write_at(inputs: &ConfigInputs, endpoint: &str, key: &str) -> String {
+        let previous = areal_config::models::read(inputs, &[]).unwrap();
+        let update = serde_json::from_value(json!({"expectedRevision":previous.revision,"data":[{"id":"fixture","name":"Fixture","endpoint":endpoint,"protocol":"chat-completions","enabled":true,"apiKeyEnv":key,"models":[{"id":"fixture","enabled":true,"parameters":{}}],"parameters":{}}],"defaultModel":{"providerId":"fixture","modelId":"fixture"}})).unwrap();
+        areal_config::models::write(inputs, update, &[])
             .unwrap()
             .revision
     }
@@ -95,14 +98,181 @@ impl Fixture {
 }
 
 #[tokio::test]
+async fn existing_thread_sends_with_rotated_provider_key_after_restart() {
+    use areal_protocol::{Input, TurnStatus, desktop::TurnStart};
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::TcpListener;
+
+    let fixture = Fixture::open().await;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!(
+        "http://{}/v1/chat/completions",
+        listener.local_addr().unwrap()
+    );
+    let first = Fixture::write_at(&fixture.inputs, &endpoint, "AREAL_CREDENTIAL_first");
+    fixture
+        .control
+        .clone()
+        .apply(fixture.intent("first-key", first))
+        .await
+        .unwrap();
+    let old = &fixture.control.engine;
+    let thread = old
+        .create(fixture.inputs.cwd.to_string_lossy().into())
+        .await
+        .unwrap();
+    let pinned = old
+        .configure_thread(
+            serde_json::from_value(json!({
+                "threadId": thread.id,
+            "expectedRevision": 1,
+                "model": {"providerId": "fixture", "modelId": "fixture"}
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        pinned.provider.as_ref().unwrap().credential_ref.as_deref(),
+        Some("first")
+    );
+    old.shutdown().await;
+    let mut identity = fixture.control.identity.clone();
+    drop(fixture.control);
+
+    let rotated = "AREAL_CREDENTIAL_rotated";
+    Fixture::write_at(&fixture.inputs, &endpoint, rotated);
+    let mut inputs = fixture.inputs.clone();
+    inputs
+        .env
+        .insert(rotated.into(), "synthetic-rotated".into());
+    let (document, config) = areal_config::models::read_resolved(&inputs, &[]).unwrap();
+    let engine = Engine::open(
+        &config.data_dir,
+        Arc::new(areal_engine::model::UnconfiguredModel),
+        Default::default(),
+    )
+    .unwrap();
+    let (catalog, credentials) = configured_models(&config, &inputs.env).unwrap();
+    assert_eq!(credentials.len(), 1);
+    for (reference, value) in credentials {
+        engine.register_credential(reference, value).unwrap();
+    }
+    engine.install_configured_models(catalog).unwrap();
+    let reload = Reload::open(inputs, &config, &engine).unwrap();
+    identity.generation = "generation-after-restart".into();
+    let control = Controller::new(reload, engine.clone(), identity.clone(), document).await;
+
+    let server = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut socket = BufReader::new(socket);
+        let mut headers = String::new();
+        loop {
+            let mut line = String::new();
+            assert!(socket.read_line(&mut line).await.unwrap() > 0);
+            if line == "\r\n" {
+                break;
+            }
+            headers.push_str(&line.to_ascii_lowercase());
+        }
+        assert!(headers.starts_with("post /v1/chat/completions "));
+        assert!(headers.contains("\r\nauthorization: bearer synthetic-rotated\r\n"));
+        let length = headers
+            .lines()
+            .find_map(|line| line.strip_prefix("content-length: "))
+            .unwrap()
+            .parse()
+            .unwrap();
+        socket.read_exact(&mut vec![0; length]).await.unwrap();
+        let body = concat!(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\n",
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+            "data: [DONE]\n\n",
+        );
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        socket.write_all(response.as_bytes()).await.unwrap();
+    });
+    let start = |request: &str| {
+        let params: TurnStart = serde_json::from_value(json!({
+            "requestId": request,
+            "threadId": thread.id,
+            "input": [Input::text("Continue the existing conversation")],
+            "expectedConfigRevision": pinned.revision,
+            "admissionGuard": {
+                "ordinarySession": true,
+                "configRevision": pinned.revision
+            }
+        }))
+        .unwrap();
+        engine.start_durable("fixture".into(), params, false)
+    };
+    start("after-rotation").await.unwrap();
+    let finished =
+        tokio::time::timeout(std::time::Duration::from_secs(10), engine.wait(&thread.id))
+            .await
+            .unwrap()
+            .unwrap();
+    server.await.unwrap();
+    let turn = finished.turns.last().unwrap();
+    assert_eq!(turn.status, TurnStatus::Completed);
+    assert_eq!(
+        turn.configuration
+            .as_ref()
+            .and_then(|config| config.provider.as_ref())
+            .unwrap()
+            .credential_ref
+            .as_deref(),
+        Some("rotated")
+    );
+    assert_eq!(
+        finished.desktop.unwrap().configuration.provider,
+        pinned.provider
+    );
+
+    let revision = Fixture::write_at(
+        &fixture.inputs,
+        "http://127.0.0.1:1/v1/chat/completions",
+        rotated,
+    );
+    let change = ModelConfigurationApply {
+        request_id: "different-endpoint".into(),
+        expected_generation: identity.generation,
+        expected_applied: serde_json::from_value(
+            engine.model_configuration_status()["applied"].clone(),
+        )
+        .unwrap(),
+        target_revision: revision,
+        credentials: Default::default(),
+    };
+    control.apply(change).await.unwrap();
+    let error = start("after-endpoint-change").await.unwrap_err();
+    assert!(error.to_string().contains("CREDENTIAL_UNAVAILABLE"));
+    engine.shutdown().await;
+}
+
+#[tokio::test]
 async fn model_display_names_follow_applied_configuration_and_provider_identity() {
-    let providers = |name: &str| {
+    let providers = |name: &str, provider_name: &str| {
         json!([
-            {"id":"first","name":"First","endpoint":"http://127.0.0.1:1/v1/chat/completions","protocol":"chat-completions","enabled":true,"models":[{"id":"shared","displayName":name,"enabled":true,"parameters":{}}],"parameters":{}},
+            {"id":"restored_5b32d70932a684ff87cd0f22","name":provider_name,"endpoint":"http://127.0.0.1:1/v1/chat/completions","protocol":"chat-completions","enabled":true,"models":[{"id":"shared","displayName":name,"enabled":true,"parameters":{}}],"parameters":{}},
             {"id":"second","name":"Second","endpoint":"http://127.0.0.1:1/v1/chat/completions","protocol":"chat-completions","enabled":true,"models":[{"id":"shared","displayName":"Second model","enabled":true,"parameters":{}},{"id":"unnamed","enabled":true,"parameters":{}}],"parameters":{}}
         ])
     };
-    let fixture = Fixture::open_with_providers(Some(providers("First model"))).await;
+    let fixture =
+        Fixture::open_with_providers(Some(providers("First model", "Restored supplier"))).await;
+    let restored_id = "restored_5b32d70932a684ff87cd0f22";
+    let supplier_name = |catalog: &Value| {
+        catalog["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|model| model["providerId"] == restored_id)
+            .unwrap()["providerName"]
+            .clone()
+    };
     let names = |catalog: &Value| {
         catalog["data"]
             .as_array()
@@ -117,8 +287,9 @@ async fn model_display_names_follow_applied_configuration_and_provider_identity(
             .collect::<Vec<_>>()
     };
     let before = fixture.control.engine.model_catalog().await;
+    assert_eq!(supplier_name(&before), "Restored supplier");
     assert!(names(&before).contains(&(
-        (json!("first"), json!("shared")),
+        (json!(restored_id), json!("shared")),
         Some(json!("First model"))
     )));
     assert!(names(&before).contains(&(
@@ -127,7 +298,7 @@ async fn model_display_names_follow_applied_configuration_and_provider_identity(
     )));
     assert!(names(&before).contains(&((json!("second"), json!("unnamed")), None)));
     let current = areal_config::models::read(&fixture.inputs, &[]).unwrap();
-    let update = serde_json::from_value(json!({"expectedRevision":current.revision,"data":providers("Renamed model"),"defaultModel":null})).unwrap();
+    let update = serde_json::from_value(json!({"expectedRevision":current.revision,"data":providers("Renamed model", "Renamed supplier"),"defaultModel":null})).unwrap();
     let saved = areal_config::models::write(&fixture.inputs, update, &[]).unwrap();
     assert_eq!(
         names(&fixture.control.engine.model_catalog().await),
@@ -138,8 +309,9 @@ async fn model_display_names_follow_applied_configuration_and_provider_identity(
     let receipt = fixture.control.clone().apply(intent).await.unwrap();
     assert_eq!(receipt["applied"]["revision"], saved.revision);
     let after = fixture.control.engine.model_catalog().await;
+    assert_eq!(supplier_name(&after), "Renamed supplier");
     assert!(names(&after).contains(&(
-        (json!("first"), json!("shared")),
+        (json!(restored_id), json!("shared")),
         Some(json!("Renamed model"))
     )));
     assert!(names(&after).contains(&(

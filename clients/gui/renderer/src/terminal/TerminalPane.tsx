@@ -1,6 +1,14 @@
-import { TitleTooltip } from "@areal/ui";
+import {
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  TitleTooltip,
+} from "@areal/ui";
 import { currentErrorText } from "../errors/currentErrorText.js";
-import { Button } from "@areal/ui";
+import { useI18n } from "../i18n/IntlProvider.js";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Plus, X } from "lucide-react";
 import type { Action, Data } from "../services.js";
@@ -41,6 +49,7 @@ export function TerminalPane({
   onClosed?: (id: string) => void;
   canStart: boolean;
 }) {
+  const { t } = useI18n();
   const owner = terminalOwner(project.id, thread.id),
     state = useTerminalWorkspace(owner);
   const id = terminalId ?? state.active;
@@ -174,47 +183,50 @@ export function TerminalPane({
           >
             {state.ids.map((value) => (
               <Button
-                unstyled
-                data-slot={undefined}
-                type="submit"
+                variant={value === id ? "secondary" : "ghost"}
+                size="sm"
+                type="button"
                 key={value}
                 role="tab"
                 aria-selected={value === id}
-                className={`text-button shrink-0 ${value === id ? "bg-selected" : ""}`}
+                className="shrink-0"
                 onClick={() => selectTerminal(owner, value)}
               >
                 {terminalTitle(owner, value, project.root)}
               </Button>
             ))}
           </div>
-          <TitleTooltip title={"Turn 终端需要正在执行的任务，范围由 Core 校验"}>
-            <select
-              aria-label="新终端保留范围"
-              value={nextLifetime}
-              onChange={(event) =>
-                setNextLifetime(event.target.value === "turn" ? "turn" : "thread")
-              }
-              className="rounded border border-border bg-background px-2 py-1 text-compact-caption"
-            >
-              <option value="thread">Thread · 当前对话</option>
-              <option value="turn">Turn · 当前任务</option>
-            </select>
-          </TitleTooltip>
+          <Select
+            value={nextLifetime}
+            onValueChange={(value) => setNextLifetime(value === "turn" ? "turn" : "thread")}
+          >
+            <TitleTooltip title={"Turn 终端需要正在执行的任务，范围由 Core 校验"}>
+              <SelectTrigger size="sm" aria-label="新终端保留范围">
+                <SelectValue>
+                  {nextLifetime === "turn"
+                    ? t("common.terminal.lifetimeTurn")
+                    : t("common.terminal.lifetimeThread")}
+                </SelectValue>
+              </SelectTrigger>
+            </TitleTooltip>
+            <SelectContent>
+              <SelectItem value="thread">{t("common.terminal.lifetimeThread")}</SelectItem>
+              <SelectItem value="turn">{t("common.terminal.lifetimeTurn")}</SelectItem>
+            </SelectContent>
+          </Select>
           <Button
-            unstyled
-            data-slot={undefined}
-            type="submit"
-            className="icon-button"
+            variant="ghost"
+            size="icon-sm"
+            type="button"
             aria-label="新建终端"
             onClick={() => addTerminal(owner, nextLifetime)}
           >
             <Plus size={15} />
           </Button>
           <Button
-            unstyled
-            data-slot={undefined}
-            type="submit"
-            className="icon-button"
+            variant="ghost"
+            size="icon-sm"
+            type="button"
             aria-label="关闭当前终端"
             disabled={!id || closing || restarting}
             onClick={() => void close()}
@@ -225,7 +237,7 @@ export function TerminalPane({
       )}
       {status && (status.runtime?.state !== "running" || status.partialOutput || status.error) && (
         <div
-          className="flex shrink-0 flex-wrap gap-x-3 gap-y-1 border-b border-border px-3 py-1 text-compact-caption"
+          className="flex shrink-0 flex-wrap gap-x-3 gap-y-1 border-b border-border px-3 py-1 text-ui-sm"
           aria-label="终端运行状态"
         >
           <span role="status">
@@ -264,10 +276,10 @@ export function TerminalPane({
               <>
                 <p>创建结果尚未确认；核对原请求后连接已有终端，不会自动重建。</p>
                 <Button
-                  unstyled
-                  data-slot={undefined}
-                  type="submit"
-                  className="text-button justify-self-start"
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  className="justify-self-start"
                   disabled={recovering}
                   onClick={() => void recover()}
                 >
@@ -277,10 +289,10 @@ export function TerminalPane({
               </>
             ) : (
               <Button
-                unstyled
-                data-slot={undefined}
-                type="submit"
-                className="text-button justify-self-start"
+                variant="outline"
+                size="sm"
+                type="button"
+                className="justify-self-start"
                 disabled={!canStart || restarting}
                 onClick={restart}
               >

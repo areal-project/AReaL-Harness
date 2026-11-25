@@ -1,2 +1,2 @@
 import "./ComposerSurface.css";
-export { ComposerSurface, ComposerToolbar } from "@areal/ui/experimental";
+export { ComposerSurface, ComposerToolbar } from "@areal/ui/compositions";

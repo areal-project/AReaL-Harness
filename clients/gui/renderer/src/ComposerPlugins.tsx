@@ -211,14 +211,12 @@ export function useComposerPlugins({
   draftKey,
   action,
   text,
-  onMcpMention,
 }: {
   project: Data;
   context: ComposerPluginContext;
   draftKey: string;
   action: Action;
   text: string;
-  onMcpMention?: () => void;
 }) {
   const { t } = useI18n();
   const [snapshot, setSnapshot] = useState<{
@@ -276,41 +274,27 @@ export function useComposerPlugins({
   return {
     clear: () => clearComposerPlugins(draftKey),
     catalog: {
-      entries: [
-        ...catalog.map((row) => ({
-          value: row.id,
+      entries: catalog.map((row) => ({
+        value: row.id,
+        label: row.name,
+        description: row.description ?? "",
+        source: isSide(context) ? t("chat.composer.pluginReferenceOnly") : undefined,
+        group: "apps" as const,
+        icon: <Package size={16} />,
+        mention: {
+          id: `plugin:${row.id}`,
+          category: "plugins" as const,
           label: row.name,
-          description: row.description ?? "",
-          source: isSide(context) ? t("chat.composer.pluginReferenceOnly") : undefined,
-          group: "应用" as const,
-          icon: <Package size={16} />,
-          mention: {
-            id: `plugin:${row.id}`,
-            category: "plugins" as const,
-            label: row.name,
-            value: row.id,
-            description: row.description,
-            markdown: buildPluginMentionMarkdown(row.name, row.id),
-            data: { pluginId: row.id },
-          },
-          run: () => {
-            const previous = readComposerPlugins(draftKey);
-            writeSelections(draftKey, [...previous.filter((item) => item.id !== row.id), row]);
-          },
-        })),
-        ...(onMcpMention
-          ? [
-              {
-                value: "mcp-resources",
-                label: t("chat.composer.mcpResourceReference"),
-                description: t("chat.composer.mcpResourceReferenceDescription"),
-                group: "功能" as const,
-                icon: <Package size={16} />,
-                run: onMcpMention,
-              },
-            ]
-          : []),
-      ],
+          value: row.id,
+          description: row.description,
+          markdown: buildPluginMentionMarkdown(row.name, row.id),
+          data: { pluginId: row.id },
+        },
+        run: () => {
+          const previous = readComposerPlugins(draftKey);
+          writeSelections(draftKey, [...previous.filter((item) => item.id !== row.id), row]);
+        },
+      })),
       loading,
       error,
       refresh: () => setRevision((value) => value + 1),

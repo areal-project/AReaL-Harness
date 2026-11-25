@@ -946,7 +946,7 @@ async function transmitCommand(key, command, capture) {
     let failure = dispatched
       ? error
       : Object.assign(new Error(`本次未发送：${error.message}`), { code: "LOCAL_NOT_SENT" });
-    if (!commandState.failureIsUnknown(failure) && persisted) {
+    if (!commandState.failureIsUnknown(failure, command) && persisted) {
       try {
         await browserState.settleLocator(token, command.commandId, "rejected");
       } catch (storageFailure) {

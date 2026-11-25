@@ -9,7 +9,7 @@
   font-size: var(--text-ui-sm);
 }
 .ask-user-navigation > span {
-  min-width: 36px;
+  min-width: calc(var(--spacing-inline) * 9 / 2);
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -29,20 +29,29 @@
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-inline);
-  padding: var(--spacing-inline);
+  padding: var(--spacing-inline) var(--composer-inset);
   margin-inline: 0;
   min-height: var(--spacing-control);
+  border: var(--border-width-default) solid var(--color-border-hairline);
   border-radius: var(--radius-control);
+  background: var(--color-surface-fog);
   cursor: var(--interactive-cursor, pointer);
   font-size: var(--text-ui-base);
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-ui);
   overflow-wrap: anywhere;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
 }
 .ask-user-option:hover,
-.ask-user-option:focus-within,
-.ask-user-option[data-selected="true"] {
+.ask-user-option:focus-within {
   background: var(--color-hover);
+  border-color: var(--color-border);
+}
+.ask-user-option[data-selected="true"] {
+  background: var(--color-selected);
+  border-color: var(--color-border-hover);
 }
 .ask-user-option:has(input:focus-visible) {
   outline: var(--focus-width) solid var(--color-foreground-subtle);
@@ -60,9 +69,10 @@
   height: var(--line-height-ui);
   display: grid;
   place-items: center;
-  border: var(--border-width-default) solid var(--color-border);
-  border-radius: var(--radius-inline);
-  background: var(--color-hover);
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  border-radius: var(--radius-compact);
+  background: var(--color-card);
+  box-shadow: var(--shadow-subtle);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
   font-variant-numeric: tabular-nums;
@@ -96,7 +106,7 @@
 }
 .ask-user-custom textarea:focus-visible {
   outline: var(--focus-width) solid var(--color-foreground-subtle);
-  outline-offset: 2px;
+  outline-offset: var(--focus-offset);
 }
 .ask-user-progress {
   margin-right: auto;
@@ -139,4 +149,38 @@
 .ask-user-number,
 .ask-user-check {
   margin-top: calc(var(--spacing-inline) / 4);
+}
+.ask-user-summary {
+  min-width: 0;
+}
+.ask-user-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-inline);
+  margin: var(--spacing-inline) 0 0;
+  padding: 0 0 0 calc(var(--activity-icon-size) + var(--activity-icon-gap));
+}
+.ask-user-summary-row {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing-inline) / 4);
+  min-width: 0;
+}
+.ask-user-summary-question {
+  font-size: var(--text-conversation);
+  line-height: var(--conversation-line);
+  color: var(--color-foreground-subtle);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ask-user-summary-answer {
+  margin: 0;
+  font-size: var(--text-conversation);
+  line-height: var(--conversation-line);
+  color: var(--color-foreground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ask-user-summary-answer[data-empty="true"] {
+  color: var(--color-foreground-subtlest);
 }

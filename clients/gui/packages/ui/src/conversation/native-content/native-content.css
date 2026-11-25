@@ -83,14 +83,14 @@
 }
 .areal-native-bars li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(32px, 2fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(calc(var(--spacing-inline) * 4), 2fr) minmax(0, 1fr);
   gap: var(--spacing-inline);
   align-items: center;
   margin-block: var(--spacing-inline);
   font-variant-numeric: tabular-nums;
 }
 .areal-native-track {
-  height: 8px;
+  height: var(--spacing-inline);
   overflow: hidden;
   background: var(--color-surface);
   border-radius: var(--radius-pill);

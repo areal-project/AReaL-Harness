@@ -20,6 +20,67 @@ pub const MAX_RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_TOOL_RESULT_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewComment {
+    pub id: String,
+    pub path: String,
+    pub root: String,
+    pub scope: String,
+    #[serde(rename = "ref")]
+    pub ref_name: String,
+    pub token: String,
+    pub head: String,
+    pub base: String,
+    pub side: String,
+    pub start: u32,
+    pub end: u32,
+    pub snippet: String,
+    pub body: String,
+}
+
+impl ReviewComment {
+    pub fn model_text(&self) -> String {
+        format!(
+            "审查反馈：{}\n\n位置：{}/{}\n{}第 {}{} 行\n原始代码：\n{}\n\n比较范围：{}（{}）\n基准版本：{}\n当前版本：{}\n审查版本：{}\n以上代码来自采集时的版本，请核对当前文件再修改。",
+            self.body,
+            self.root,
+            self.path,
+            if self.side == "additions" {
+                "新版"
+            } else {
+                "旧版"
+            },
+            self.start,
+            if self.end == self.start {
+                String::new()
+            } else {
+                format!("–{}", self.end)
+            },
+            self.snippet,
+            self.scope,
+            self.ref_name,
+            self.base,
+            self.head,
+            self.token,
+        )
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ContextPart {
+    ReviewComment { comment: ReviewComment },
+}
+
+impl ContextPart {
+    pub fn model_text(&self) -> String {
+        match self {
+            Self::ReviewComment { comment } => comment.model_text(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TurnStatus {
     InProgress,
@@ -68,6 +129,13 @@ pub enum Input {
             skip_serializing_if = "Option::is_none"
         )]
         mcp_content: Option<Value>,
+        /// Structured context parts; rendered into model text only at the model boundary.
+        #[serde(
+            default,
+            rename = "contextParts",
+            skip_serializing_if = "Option::is_none"
+        )]
+        context_parts: Option<Vec<ContextPart>>,
     },
     Image {
         url: String,
@@ -100,6 +168,46 @@ impl Input {
             text: text.into(),
             text_elements: Vec::new(),
             mcp_content: None,
+            context_parts: None,
+        }
+    }
+
+    pub fn with_context_parts(self, parts: Vec<ContextPart>) -> Self {
+        match self {
+            Self::Text {
+                text,
+                text_elements,
+                mcp_content,
+                ..
+            } => Self::Text {
+                text,
+                text_elements,
+                mcp_content,
+                context_parts: Some(parts),
+            },
+            other => other,
+        }
+    }
+
+    pub fn model_text(&self) -> String {
+        match self {
+            Self::Text {
+                text,
+                context_parts: Some(parts),
+                ..
+            } if !parts.is_empty() => {
+                let comments = parts
+                    .iter()
+                    .map(ContextPart::model_text)
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                if text.is_empty() {
+                    comments
+                } else {
+                    format!("{text}\n\n{comments}")
+                }
+            }
+            _ => self.as_text().to_owned(),
         }
     }
     pub fn mcp_text(content: Value) -> Result<Self, String> {
@@ -108,6 +216,7 @@ impl Input {
             text,
             text_elements: Vec::new(),
             mcp_content: Some(content),
+            context_parts: None,
         })
     }
     pub fn validate_mcp_content(&self) -> Result<(), String> {
@@ -820,5 +929,45 @@ mod host_manage_read_tests {
                 serde_json::from_value(params.clone()).unwrap();
             assert_eq!(serde_json::to_value(decoded).unwrap(), params);
         }
+    }
+}
+
+#[cfg(test)]
+mod review_comment_input_tests {
+    use super::*;
+
+    #[test]
+    fn review_comments_round_trip_without_changing_visible_text() {
+        let comment = ReviewComment {
+            id: "comment".into(),
+            path: "src/app.ts".into(),
+            root: "/workspace".into(),
+            scope: "branch".into(),
+            ref_name: "main".into(),
+            token: "token".into(),
+            head: "head".into(),
+            base: "base".into(),
+            side: "additions".into(),
+            start: 3,
+            end: 3,
+            snippet: "const value = 1;".into(),
+            body: "Please extract this value.".into(),
+        };
+        let input =
+            Input::text("please fix").with_context_parts(vec![ContextPart::ReviewComment {
+                comment: comment.clone(),
+            }]);
+        let encoded = serde_json::to_value(&input).unwrap();
+        let decoded: Input = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded.as_text(), "please fix");
+        assert!(
+            decoded
+                .model_text()
+                .contains("审查反馈：Please extract this value.")
+        );
+        assert_eq!(
+            serde_json::to_value(decoded).unwrap(),
+            serde_json::to_value(input).unwrap()
+        );
     }
 }

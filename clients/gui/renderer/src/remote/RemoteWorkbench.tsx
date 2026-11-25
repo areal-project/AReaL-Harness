@@ -1,7 +1,8 @@
 import { projectedTurns } from "./session-projection.js";
-import { ComposerActionButton } from "@areal/ui/experimental";
+import { currentErrorText } from "../errors/currentErrorText.js";
+import { ComposerActionButton } from "@areal/ui/compositions";
 import { DelayedVisible } from "@areal/ui";
-import { ApplicationIntlProvider } from "../i18n/IntlProvider.js";
+import { ApplicationIntlProvider, useZCodeIntl } from "../i18n/IntlProvider.js";
 import { createRoot } from "react-dom/client";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Messages } from "../Messages.js";
@@ -81,12 +82,13 @@ function useRemoteTheme() {
 }
 function Home({ view, api }: { view: View; api: API }) {
   useRemoteTheme();
+  const { t } = useZCodeIntl();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   return (
     <TooltipProvider>
       <div className="remote-project-heading">
-        <h2>Projects</h2>
+        <h2>{t("remote.projects")}</h2>
       </div>
       {view.notice && <p role="status">{view.notice}</p>}
       <nav aria-label="项目与会话">
@@ -105,8 +107,10 @@ function Home({ view, api }: { view: View; api: API }) {
             <section className="remote-project-group" key={p.projectId}>
               <div className="remote-project-header">
                 <Button
-                  variant="ghost"
-                  className="remote-project-row"
+                  variant="row"
+                  size="lg"
+                  align="start"
+                  className="min-h-12 min-w-0 flex-1 shrink gap-3"
                   aria-expanded={!closed}
                   aria-controls={listId}
                   onClick={() => {
@@ -120,12 +124,12 @@ function Home({ view, api }: { view: View; api: API }) {
                   ) : (
                     <ProjectOpenFolderIcon width={21} height={21} />
                   )}
-                  <span>{p.name}</span>
+                  <span className="truncate text-ui-heading">{p.name}</span>
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="remote-project-create"
+                  className="shrink-0"
                   aria-label={`在项目 ${p.name} 中新建会话`}
                   title={`在项目 ${p.name} 中新建会话`}
                   disabled={!view.canSubmit}
@@ -147,12 +151,14 @@ function Home({ view, api }: { view: View; api: API }) {
                   {sessions.slice(0, visibleCount).map((row) => (
                     <Button
                       key={row.threadId}
-                      variant="ghost"
-                      className="remote-session-row"
+                      variant="row"
+                      size="lg"
+                      align="start"
+                      className="min-h-12 w-full"
                       data-thread-id={row.threadId}
                       onClick={() => void api.open(p.projectId, row.threadId)}
                     >
-                      {row.title || "未命名会话"}
+                      <span className="min-w-0 truncate">{row.title || "未命名会话"}</span>
                     </Button>
                   ))}
                   {tasks.map((row) => (
@@ -194,8 +200,10 @@ function Home({ view, api }: { view: View; api: API }) {
                   ) : null}
                   {sessions.length > visibleCount && (
                     <Button
-                      variant="ghost"
-                      className="remote-session-more"
+                      variant="ghost-subtle"
+                      size="sm"
+                      align="start"
+                      className="w-full"
                       onClick={() =>
                         setVisibleCounts((c) => ({
                           ...c,
@@ -208,8 +216,10 @@ function Home({ view, api }: { view: View; api: API }) {
                   )}
                   {group?.hasMore && sessions.length <= visibleCount && (
                     <Button
-                      variant="ghost"
-                      className="remote-session-more"
+                      variant="ghost-subtle"
+                      size="sm"
+                      align="start"
+                      className="w-full"
                       onClick={() => {
                         setVisibleCounts((c) => ({ ...c, [p.projectId]: visibleCount + 5 }));
                         void api.select(p.projectId).then(api.more);
@@ -274,7 +284,7 @@ function Session({ view, api }: { view: View; api: API }) {
   const control = async (operation: string, values: Data, revision: number) => {
     const result = await api.control(operation, values, revision);
     if (result?.admissionState !== "accepted")
-      throw new Error(result?.error?.message ?? "结果未确认，请先核对原操作");
+      throw new Error(currentErrorText(result?.error) || "操作结果尚未确认，请先检查原请求");
     return result;
   };
   // Remote 仅处理 manage 与 queueEdit；其余 Action 重载保持明确拒绝。
@@ -319,7 +329,7 @@ function Session({ view, api }: { view: View; api: API }) {
         if (live.current) api.draft("");
       } else await api.send(running);
     } catch (error) {
-      setLocalError((error as Error).message);
+      setLocalError(currentErrorText(error));
     }
     return false;
   }
@@ -405,7 +415,7 @@ function Session({ view, api }: { view: View; api: API }) {
           modelDisabled={disabled || running || !!editing || !config}
           onConfigureModel={(values) => {
             void control("configure", values, s.configRevision).catch((error) =>
-              setLocalError(error.message),
+              setLocalError(currentErrorText(error)),
             );
           }}
           workspacePath=""
@@ -442,7 +452,7 @@ function Session({ view, api }: { view: View; api: API }) {
                     label: "设置目标",
                     description: "设置持续目标与停止条件",
                     icon: <GoalIcon />,
-                    group: "功能",
+                    group: "features",
                     disabled: disabled || running || !!editing,
                     run: () => setGoalMode(true),
                   },
@@ -464,7 +474,7 @@ function Session({ view, api }: { view: View; api: API }) {
                 onChange={(mode) => {
                   const options = permissionOptions(mode, config?.options);
                   void control("configure", { options }, s.configRevision).catch((error) =>
-                    setLocalError(error.message),
+                    setLocalError(currentErrorText(error)),
                   );
                 }}
                 onClose={() => apiRef.current?.focus()}
@@ -508,7 +518,6 @@ function Session({ view, api }: { view: View; api: API }) {
                   <ComposerActionButton
                     type="button"
                     size="icon"
-                    className="composer-primary-action"
                     aria-label="发送"
                     data-testid="remote-chat-send"
                     disabled={disabled}
@@ -518,17 +527,17 @@ function Session({ view, api }: { view: View; api: API }) {
                   </ComposerActionButton>
                 </ControlHintTooltip>
               ) : (
-                <Button
+                <ComposerActionButton
                   type="button"
                   variant="secondary"
                   size="icon"
-                  className="composer-primary-action composer-stop-action"
+                  mode="stop"
                   aria-label="停止"
                   disabled={view.stopDisabled}
                   onClick={() => void api.stop()}
                 >
                   <StopIcon />
-                </Button>
+                </ComposerActionButton>
               )
             ) : undefined
           }

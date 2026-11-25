@@ -36,6 +36,8 @@ class GitHooks(unittest.TestCase):
         for name in (
             "scripts/git-hooks.py",
             "scripts/ci-scope.py",
+            "scripts/check-journeys.py",
+            "clients/gui/scripts/journey-manifest.json",
             "clients/gui/scripts/test-manifest.mjs",
             "clients/gui/scripts/test-manifest.json",
             ".githooks/pre-commit",

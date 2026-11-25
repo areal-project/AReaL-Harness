@@ -134,7 +134,7 @@ export function UnknownToolInspection({
             open={browser ? undefined : true}
             title={t("operations.inspectionDetails")}
           >
-            <dl className="grid gap-1 text-compact-body break-all">
+            <dl className="grid gap-1 text-ui-base break-all">
               <dt>原工具</dt>
               <dd>{item.tool}</dd>
               <dt>执行项</dt>
@@ -156,18 +156,12 @@ export function UnknownToolInspection({
             </dl>
             <div>
               <h3>原操作参数</h3>
-              <pre
-                className="whitespace-pre-wrap break-all text-compact-caption"
-                aria-label="原操作参数"
-              >
+              <pre className="whitespace-pre-wrap break-all text-ui-sm" aria-label="原操作参数">
                 {JSON.stringify(item.arguments, null, 2)}
               </pre>
             </div>
             <SettingsDisclosure title="Core 原始结果与核查事实">
-              <pre
-                className="whitespace-pre-wrap break-all text-compact-caption"
-                aria-label="Core 原始结果"
-              >
+              <pre className="whitespace-pre-wrap break-all text-ui-sm" aria-label="Core 原始结果">
                 {JSON.stringify({ output: item.contentItems, execution: item.execution }, null, 2)}
               </pre>
             </SettingsDisclosure>
@@ -193,7 +187,7 @@ export function UnknownToolInspection({
                   }
                 />
               </label>
-              <p className="text-compact-caption">{bytes} / 1024 UTF-8 字节</p>
+              <p className="text-ui-sm">{bytes} / 1024 UTF-8 字节</p>
               <label className="flex items-center gap-2">
                 <Input
                   unstyled

@@ -1,11 +1,36 @@
 use anyhow::{Result, ensure};
 use areal_local_service::storage;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
+    fs::File,
     path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+pub async fn run_when_available(options: crate::RunOptions) -> Result<crate::HostExit> {
+    tokio::task::LocalSet::new()
+        .run_until(crate::server::run_local_mode(options, false, true))
+        .await
+}
+
+pub(crate) async fn acquire_host_lock(home: &Path, wait: bool) -> Result<Option<File>> {
+    let lock = storage::open_private(&home.join("host.lock"), true)?;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(14);
+    loop {
+        match lock.try_lock_exclusive() {
+            Ok(()) => return Ok(Some(lock)),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                if !wait || tokio::time::Instant::now() >= deadline {
+                    return Ok(None);
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
 
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

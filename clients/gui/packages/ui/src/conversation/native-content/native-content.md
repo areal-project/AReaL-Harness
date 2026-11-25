@@ -2,8 +2,8 @@
 id: native-content
 title: NativeContent
 summary: 六类受控数据内容，统一文字回退与复制，不执行模型代码。
-status: experimental
-entry: experimental
+status: stable
+entry: compositions
 layer: conversation
 category: content
 aliases: ["原生内容", "指标", "条形图", "时间线"]
@@ -26,7 +26,7 @@ related: ["markdown-surface", "disclosure", "decision-card"]
 
 ## 内容
 
-`R-NATIVECONTENT-003` version固定为1。每块最多48KiB，字符串最多2000字符，列表最多100项，表格最多20列；行宽必须相同。条形图只接收有限数值，呈现绝对值长度并保留原始正负数。
+`R-NATIVECONTENT-003` version固定为1。每块最多48KiB，字符串最多2000字符，列表最多100项，表格最多20列；行宽必须相同。条形图只接收有限数值，呈现绝对值长度并保留原始正负数。**检查：**`clients/gui/packages/ui/src/conversation/native-content/native-content.test.tsx`
 
 ## 示例
 
@@ -34,6 +34,6 @@ related: ["markdown-surface", "disclosure", "decision-card"]
 
 ## 围栏、历史与跨渠道边界
 
-`R-CONTENT-029` `@areal/ui/content`提供可重建的内容投影、严格校验与`toText`；不成为第二份Core历史。`areal-ui` JSON围栏必须包含`version:1`、`type`和`title`，支持metric、key-value、table、bar-chart、timeline、callout六种只读数据。字段、长度和数量受限；额外动作/样式/URL字段、未知版本或无效数据回退到可展开的原文。普通代码围栏与嵌套示例保持文字，不执行生成脚本。未闭合原生块在流式中占位，结束后仍无效则显示原文入口。
+`R-CONTENT-029` `@areal/ui/content`提供可重建的内容投影、严格校验与`toText`；不成为第二份Core历史。`areal-ui` JSON围栏必须包含`version:1`、`type`和`title`，支持metric、key-value、table、bar-chart、timeline、callout六种只读数据。字段、长度和数量受限；额外动作/样式/URL字段、未知版本或无效数据回退到可展开的原文。普通代码围栏与嵌套示例保持文字，不执行生成脚本。未闭合原生块在流式中占位，结束后仍无效则显示原文入口。**检查：**`clients/gui/packages/ui/src/conversation/native-content/native-content.test.tsx`
 
-`R-CONTENT-030` 每种原生类型登记校验、文字投影、流式策略和最小占位信息。可信React组件决定DOM，模型字符串只作转义文本。图表数据可展开、内容可复制；没有模型自定义事件、动态模块或工具权限。当前消息复制使用同一投影；Rust/TUI、导出、搜索和模型回放仍消费原始历史，尚未迁入JS注册表，不能声称全部渠道自动采用`toText`。
+`R-CONTENT-030` 每种原生类型登记校验、文字投影、流式策略和最小占位信息。可信React组件决定DOM，模型字符串只作转义文本。图表数据可展开、内容可复制；没有模型自定义事件、动态模块或工具权限。当前消息复制使用同一投影；Rust/TUI、导出、搜索和模型回放仍消费原始历史，尚未迁入JS注册表，不能声称全部渠道自动采用`toText`。**检查：**`clients/gui/packages/ui/src/conversation/native-content/native-content.test.tsx`

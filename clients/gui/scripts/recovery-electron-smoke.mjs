@@ -1,22 +1,19 @@
 #!/usr/bin/env node
+import { preparePrivateFixtureDirectories } from "./support/desktop-fixture.mjs";
+import { nativeRecoverySnapshot } from "./support/native-recovery-observation.mjs";
+import { readCoreThread } from "./support/core-observation.mjs";
+import { resolveAcceptanceBinary } from "./support/acceptance-binary.mjs";
+import { closeRecordedSmokeApplication, stopAndAssertFixtureHost } from "./application-cleanup.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import {
-  access,
-  lstat,
-  mkdir,
-  readFile,
-  readdir,
-  realpath,
-  rename,
-  writeFile,
-} from "node:fs/promises";
+import { access, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createServer } from "node:http";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -26,26 +23,18 @@ const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const WebSocket = require("ws");
 const { WebSocketServer } = WebSocket;
-const { ServiceConnection } = require(join(gui, "app/src/core/service-client.cjs"));
 const { applicationFixture } = await import(
   pathToFileURL(join(gui, "scripts/application-fixture.mjs"))
 );
 const { createProjectConversation } = await import(
   pathToFileURL(join(gui, "scripts/smoke-navigation.mjs"))
 );
-const binary = process.env.AREAL_CORE_BIN;
+let binary;
+const packagePath = process.env.AREAL_TEST_PACKAGE;
+const packageExecutable = packagePath && join(packagePath, "Contents/MacOS/AReaL Harness GUI");
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const json = (path, value) => writeFile(path, JSON.stringify(value, null, 2));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const alive = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error.code === "ESRCH") return false;
-    throw error;
-  }
-};
 const displayTurns = (turns) =>
   turns.map((turn) => ({
     id: turn.id,
@@ -76,15 +65,11 @@ async function until(read, label, timeout = 60000) {
 }
 async function preflight() {
   assert.equal(process.platform, "darwin", "This source Electron runner is prepared for macOS");
-  assert.ok(
-    binary && isAbsolute(binary) && binary.includes("/.local/dev-bin/"),
-    "Set AREAL_CORE_BIN to the deployed private fixed Core path",
-  );
-  const stat = await lstat(binary);
-  assert.ok(
-    stat.isFile() && stat.nlink === 1 && (await realpath(binary)) === binary,
-    "Core must be a regular independent copy",
-  );
+  binary = packagePath
+    ? join(packagePath, "Contents/Resources/areal-core/bin/areal")
+    : await resolveAcceptanceBinary(root, process.env.AREAL_CORE_BIN);
+  await access(binary);
+  if (packageExecutable) await access(packageExecutable);
   await access(join(gui, "renderer/dist/index.html"));
   await access(require("electron"));
   const renderer = join(gui, "renderer/dist");
@@ -97,6 +82,9 @@ async function preflight() {
   return {
     root,
     binary,
+    packagePath: packagePath ?? null,
+    packageExecutable: packageExecutable ?? null,
+    packageExecutableSHA256: packageExecutable ? sha(await readFile(packageExecutable)) : null,
     binarySHA256: sha(await readFile(binary)),
     rendererSHA256,
     node: process.version,
@@ -128,49 +116,6 @@ function environment(state) {
     AREAL_CORE_DESKTOP_CONFIG: join(state, "desktop.json"),
   };
 }
-async function records(state) {
-  const base = join(state, "registry/services");
-  let names;
-  try {
-    names = await readdir(base);
-  } catch (error) {
-    if (error.code === "ENOENT") return [];
-    throw error;
-  }
-  return (
-    await Promise.all(
-      names.map((name) =>
-        readFile(join(base, name, "service.json"), "utf8")
-          .then(JSON.parse)
-          .catch((error) => {
-            if (error.code === "ENOENT") return null;
-            throw error;
-          }),
-      ),
-    )
-  ).filter(Boolean);
-}
-async function restoreDescriptor(run, original) {
-  const path = join(run.state, "core/service.json");
-  let current;
-  try {
-    current = JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return;
-    throw error;
-  }
-  if (
-    current.pid !== original.pid ||
-    current.token !== original.token ||
-    current.identity !== original.identity
-  )
-    return;
-  const temporary = `${path}.recovery-${run.owner}`;
-  await writeFile(temporary, JSON.stringify({ ...current, endpoint: original.endpoint }), {
-    mode: 0o600,
-  });
-  await rename(temporary, path);
-}
 async function transportProxy(metadata, events) {
   const sessions = new Set();
   const server = createServer((_req, res) => {
@@ -182,7 +127,7 @@ async function transportProxy(metadata, events) {
     blocked = false,
     connections = 0;
   server.on("upgrade", (request, socket, head) => {
-    if (blocked || request.headers.authorization !== `Bearer ${metadata.token}`) {
+    if (blocked || request.headers.origin !== "areal-ui://app") {
       socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
       return;
     }
@@ -191,13 +136,15 @@ async function transportProxy(metadata, events) {
   wss.on("connection", (down) => {
     const entry = {
       down,
-      up: new WebSocket(metadata.endpoint, {
-        headers: { Authorization: `Bearer ${metadata.token}` },
+      up: new WebSocket(metadata.websocketUrl, {
+        origin: "areal-ui://app",
         followRedirects: false,
         maxPayload: 256 * 1024 * 1024,
       }),
       queue: [],
       fault: null,
+      reads: new Map(),
+      reviews: new Map(),
     };
     sessions.add(entry);
     connections++;
@@ -209,17 +156,24 @@ async function transportProxy(metadata, events) {
     down.on("message", (bytes, binary) => {
       const message = JSON.parse(bytes.toString());
       if (
+        message.method === "desktop.command" &&
+        message.params?.command === "workspace" &&
+        message.params?.request?.operation === "review"
+      ) {
+        entry.reviews.set(message.id, message.params.request.summaryOnly === true);
+      }
+      if (
         armed &&
         !armed.dispatched &&
-        message.method === "command" &&
-        message.params?.name === armed.name
+        message.method === (armed.name === "send" ? "session.send" : "session.open") &&
+        message.params?.threadId === armed.expectedThreadId
       ) {
         entry.fault = armed;
         armed.dispatched = true;
         armed.rpcId = message.id;
-        armed.requestId = message.params.request?.requestId;
-        armed.threadId = message.params.request?.threadId;
-        armed.projectId = message.params.request?.projectId;
+        armed.requestId = message.commandId ?? message.id;
+        armed.threadId = message.params?.threadId;
+        armed.projectId = message.context?.projectId;
         events.push({
           at: Date.now(),
           type: "fault-command-forwarded",
@@ -230,20 +184,40 @@ async function transportProxy(metadata, events) {
           projectId: armed.projectId,
         });
       }
-      if (message.method === "command")
+      if (message.method === "session.send")
         events.push({
           at: Date.now(),
           type: "command",
-          name: message.params?.name,
-          requestId: message.params?.request?.requestId,
-          threadId: message.params?.request?.threadId,
+          name: "send",
+          requestId: message.commandId,
+          threadId: message.params?.threadId,
         });
+      if (message.method === "command.read") entry.reads.set(message.id, message.params.commandId);
       if (entry.up.readyState === WebSocket.OPEN) entry.up.send(bytes, { binary });
       else if (entry.up.readyState === WebSocket.CONNECTING) entry.queue.push([bytes, binary]);
     });
     entry.up.on("message", (bytes, binary) => {
       const message = JSON.parse(bytes.toString()),
         fault = entry.fault;
+      if (entry.reviews.has(message.id)) {
+        events.push({
+          at: Date.now(),
+          type: "workspace-review-response",
+          summaryOnly: entry.reviews.get(message.id),
+          bytes: bytes.length,
+          error: !!message.error,
+        });
+        entry.reviews.delete(message.id);
+      }
+      if (entry.reads.has(message.id)) {
+        events.push({
+          type: "command-reconciled",
+          requestId: entry.reads.get(message.id),
+          result: message.result,
+          error: message.error,
+        });
+        entry.reads.delete(message.id);
+      }
       if (fault && message.id === fault.rpcId) {
         fault.response = message;
         fault.completed = true;
@@ -251,7 +225,7 @@ async function transportProxy(metadata, events) {
         blocked = true;
         events.push({
           at: Date.now(),
-          type: "real-desktop-response-discarded",
+          type: "real-host-response-discarded",
           name: fault.name,
           requestId: fault.requestId,
           hadError: fault.hadError,
@@ -260,7 +234,7 @@ async function transportProxy(metadata, events) {
         entry.up.terminate();
         return;
       }
-      if (fault && message.method === "state") {
+      if (fault && message.method) {
         fault.withheldStates = (fault.withheldStates ?? 0) + 1;
         return;
       }
@@ -282,10 +256,19 @@ async function transportProxy(metadata, events) {
     get connections() {
       return connections;
     },
-    arm(name) {
+    arm(name, expectedThreadId) {
+      assert.ok(expectedThreadId, "Fault must name its original thread");
       assert.ok(!armed || armed.completed, "Previous fault must settle");
-      armed = { name, dispatched: false, completed: false };
+      armed = { name, expectedThreadId, dispatched: false, completed: false };
       return armed;
+    },
+    disconnect() {
+      blocked = true;
+      events.push({ at: Date.now(), type: "idle-transport-cut", sessions: sessions.size });
+      for (const { down, up } of sessions) {
+        down.terminate();
+        up.terminate();
+      }
     },
     release() {
       blocked = false;
@@ -305,107 +288,12 @@ async function transportProxy(metadata, events) {
   };
 }
 async function cleanup(run) {
-  assert.match(run.state, /^\/private\/tmp\/arec-[^/]+$/);
+  assert.equal(dirname(run.state), await realpath(tmpdir()));
+  assert.match(run.state, /\/arec-[^/]+$/);
   assert.equal(await readFile(join(run.state, ".owner"), "utf8"), run.owner);
-  let metadata;
-  try {
-    metadata = JSON.parse(await readFile(join(run.state, "core/service.json"), "utf8"));
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-  if (metadata && alive(metadata.pid)) {
-    assert.equal(
-      metadata.applicationOwner?.appRunId,
-      run.appRunId,
-      "Refuse a different application owner",
-    );
-    if (
-      run.route &&
-      metadata.pid === run.route.pid &&
-      metadata.identity === run.route.identity &&
-      metadata.desktopGeneration === run.route.desktopGeneration &&
-      metadata.endpoint === run.route.proxyEndpoint
-    ) {
-      const path = join(run.state, "core/service.json"),
-        temporary = `${path}.cleanup-${run.owner}`;
-      metadata = { ...metadata, endpoint: run.route.originalEndpoint };
-      await writeFile(temporary, JSON.stringify(metadata), { mode: 0o600 });
-      await rename(temporary, path);
-    }
-    const connection = new ServiceConnection();
-    try {
-      await connection.connect(metadata);
-      const hello = await connection.request("hello", {
-        protocol: metadata.protocol,
-        identity: metadata.identity,
-      });
-      assert.equal(hello.service.pid, metadata.pid);
-      const result = await connection.request("stopService", {
-        protocol: metadata.protocol,
-        expectedDesktopGeneration: metadata.desktopGeneration,
-        expectedTargets: hello.service.targets,
-      });
-      assert.equal(result.desktopExit, "requested", "Owned Desktop did not confirm exit");
-    } finally {
-      connection.close();
-    }
-    await until(() => !alive(metadata.pid), "owned Desktop exits", 20000);
-  }
-  const instances = await records(run.state);
-  const projects = JSON.parse(await readFile(join(run.state, "core/projects.json"), "utf8"));
-  assert.ok(Array.isArray(projects), "Invalid private project index");
-  for (const record of instances) {
-    const project = projects.find(
-      (project) =>
-        project.root === record.workspace &&
-        /^[a-f0-9]{24}$/.test(project.id) &&
-        record.dataDir === join(run.state, "core", project.id, "state"),
-    );
-    assert.ok(
-      project &&
-        (project.root === join(run.state, "workspace") ||
-          (project.projectless === true &&
-            typeof project.projectlessRequestId === "string" &&
-            /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(
-              project.projectlessRequestId,
-            ) &&
-            project.root ===
-              join(run.state, "user/Documents/AReaL", project.projectlessRequestId))),
-      "Unexpected workspace in private registry",
-    );
-    assert.equal(
-      record.owner?.profile,
-      join(run.state, "electron"),
-      "Unexpected service profile in private registry",
-    );
-    assert.ok(
-      (run.appRunIds ?? [run.appRunId]).includes(record.owner?.appRunId),
-      "Unexpected service application owner",
-    );
-  }
-  await until(
-    async () =>
-      (await records(run.state)).every(
-        (record) => !alive(record.hostPid) && !alive(record.corePid),
-      ),
-    "owned Core/Host processes exit",
-    20000,
-  );
-  return {
-    desktopExited: !metadata || !alive(metadata.pid),
-    hostAndCoreExited: true,
-    statePreserved: true,
-    state: run.state,
-    registry: (await records(run.state)).map(
-      ({ serviceId, generation, state, hostPid, corePid }) => ({
-        serviceId,
-        generation,
-        state,
-        hostPid,
-        corePid,
-      }),
-    ),
-  };
+  const core = binary || (await resolveAcceptanceBinary(root, process.env.AREAL_CORE_BIN));
+  const receipt = await stopAndAssertFixtureHost(core, environment(run.state), run.evidence);
+  return { hostAndCoreExited: true, receipt };
 }
 const command = process.argv[2];
 if (command === "doctor") {
@@ -428,17 +316,18 @@ if (command === "doctor") {
   console.log(`Evidence: ${evidence}`);
   const requests = [],
     events = [],
+    protocolErrors = [],
     errors = [],
     stderr = [],
     checks = [];
   const manifest = {
     build,
     scope:
-      "source Electron Renderer/preload/Main → authentic Desktop → real Core; local deterministic SSE provider",
+      "source Electron Renderer → authentic Host → real Core; local deterministic SSE provider",
     faultBoundary:
-      "Main↔Desktop websocket: real command completion response and racing state publications withheld, owned connection cut, then normal hello reconnection",
+      "Renderer↔Host websocket: real command response and racing notifications withheld, connection cut, then fresh-ticket reconnection",
     excluded: [
-      "Core→Desktop response-loss and healthy Core observe retry (separate backend contract smoke)",
+      "Host→Core response-loss and healthy Core observe retry",
       "real provider/credentials",
       "native directory dialog and physical input",
       "Runtime tool execution",
@@ -449,10 +338,11 @@ if (command === "doctor") {
     errors,
     run,
   };
-  let app, page, processHandle, application, model, proxy, original, failure, projectId, threadId;
+  let app, page, processHandle, application, model, proxy, failure, projectId, threadId;
   const env = environment(state),
     workspace = join(state, "workspace");
-  const snapshot = () => page.evaluate(() => window.arealDesktop.snapshot());
+  const shellSnapshot = () => nativeRecoverySnapshot(env);
+  const snapshot = () => nativeRecoverySnapshot(env, { projectId, threadId });
   const project = (snap) => snap.projects.find((value) => value.id === projectId);
   const thread = (snap) => project(snap)?.state?.threads[threadId];
   const workRequests = () => requests.filter((value) => !value.title).length;
@@ -470,14 +360,40 @@ if (command === "doctor") {
   };
   async function launch() {
     app = await electron.launch({
-      executablePath: require("electron"),
-      args: [application.path],
+      executablePath: packageExecutable ?? require("electron"),
+      args: packageExecutable ? [] : [application.path],
       env,
       timeout: 120000,
     });
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
+      dialog.showMessageBox = async (...args) => ({
+        response: ["确认取消后台任务？", "退出 AReaL Harness？"].includes(args.at(-1).message)
+          ? 1
+          : (args.at(-1).cancelId ?? 0),
+      });
+    }, workspace);
     processHandle = app.process();
     processHandle.stderr.on("data", (data) => stderr.push(String(data)));
     page = await app.firstWindow();
+    // 只记录错误类别和方法，不保存票据、请求参数或业务正文。
+    page.on("websocket", (socket) => {
+      const methods = new Map();
+      socket.on("framesent", ({ payload }) => {
+        try {
+          const frame = JSON.parse(String(payload));
+          if (typeof frame.method === "string") methods.set(frame.id, frame.method);
+        } catch {}
+      });
+      socket.on("framereceived", ({ payload }) => {
+        try {
+          const frame = JSON.parse(String(payload));
+          if (frame.error && protocolErrors.length < 100)
+            protocolErrors.push({ method: methods.get(frame.id), code: frame.error.code });
+          methods.delete(frame.id);
+        } catch {}
+      });
+    });
     page.setDefaultTimeout(20000);
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
@@ -492,8 +408,18 @@ if (command === "doctor") {
       await page.reload();
       await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
     }
+    // 首次启动时 Host 尚未发布描述文件；只等待不存在，权限和协议错误仍立即失败。
+    await until(async () => {
+      try {
+        await access(join(env.AREAL_HARNESS_SERVICE_HOME, "host", "host.json"));
+        return true;
+      } catch (error) {
+        if (error.code === "ENOENT") return false;
+        throw error;
+      }
+    }, "source Host descriptor published");
     await until(
-      async () => (await snapshot()).connection?.state === "ready",
+      async () => (await shellSnapshot()).connection?.state === "ready",
       "source Desktop ready",
     );
     const actual = await app.evaluate(({ app, BrowserWindow }) => {
@@ -502,6 +428,7 @@ if (command === "doctor") {
       window.setSize(1440, 960);
       return {
         pid: process.pid,
+        executable: app.getPath("exe"),
         userData: app.getPath("userData"),
         sandbox: p.sandbox,
         contextIsolation: p.contextIsolation,
@@ -509,43 +436,73 @@ if (command === "doctor") {
       };
     });
     assert.equal(actual.userData, env.AREAL_GUI_USER_DATA);
+    if (packageExecutable)
+      assert.equal(await realpath(actual.executable), await realpath(packageExecutable));
     assert.equal(actual.sandbox, true);
     assert.equal(actual.contextIsolation, true);
     assert.equal(actual.nodeIntegration, false);
-    const metadata = JSON.parse(await readFile(join(state, "core/service.json"), "utf8"));
-    run.appRunId = metadata.applicationOwner.appRunId;
-    run.appRunIds = [...new Set([...(run.appRunIds ?? []), run.appRunId])];
+    const metadata = (await shellSnapshot()).host;
+    // 通过真实 preload 投影核对原生连接归属，不能用独立 Host 观察代替 Main 握手。
+    const native = await until(async () => {
+      const state = await page.evaluate(() => window.arealDesktop.nativeState());
+      if (state.connection?.state !== "ready") return false;
+      assert.deepEqual(
+        state.verifiedDesktopHost,
+        {
+          hostId: metadata.hostId,
+          generation: metadata.generation,
+        },
+        "preload must expose the verified current Host attachment",
+      );
+      return state;
+    }, "native desktop attachment ready");
+    await json(join(evidence, `native-attachment-${processHandle.pid}.json`), {
+      connection: native.connection,
+      verifiedDesktopHost: native.verifiedDesktopHost,
+    });
     await json(join(evidence, "run.json"), run);
     await json(join(evidence, `doctor-${processHandle.pid}.json`), {
       ...actual,
-      desktopPid: metadata.pid,
-      desktopGeneration: metadata.desktopGeneration,
-      appRunId: run.appRunId,
+      hostId: metadata.hostId,
+      hostGeneration: metadata.generation,
       binarySHA256: sha(await readFile(binary)),
     });
-    await app.evaluate(({ dialog }, path) => {
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-      dialog.showMessageBox = async (...args) => ({
-        response: ["确认取消后台任务？", "退出 AReaL Harness？"].includes(args.at(-1).message)
-          ? 1
-          : (args.at(-1).cancelId ?? 0),
-      });
-    }, workspace);
   }
   async function stopGUI() {
     if (!app) return;
-    await app.evaluate(({ app }) => app.quit());
-    await until(
-      () => processHandle.exitCode !== null || processHandle.signalCode !== null,
-      "owned Main exits",
-      30000,
-    );
-    app = null;
+    try {
+      await closeRecordedSmokeApplication(app, 30000);
+    } finally {
+      app = null;
+    }
   }
   try {
     await mkdir(workspace);
-    await mkdir(join(state, "user"));
+    await preparePrivateFixtureDirectories(state, [
+      env.AREAL_CORE_HOME,
+      env.AREAL_GUI_USER_DATA,
+      env.AREAL_CORE_USER_HOME,
+      env.AREAL_HARNESS_HOME,
+      env.AREAL_HARNESS_SERVICE_HOME,
+    ]);
     execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
+    // 完整审查结果超过 Host 帧上限；后台摘要不得触发断连与恢复重放。
+    await writeFile(join(workspace, "large-review.txt"), "baseline\n");
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=Recovery fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "fixture",
+      ],
+      { cwd: workspace, stdio: "ignore" },
+    );
+    await writeFile(join(workspace, "large-review.txt"), "new line\n".repeat(30000));
     model = createServer(async (request, response) => {
       try {
         let raw = "";
@@ -569,7 +526,7 @@ if (command === "doctor") {
     await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
     await writeFile(
       join(state, "config.toml"),
-      `schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\n`,
+      `schema_version=1\n[model]\ncatalog_version=1\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:${model.address().port}/v1/chat/completions"\nmodels=[{id="fixture",enabled=true}]\n`,
     );
     await json(join(state, "desktop.json"), {
       profiles: [
@@ -581,7 +538,7 @@ if (command === "doctor") {
         },
       ],
     });
-    application = await applicationFixture(gui, join(state, "app"));
+    if (!packageExecutable) application = await applicationFixture(gui, join(state, "app"));
     await launch();
     await capture("01-empty");
     await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
@@ -595,6 +552,9 @@ if (command === "doctor") {
         "UI-added project connected",
       )
     ).id;
+    await page.getByRole("button", { name: "选择模型", exact: true }).click();
+    await page.getByRole("radio", { name: "fixture", exact: true }).click();
+    await page.keyboard.press("Escape");
     await page.getByTestId("chat-input").fill("Keep the original recovery history");
     await page.getByTestId("chat-send-button").click();
     threadId = await until(
@@ -610,196 +570,458 @@ if (command === "doctor") {
       .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
       .waitFor();
     await capture("02-history");
-    original = JSON.parse(await readFile(join(state, "core/service.json"), "utf8"));
-    proxy = await transportProxy(original, events);
-    run.route = {
-      pid: original.pid,
-      identity: original.identity,
-      desktopGeneration: original.desktopGeneration,
-      originalEndpoint: original.endpoint,
-      proxyEndpoint: proxy.endpoint,
-    };
-    await json(join(evidence, "run.json"), run);
-    const metadataPath = join(state, "core/service.json"),
-      temporary = `${metadataPath}.recovery-${run.owner}`;
-    await writeFile(temporary, JSON.stringify({ ...original, endpoint: proxy.endpoint }), {
-      mode: 0o600,
+    const endpoint = JSON.parse(await readFile(join(state, "registry/host/endpoint.json"), "utf8"));
+    proxy = await transportProxy(endpoint, events);
+    let skillsBegins = 0;
+    page.on("console", (message) => {
+      if (
+        message.text().includes("[composer-skills]") &&
+        message.text().includes('"outcome":"begin"')
+      )
+        skillsBegins++;
     });
-    await rename(temporary, metadataPath);
-    const endpoint = new URL(original.endpoint);
-    const detached = await app.evaluate(
-      (_electron, remote) => {
-        const sockets = process
-          ._getActiveHandles()
-          .filter(
-            (handle) =>
-              handle.constructor?.name === "Socket" &&
-              handle.remoteAddress === remote.host &&
-              handle.remotePort === remote.port &&
-              !handle.destroyed,
-          );
-        if (sockets.length !== 1)
-          throw new Error(`Expected one owned Desktop socket; found ${sockets.length}`);
-        const details = {
-          pid: process.pid,
-          count: sockets.length,
-          remoteAddress: remote.host,
-          remotePort: remote.port,
-          localPort: sockets[0].localPort,
+    await page.addInitScript(
+      ({ target, replacement }) => {
+        const NativeWebSocket = window.WebSocket;
+        window.WebSocket = class extends NativeWebSocket {
+          constructor(url, protocols) {
+            super(String(url) === target ? replacement : url, protocols);
+          }
         };
-        sockets[0].destroy();
-        return details;
       },
-      { host: endpoint.hostname, port: Number(endpoint.port) },
+      { target: endpoint.websocketUrl, replacement: proxy.endpoint },
     );
-    await json(join(evidence, "owned-socket-cut.json"), detached);
-    await until(
-      async () => proxy.connections > 0 && (await snapshot()).connection?.state === "ready",
-      "automatic Main reconnect through proxy",
-    );
-    const before = structuredClone(thread(await snapshot())),
-      beforeModel = workRequests();
-    const send = proxy.arm("send");
-    await page.getByTestId("chat-input").fill("Accept exactly this original send once");
-    await page.getByTestId("chat-send-button").click();
-    await until(() => send.completed, "real accepted Desktop send response intercepted");
-    assert.equal(send.hadError, false, JSON.stringify(send.response));
-    assert.ok(send.requestId);
-    assert.equal(send.threadId, threadId);
-    const unknown = page
-      .getByTestId("toast")
-      .filter({ has: page.locator("[data-recovery-request-id]") });
-    await unknown.waitFor();
-    await capture("03-send-response-lost");
-    const matchingSelector =
-      process.env.AREAL_RECOVERY_NOTICE_SELECTOR ??
-      '[data-testid="toast"] [data-recovery-request-id="{requestId}"]';
-    const matching = page.locator(matchingSelector.replaceAll("{requestId}", send.requestId));
-    assert.equal(
-      await matching.count(),
-      1,
-      "A single unified toast exposes the original request identity",
-    );
-    await matching.waitFor();
-    proxy.release();
-    await until(
-      async () =>
-        (await snapshot()).connection?.state === "ready" &&
-        project(await snapshot())?.outcomes?.[send.requestId]?.accepted === true,
-      "original accepted outcome converges automatically",
-    );
-    await until(
-      async () => thread(await snapshot())?.turns.at(-1)?.status === "completed",
-      "accepted turn completed",
-    );
-    await unknown.waitFor({ state: "hidden" });
-    await matching.waitFor({ state: "hidden" });
-    await page
-      .getByTestId("chat-view")
-      .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
-      .waitFor();
-    const accepted = thread(await snapshot());
-    assert.equal(accepted.turns.length, before.turns.length + 1);
-    assert.equal(workRequests() - beforeModel, 1);
-    assert.deepEqual(
-      accepted.turns.slice(0, before.turns.length).map((value) => value.id),
-      before.turns.map((value) => value.id),
-    );
-    assert.equal(
-      events.filter(
-        (value) =>
-          value.type === "command" && value.name === "send" && value.requestId === send.requestId,
-      ).length,
-      1,
-      "Main never replays accepted send",
-    );
-    checks.push(
-      "real UI accepted send response lost across Main↔Desktop; original request converges and matching notices disappear; one additional Core Turn and non-title model request",
-    );
-    await json(join(evidence, "send-fault.json"), send);
-    await capture("04-send-converged");
-    const history = displayTurns(accepted.turns),
-      readModel = workRequests();
-    await createProjectConversation(page, "workspace");
-    const read = proxy.arm("open");
-    await page.getByTestId(`task-item-${threadId}`).click();
-    await until(() => read.completed, "real Desktop history-open response intercepted");
-    assert.equal(read.hadError, false, JSON.stringify(read.response));
-    assert.equal(read.threadId, threadId);
-    await until(
-      async () => (await snapshot()).connection?.state !== "ready",
-      "read interruption is observed",
-    );
-    await capture("05-read-response-lost");
-    proxy.release();
-    await until(
-      async () =>
-        (await snapshot()).connection?.state === "ready" &&
-        project(await snapshot())?.state?.connected,
-      "history connection restores",
-    );
-    await until(
-      async () =>
-        (await page.getByTestId("areal-workbench").getAttribute("data-thread-id")) === threadId,
-      "original conversation remains selected",
-    );
+    await page.reload();
     await page
       .getByTestId("chat-view")
       .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
       .waitFor();
-    await page
-      .getByTestId("chat-view")
-      .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
-      .waitFor();
-    assert.deepEqual(displayTurns(thread(await snapshot()).turns), history);
-    assert.equal(workRequests(), readModel);
-    assert.equal(await unknown.count(), 0, "A read interruption must not invent a pending send");
-    checks.push(
-      "real UI history-open read response interrupted; reconnect retains visible original history and starts no model work",
-    );
-    await json(join(evidence, "read-fault.json"), read);
-    await capture("06-history-restored");
-    await restoreDescriptor(run, original);
-    await stopGUI();
-    await cleanup(run);
-    await proxy.close();
-    proxy = null;
-    original = null;
-    await launch();
-    await until(
-      async () => project(await snapshot())?.state?.connected,
-      "same private project restored after fresh Main launch",
-    );
-    await createProjectConversation(page, "workspace");
-    await page.getByTestId(`task-item-${threadId}`).click();
-    await page
-      .getByTestId("chat-view")
-      .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
-      .waitFor();
-    assert.deepEqual(displayTurns(thread(await snapshot()).turns), history);
-    assert.equal(workRequests(), readModel);
-    checks.push(
-      "fresh source Electron process opens original history from a new draft by sidebar click without replay",
-    );
-    await capture("07-fresh-process-history");
-    await stopGUI();
-    manifest.threadId = threadId;
-    manifest.projectId = projectId;
-    manifest.modelWorkRequests = workRequests();
+    assert.ok(proxy.connections > 0, "Renderer connected through the Host fault proxy");
+    if (process.env.AREAL_IDLE_RECONNECT === "1") {
+      const draft = "IDLE_RECONNECT_DRAFT";
+      await page.getByTestId("chat-input").fill(draft);
+      const beforeConnections = proxy.connections;
+      await page.evaluate(() => {
+        window.__idleAlerts = [];
+        const check = () => {
+          for (const alert of document.querySelectorAll('[role="alert"]')) {
+            const text = alert.innerText;
+            if (text && !window.__idleAlerts.includes(text)) window.__idleAlerts.push(text);
+          }
+        };
+        window.__idleObserver = new MutationObserver(check);
+        window.__idleObserver.observe(document.body, {
+          subtree: true,
+          childList: true,
+          characterData: true,
+        });
+        check();
+      });
+      proxy.disconnect();
+      await page.getByTestId("workspace-preparation-status").waitFor({ timeout: 30000 });
+      await sleep(1500);
+      const during = {
+        history: await page
+          .getByTestId("chat-view")
+          .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
+          .isVisible()
+          .catch(() => false),
+        draft: await page
+          .getByTestId("chat-input")
+          .textContent()
+          .catch(() => null),
+        alerts: await page.evaluate(() => window.__idleAlerts),
+        details: await page.locator("details").allTextContents(),
+      };
+      const bounds = await page.locator(".active-composer").evaluate((container) => {
+        const bar = container.querySelector(".composer-project-bar")?.getBoundingClientRect();
+        const input = container
+          .querySelector(".composer-input-stack > form")
+          ?.getBoundingClientRect();
+        return bar && input && { left: bar.left - input.left, right: bar.right - input.right };
+      });
+      await capture("idle-disconnected");
+      proxy.release();
+      await until(
+        async () =>
+          proxy.connections > beforeConnections &&
+          (await page.getByTestId("workspace-preparation-status").count()) === 0,
+        "automatic Host reconnection",
+        30000,
+      );
+      const after = {
+        history: await page
+          .getByTestId("chat-view")
+          .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
+          .isVisible()
+          .catch(() => false),
+        draft: await page
+          .getByTestId("chat-input")
+          .textContent()
+          .catch(() => null),
+        alerts: await page.evaluate(() => {
+          window.__idleObserver.disconnect();
+          return window.__idleAlerts;
+        }),
+      };
+      await capture("idle-reconnected");
+      await json(join(evidence, "idle-reconnect.json"), {
+        during,
+        after,
+        bounds,
+        beforeConnections,
+        afterConnections: proxy.connections,
+      });
+      assert.ok(
+        bounds && Math.abs(bounds.left) <= 1 && Math.abs(bounds.right) <= 1,
+        `status bar aligns with composer: ${JSON.stringify(bounds)}`,
+      );
+      assert.equal(during.history, true, "history remains visible while disconnected");
+      assert.equal(during.draft, draft, "draft remains while disconnected");
+      assert.equal(after.history, true, "history remains visible after reconnect");
+      assert.equal(after.draft, draft, "draft remains after reconnect");
+      await page.getByTestId("chat-send-button").click();
+      await until(
+        async () =>
+          thread(await snapshot())?.turns.at(-1)?.status === "completed" && workRequests() === 2,
+        "draft sent after automatic reconnect",
+      );
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
+        .waitFor();
+      await capture("idle-sent");
+      await page.evaluate(() => {
+        window.__idleAlerts = [];
+        window.__idleObserver.observe(document.body, {
+          subtree: true,
+          childList: true,
+          characterData: true,
+        });
+      });
+      await createProjectConversation(page, "workspace");
+      const open = proxy.arm("open", threadId);
+      await page.getByTestId(`task-item-${threadId}`).click();
+      await until(() => open.completed, "session.open response intercepted");
+      assert.equal(open.hadError, false, "real session.open succeeded at Host");
+      assert.equal(open.threadId, threadId, "fault hit selected thread");
+      await page.getByTestId("workspace-preparation-status").waitFor({ timeout: 30000 });
+      await sleep(1500);
+      await capture("open-disconnected");
+      const openDetails = await page.locator("details").allTextContents();
+      proxy.release();
+      await until(
+        async () => (await page.getByTestId("workspace-preparation-status").count()) === 0,
+        "session.open reconnect",
+        30000,
+      );
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
+        .waitFor();
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
+        .waitFor();
+      const openAlerts = await page.evaluate(() => {
+        window.__idleObserver.disconnect();
+        return window.__idleAlerts;
+      });
+      await capture("open-reconnected");
+      await json(join(evidence, "open-reconnect.json"), {
+        open,
+        alerts: openAlerts,
+        details: openDetails,
+      });
+      assert.equal(after.alerts.length, 0, "idle disconnect must not show an error banner");
+      assert.equal(openAlerts.length, 0, "interrupted session.open must not show an error banner");
+      checks.push(
+        "idle disconnect preserves history and draft, reconnects and sends; interrupted session.open restores history without error banners",
+      );
+    } else {
+      await until(
+        () =>
+          events.some(
+            (event) =>
+              event.type === "workspace-review-response" && event.summaryOnly && !event.error,
+          ),
+        "summary workspace review response",
+      );
+      const review = events.find(
+        (event) => event.type === "workspace-review-response" && event.summaryOnly && !event.error,
+      );
+      assert.ok(review.bytes < 1024 * 1024, `Summary review response is ${review.bytes} bytes`);
+      const stableConnections = proxy.connections,
+        stableSkills = skillsBegins;
+      await sleep(6000);
+      assert.equal(
+        proxy.connections,
+        stableConnections,
+        "Large review must not cause spontaneous reconnect",
+      );
+      assert.ok(skillsBegins - stableSkills <= 1, "Skills must not reload repeatedly while idle");
+      checks.push({
+        name: "large-review-stable-connection",
+        responseBytes: review.bytes,
+        connections: stableConnections,
+        idleSkillsBegins: skillsBegins - stableSkills,
+      });
+      const before = structuredClone(thread(await snapshot())),
+        beforeModel = workRequests();
+      const send = proxy.arm("send", threadId);
+      await page.getByTestId("chat-input").fill("Accept exactly this original send once");
+      await page.getByTestId("chat-send-button").click();
+      await until(() => send.completed, "real accepted Host send response intercepted");
+      assert.equal(send.hadError, false, JSON.stringify(send.response));
+      assert.ok(send.requestId);
+      assert.equal(send.response.result?.commandId, send.requestId);
+      assert.equal(send.response.result?.admissionState, "accepted");
+      assert.equal(send.threadId, threadId);
+      const unknown = page.getByRole("button", { name: "检查操作状态", exact: true });
+      await unknown.waitFor();
+      assert.equal(await unknown.count(), 1, "one action represents the unresolved send");
+      assert.equal(
+        await page.getByTestId("chat-input").innerText(),
+        "Accept exactly this original send once",
+      );
+      assert.equal(
+        await page.evaluate(
+          (id) =>
+            Object.keys(localStorage).some(
+              (key) => key.endsWith(":pending") && localStorage.getItem(key) === id,
+            ),
+          send.requestId,
+        ),
+        true,
+        "pending send retains the original Host command ID",
+      );
+      await capture("03-send-response-lost");
+      await page.getByTestId("chat-input").fill("A new draft written during recovery");
+      assert.equal(await page.getByTestId("chat-send-button").isDisabled(), true);
+      const sendsWhileUnknown = events.filter(
+        (event) => event.type === "command" && event.name === "send",
+      ).length;
+      await page.getByTestId("chat-input").press("Enter");
+      const editedDraft = await page.getByTestId("chat-input").innerText();
+      assert.equal(
+        events.filter((event) => event.type === "command" && event.name === "send").length,
+        sendsWhileUnknown,
+      );
+      proxy.release();
+      await until(
+        async () =>
+          events.some(
+            (event) =>
+              event.type === "command-reconciled" &&
+              event.requestId === send.requestId &&
+              event.result?.admissionState === "accepted",
+          ),
+        "original accepted outcome converges automatically",
+      );
+      await until(
+        async () => thread(await snapshot())?.turns.at(-1)?.status === "completed",
+        "accepted turn completed",
+      );
+      await unknown.waitFor({ state: "hidden" });
+      assert.equal(await page.getByTestId("chat-input").innerText(), editedDraft);
+      assert.equal(
+        await page.evaluate(
+          (id) =>
+            Object.keys(localStorage).some(
+              (key) => key.endsWith(":pending") && localStorage.getItem(key) === id,
+            ),
+          send.requestId,
+        ),
+        false,
+        "accepted receipt clears only the original pending send",
+      );
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
+        .waitFor();
+      const accepted = thread(await snapshot());
+      assert.equal(accepted.turns.length, before.turns.length + 1);
+      assert.equal(workRequests() - beforeModel, 1);
+      assert.equal(
+        events.filter((event) => event.type === "command" && event.name === "send").length,
+        sendsWhileUnknown,
+        "Enter during UNKNOWN never sends another command",
+      );
+      assert.deepEqual(
+        accepted.turns.slice(0, before.turns.length).map((value) => value.id),
+        before.turns.map((value) => value.id),
+      );
+      assert.equal(
+        events.filter(
+          (value) =>
+            value.type === "command" && value.name === "send" && value.requestId === send.requestId,
+        ).length,
+        1,
+        "Renderer never replays accepted send",
+      );
+      checks.push(
+        "real UI accepted send response lost across Renderer↔Host; original request converges and matching notices disappear; one additional Core Turn and non-title model request",
+      );
+      await json(join(evidence, "send-fault.json"), send);
+      await capture("04-send-converged");
+      const unchanged = proxy.arm("send", threadId);
+      await page.getByTestId("chat-input").fill("An unchanged recovery draft");
+      await page.getByTestId("chat-send-button").click();
+      await until(() => unchanged.completed, "unchanged draft send response intercepted");
+      assert.equal(unchanged.hadError, false, JSON.stringify(unchanged.response));
+      assert.equal(unchanged.response.result?.commandId, unchanged.requestId);
+      assert.equal(unchanged.response.result?.admissionState, "accepted");
+      await unknown.waitFor();
+      const draftState = () =>
+        page.evaluate((requestId) => {
+          const pendingKey = Object.keys(localStorage).find(
+            (key) => key.endsWith(":pending") && localStorage.getItem(key) === requestId,
+          );
+          const key = pendingKey?.slice(0, -":pending".length);
+          return key
+            ? {
+                key,
+                text: localStorage.getItem(key),
+                version: localStorage.getItem(`${key}:version`),
+                pendingVersion: localStorage.getItem(`${key}:pending-draft-version`),
+              }
+            : null;
+        }, unchanged.requestId);
+      const draftBefore = await draftState();
+      proxy.release();
+      await unknown.waitFor({ state: "hidden" });
+      const draftAfter = await page.evaluate(
+        (key) => ({
+          text: localStorage.getItem(key),
+          version: localStorage.getItem(`${key}:version`),
+          pendingVersion: localStorage.getItem(`${key}:pending-draft-version`),
+        }),
+        draftBefore.key,
+      );
+      const reconciliation = events.find(
+        (event) => event.type === "command-reconciled" && event.requestId === unchanged.requestId,
+      );
+      await json(join(evidence, "unchanged-draft.json"), {
+        before: draftBefore,
+        after: draftAfter,
+        outcome: {
+          status: reconciliation?.result?.status,
+          accepted: reconciliation?.result?.accepted,
+          admissionState: reconciliation?.result?.admissionState,
+        },
+      });
+      await until(
+        async () => (await page.getByTestId("chat-input").textContent()) === "",
+        "unchanged accepted draft clears",
+      );
+      await until(
+        async () => thread(await snapshot())?.turns.at(-1)?.status === "completed",
+        "unchanged draft turn completed",
+      );
+      assert.equal(thread(await snapshot()).turns.length, accepted.turns.length + 1);
+      assert.equal(workRequests(), beforeModel + 2);
+      assert.equal(
+        events.filter(
+          (event) =>
+            event.type === "command" &&
+            event.name === "send" &&
+            event.requestId === unchanged.requestId,
+        ).length,
+        1,
+      );
+      checks.push(
+        "UNKNOWN allows editing but blocks resubmission; accepted recovery preserves edited text and clears an unchanged draft",
+      );
+      const history = displayTurns(thread(await snapshot()).turns),
+        readModel = workRequests();
+      await createProjectConversation(page, "workspace");
+      const read = proxy.arm("open", threadId);
+      await page.getByTestId(`task-item-${threadId}`).click();
+      await until(() => read.completed, "real Host history-open response intercepted");
+      assert.equal(read.hadError, false, JSON.stringify(read.response));
+      assert.equal(read.threadId, threadId);
+      await until(
+        async () => page.getByTestId("chat-send-button").isDisabled(),
+        "read interruption is observed",
+      );
+      await capture("05-read-response-lost");
+      proxy.release();
+      await until(
+        async () =>
+          (await snapshot()).connection?.state === "ready" &&
+          project(await snapshot())?.state?.connected,
+        "history connection restores",
+      );
+      await until(
+        async () =>
+          (await page.getByTestId("areal-workbench").getAttribute("data-thread-id")) === threadId,
+        "original conversation remains selected",
+      );
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_1", { exact: true })
+        .waitFor();
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
+        .waitFor();
+      assert.deepEqual(displayTurns(thread(await snapshot()).turns), history);
+      assert.equal(workRequests(), readModel);
+      assert.equal(await unknown.count(), 0, "A read interruption must not invent a pending send");
+      checks.push(
+        "real UI history-open read response interrupted; reconnect retains visible original history and starts no model work",
+      );
+      await json(join(evidence, "read-fault.json"), read);
+      await capture("06-history-restored");
+      const readAuthoritativeThread = async () =>
+        readCoreThread({
+          binary,
+          env,
+          gui,
+          threadId,
+          workspace,
+          project: project(await snapshot()),
+        });
+      const persistedHistory = displayTurns((await readAuthoritativeThread()).turns);
+      assert.deepEqual(
+        persistedHistory.map((turn) => turn.id),
+        history.map((turn) => turn.id),
+      );
+      await stopGUI();
+      await cleanup(run);
+      await proxy.close();
+      proxy = null;
+      await launch();
+      await until(
+        async () => project(await shellSnapshot())?.state?.connected,
+        "same private project restored after fresh Main launch",
+      );
+      await createProjectConversation(page, "workspace");
+      await page.getByTestId(`task-item-${threadId}`).click();
+      await page
+        .getByTestId("chat-view")
+        .getByText("RECOVERY_HISTORY_SENTINEL_2", { exact: true })
+        .waitFor();
+      assert.deepEqual(displayTurns((await readAuthoritativeThread()).turns), persistedHistory);
+      assert.equal(workRequests(), readModel);
+      checks.push(
+        "fresh source Electron process opens original history from a new draft by sidebar click without replay",
+      );
+      await capture("07-fresh-process-history");
+      await stopGUI();
+      manifest.threadId = threadId;
+      manifest.projectId = projectId;
+      manifest.modelWorkRequests = workRequests();
+    }
   } catch (error) {
     failure = error.stack ?? String(error);
     if (page && app)
       await capture("failure").catch((cause) => errors.push(`failure capture: ${cause.message}`));
   } finally {
     proxy?.release();
-    if (original)
-      await restoreDescriptor(run, original).catch((error) =>
-        errors.push(`descriptor restore: ${error.message}`),
-      );
     if (app) {
-      await stopGUI().catch(async (error) => {
+      await stopGUI().catch((error) => {
         errors.push(`normal GUI exit: ${error.message}`);
-        await app?.evaluate(({ app }) => app.exit(1)).catch(() => {});
       });
     }
     if (application)
@@ -832,6 +1054,7 @@ if (command === "doctor") {
         errors.push(`Renderer build changed during acceptance: ${path}`);
     await json(join(evidence, "model-requests.json"), requests);
     await json(join(evidence, "transport-events.json"), events);
+    await json(join(evidence, "protocol-errors.json"), protocolErrors);
     await writeFile(join(evidence, "electron.stderr.log"), stderr.join(""));
     Object.assign(manifest, { passed: !failure && errors.length === 0, failure });
     await json(join(evidence, "manifest.json"), manifest);
@@ -839,8 +1062,6 @@ if (command === "doctor") {
     if (!manifest.passed) process.exitCode = 1;
   }
 } else {
-  console.log(
-    "Usage: AREAL_CORE_BIN=/absolute/.local/dev-bin/areal node recovery-electron-smoke.mjs doctor|run|cleanup <evidence>",
-  );
+  console.log("Usage: node recovery-electron-smoke.mjs doctor|run|cleanup <evidence>");
   if (command && command !== "--help") process.exitCode = 2;
 }

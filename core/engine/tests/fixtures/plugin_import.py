@@ -19,7 +19,7 @@ for line in sys.stdin:
     if method == "initialize":
         result = {
             "protocolVersion": "2025-11-25",
-            "capabilities": {"tools": {}, "resources": {}},
+            "capabilities": {"tools": {}, "resources": {}, "extensions": {"openai/mentions": {"searchTool": "observe"}}},
             "serverInfo": {"name": "import", "version": "1"},
         }
     elif method == "tools/list":

@@ -1,0 +1,49 @@
+.areal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing-inline) / 2);
+  max-width: 100%;
+  border: var(--border-width-default) solid var(--color-border-hairline);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-fog);
+  color: var(--color-foreground-subtle);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: var(--tracking-ui-subtle);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.areal-badge[data-size="sm"] {
+  height: var(--spacing-control-xs);
+  padding: 0 var(--spacing-inline);
+  font-size: var(--text-ui-xs);
+  line-height: 1;
+}
+
+.areal-badge[data-size="md"] {
+  height: var(--spacing-control-sm);
+  padding: 0 var(--composer-inset);
+  font-size: var(--text-ui-caption);
+  line-height: var(--line-height-ui-sm);
+}
+
+.areal-badge[data-tone="info"] {
+  color: var(--color-brand);
+}
+
+.areal-badge[data-tone="success"] {
+  color: var(--color-success);
+}
+
+.areal-badge[data-tone="warning"] {
+  color: var(--color-warning);
+}
+
+.areal-badge[data-tone="danger"] {
+  color: var(--color-destructive);
+}
+
+.areal-badge-icon {
+  display: inline-flex;
+  flex: none;
+}

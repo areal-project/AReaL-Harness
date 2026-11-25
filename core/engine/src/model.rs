@@ -757,6 +757,7 @@ impl ModelProtocol {
 #[derive(Clone)]
 pub struct HttpModel {
     client: reqwest::Client,
+    network_route: Option<&'static str>,
     endpoint: String,
     name: String,
     key: Option<String>,
@@ -909,19 +910,38 @@ impl HttpModelFactory {
         {
             bail!("model endpoint must be HTTP(S) and model name must not be empty");
         }
+        let proxy_environment = std::env::var_os(areal_config::proxy::MANAGED_PROXY).map(|_| {
+            areal_config::PROXY_ENV_VARS
+                .into_iter()
+                .filter_map(|name| std::env::var(name).ok().map(|value| (name.into(), value)))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        });
+        let network_route = proxy_environment.as_ref().map(|env| {
+            if areal_config::proxy::proxy_for_url(&url, env).is_some() {
+                "proxy"
+            } else {
+                "direct"
+            }
+        });
         let client = match &self.client {
             Some(client) => client.clone(),
             None => {
-                let client = reqwest::Client::builder()
+                let mut builder = reqwest::Client::builder()
                     .connect_timeout(Duration::from_secs(10))
-                    .redirect(reqwest::redirect::Policy::none())
-                    .build()?;
+                    .redirect(reqwest::redirect::Policy::none());
+                if let Some(environment) = proxy_environment {
+                    builder = builder.no_proxy().proxy(reqwest::Proxy::custom(move |url| {
+                        areal_config::proxy::proxy_for_url(url, &environment)
+                    }));
+                }
+                let client = builder.build()?;
                 self.client = Some(client.clone());
                 client
             }
         };
         Ok(HttpModel {
             client,
+            network_route,
             endpoint,
             name,
             key,
@@ -1399,13 +1419,10 @@ impl Model for HttpModel {
             "areal.model.request.history_thinking",
             self.options.history_thinking.as_str(),
         );
-        telemetry::request(
-            &body,
-            self.protocol,
-            purpose,
-            self.options.responses_websocket,
-        );
-        if self.options.responses_websocket {
+        // 需要代理的 Responses 请求在派发前选用支持代理的 SSE 传输。
+        let websocket = self.options.responses_websocket && self.network_route != Some("proxy");
+        telemetry::request(&body, self.protocol, purpose, websocket);
+        if websocket {
             self.check_request_size(
                 &body,
                 self.materialization_limit(),
@@ -1419,6 +1436,9 @@ impl Model for HttpModel {
         audit.value["historyThinking"] = json!(self.options.history_thinking);
         audit.endpoint(&self.endpoint);
         audit.value["transport"] = json!("http-sse");
+        if let Some(route) = self.network_route {
+            audit.value["networkRoute"] = json!(route);
+        }
         let routing = (self.protocol == ModelProtocol::Responses)
             .then(|| {
                 self.http_affinity.begin(
@@ -1980,7 +2000,7 @@ fn path_extension(path: &str) -> &str {
 pub fn content_from_input(input: &areal_protocol::Input) -> ContentPart {
     use areal_protocol::Input;
     match input {
-        Input::Text { text, .. } => ContentPart::Text(text.clone()),
+        Input::Text { .. } => ContentPart::Text(input.model_text()),
         Input::Image { url, detail } => ContentPart::Image {
             source: MediaSource::Url(url.clone()),
             detail: *detail,

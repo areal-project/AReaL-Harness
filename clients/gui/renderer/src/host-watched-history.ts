@@ -1,56 +1,65 @@
 import type { HostClient, SessionRead } from "@areal/client";
-import { createWatchedThreads, type ReadingWindow } from "./host-snapshot.js";
+import { projectReadingWindow, type ReadingWindow } from "./host-snapshot.js";
+import { refreshReadingWindow } from "./host-history-cache.js";
 import type { Observation } from "./host-services.js";
 
 export function createWatchedHistory(
   client: HostClient,
   readObservationResult: (value: unknown) => Observation,
 ) {
-  const readWatchedThreads = createWatchedThreads(
-    () => client.watchedSnapshot().values(),
-    (value) => readObservationResult(value).thread,
-  );
-  const watchedBodies = new Map<
-    string,
-    {
-      subscriptionId: string;
-      items: ReadingWindow["items"];
-      loading: Map<string, number>;
-    }
+  const windows = new Map<string, ReadingWindow>();
+  const projected = new WeakMap<
+    ReadingWindow,
+    { version: number; session: SessionRead; freshness: string; thread: Observation["thread"] }
   >();
-  function watchedThreads() {
-    const threads = readWatchedThreads();
-    for (const [projectId, values] of threads) {
-      threads.set(
-        projectId,
-        values.map((thread) => {
-          const key = `${projectId}:${thread.id}`;
-          const read = client.watchedSnapshot().get(key);
-          const bodies = watchedBodies.get(key);
-          if (
-            read?.state !== "fresh" ||
-            !bodies ||
-            bodies.subscriptionId !== read.value.subscriptionId
-          ) {
-            watchedBodies.delete(key);
-            return thread;
-          }
-          return {
-            ...thread,
-            turns: thread.turns.map((turn) => ({
-              ...turn,
-              items: turn.items.map((item) => {
-                const body = bodies.items.get(item.id);
-                return item.type === "historyDeferred" && body && body.version === item.version
-                  ? body.entry.item
-                  : item;
-              }),
-            })),
-          };
-        }),
-      );
+  function watchedThreads(version: number) {
+    const snapshots = client.watchedSnapshot();
+    for (const key of windows.keys()) if (!snapshots.has(key)) windows.delete(key);
+    const threads = new Map<string, Observation["thread"][]>();
+    for (const [key, read] of snapshots) {
+      const session = "value" in read ? read.value : read.previous;
+      if (!session) continue;
+      let window = windows.get(key);
+      if (window?.session !== session) {
+        try {
+          window = refreshReadingWindow(window, session, readObservationResult(session.snapshot));
+          windows.set(key, window);
+        } catch {
+          windows.delete(key);
+          continue;
+        }
+      }
+      let cached = projected.get(window);
+      if (
+        cached?.session !== session ||
+        cached.version !== version ||
+        cached.freshness !== read.state
+      ) {
+        cached = {
+          session,
+          version,
+          freshness: read.state,
+          thread: projectReadingWindow(window.observation.thread, window, read.state),
+        };
+        projected.set(window, cached);
+      }
+      const values = threads.get(session.projectId) ?? [];
+      values.push(cached.thread);
+      threads.set(session.projectId, values);
     }
     return threads;
+  }
+  function current(owner: ReadingWindow) {
+    const key = `${owner.session.projectId}:${owner.session.threadId}`;
+    const current = client.watchedSnapshot().get(key);
+    return (
+      windows.get(key) === owner &&
+      current?.state === "fresh" &&
+      current.value.subscriptionId === owner.session.subscriptionId
+    );
+  }
+  function find(generation: string) {
+    return [...windows.values()].find((owner) => owner.viewGeneration === generation);
   }
   function watch(
     target: { projectId: string; threadId: string },
@@ -65,7 +74,7 @@ export function createWatchedHistory(
     const release = client.watchSession({ projectId, threadId: target.threadId });
     return () => {
       release();
-      if (!client.watchedSnapshot().has(key)) watchedBodies.delete(key);
+      if (!client.watchedSnapshot().has(key)) windows.delete(key);
     };
   }
   function resolveWatched(
@@ -89,17 +98,13 @@ export function createWatchedHistory(
     const watched = key ? client.watchedSnapshot().get(key) : undefined;
     if (key && watched?.state !== "fresh") throw new Error("Conversation unavailable");
     const owner = watched?.state === "fresh" ? watched.value : session;
-    const watchedObservation =
-      watched?.state === "fresh" ? readObservationResult(watched.value.snapshot) : undefined;
-    let auxiliary = key ? watchedBodies.get(key) : undefined;
-    if (key && owner && (!auxiliary || auxiliary.subscriptionId !== owner.subscriptionId)) {
-      auxiliary = { subscriptionId: owner.subscriptionId, items: new Map(), loading: new Map() };
-      watchedBodies.set(key, auxiliary);
-    }
-    return { watchedTarget, owner, watchedObservation, auxiliary };
+    const auxiliary = key ? windows.get(key) : undefined;
+    if (key && (!auxiliary || auxiliary.session.subscriptionId !== owner?.subscriptionId))
+      throw new Error("Conversation unavailable");
+    return { watchedTarget, owner, watchedObservation: auxiliary?.observation, auxiliary };
   }
-  function reservedBytes(windows: Map<string, ReadingWindow>) {
-    return [...windows.values(), ...watchedBodies.values()].reduce(
+  function reservedBytes(foreground: Map<string, ReadingWindow>) {
+    return [...foreground.values(), ...windows.values()].reduce(
       (sum, value) =>
         sum +
         [...value.items.values()].reduce((n, item) => n + item.bytes, 0) +
@@ -107,5 +112,5 @@ export function createWatchedHistory(
       0,
     );
   }
-  return { watchedThreads, resolveWatched, reservedBytes, watch };
+  return { watchedThreads, resolveWatched, reservedBytes, watch, current, find };
 }

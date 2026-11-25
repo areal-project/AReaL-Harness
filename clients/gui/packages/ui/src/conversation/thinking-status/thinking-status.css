@@ -22,7 +22,7 @@
 }
 .areal-thinking-band {
   display: block;
-  mask-image: linear-gradient(90deg, transparent 12.5%, #000 50%, transparent 87.5%);
+  mask-image: linear-gradient(90deg, transparent 12.5%, currentColor 50%, transparent 87.5%);
 }
 .areal-thinking-band > span {
   display: block;
@@ -48,7 +48,7 @@
 @keyframes areal-thinking-message-in {
   from {
     opacity: 0.5;
-    transform: translateY(2px);
+    transform: translateY(calc(var(--spacing-inline) / 4));
   }
   to {
     opacity: 1;
@@ -76,6 +76,13 @@
   .areal-thinking[data-animating]
   :is(.areal-thinking-band, .areal-thinking-band > span) {
   animation: none;
+}
+/* 宿主可在容器标记 data-thinking-static="true"（如移动端 WebKit），仅绘制一层静态状态文字避免重影。 */
+[data-thinking-static="true"] .areal-thinking-message {
+  animation: none;
+}
+[data-thinking-static="true"] .areal-thinking-sweep {
+  display: none;
 }
 /* 单行：状态变化只换文字不换高度；底层文字与扫光层同宽省略。 */
 .areal-thinking[data-lines="single"] {

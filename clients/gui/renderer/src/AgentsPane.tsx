@@ -3,7 +3,7 @@ import { currentErrorText } from "./errors/currentErrorText.js";
 import { errorText } from "./errors/errorCopy.js";
 import { Input } from "@areal/ui";
 import { useI18n } from "./i18n/IntlProvider.js";
-import { SubagentPanel, TaskContext } from "@areal/ui/experimental";
+import { SubagentPanel, TaskContext } from "@areal/ui/compositions";
 import "@areal/ui/conversation.css";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "./components/ui/button.js";
@@ -394,6 +394,30 @@ export function AgentsPane({
           open
           embedded
           hasMore={more}
+          labels={{
+            panel: t("chat.agents.panel"),
+            back: t("chat.agents.back"),
+            close: t("chat.agents.close"),
+            title: t("chat.agents.title"),
+            fallbackTitle: t("chat.agents.title"),
+            historyRegion: t("chat.agents.historyRegion"),
+            states: {
+              running: t("chat.agents.sectionActive"),
+              completed: t("chat.agents.sectionDone"),
+              attention: t("chat.agents.sectionAttention"),
+            },
+            sectionTitles: {
+              running: t("chat.agents.sectionActive"),
+              completed: t("chat.agents.sectionDone"),
+              attention: t("chat.agents.sectionAttention"),
+            },
+            emptyCompleted: t("chat.agents.emptyCompleted"),
+            emptyCompletedLoaded: t("chat.agents.emptyCompletedLoaded"),
+            emptyRunning: t("chat.agents.emptyRunning"),
+            emptyRunningLoaded: t("chat.agents.emptyRunningLoaded"),
+            collapseCompleted: t("chat.agents.collapseCompleted"),
+            showMoreCompleted: (count) => t("chat.agents.showMoreCompleted", { count }),
+          }}
           agents={children.map((child) => {
             const result = results[child.id];
             const status = connected && !readError ? result?.status : undefined;
@@ -510,8 +534,8 @@ export function AgentsPane({
           />
           <SettingsDisclosure title="子任务配置">
             <fieldset disabled={creating || unknown} className="mt-3 flex min-w-0 flex-col gap-3">
-              <label className="flex flex-col gap-1">
-                预设
+              <div className="flex flex-col gap-1">
+                <span>预设</span>
                 <Select
                   value={options.profile}
                   disabled={creating || unknown}
@@ -540,9 +564,9 @@ export function AgentsPane({
                     ))}
                   </SelectContent>
                 </Select>
-              </label>
-              <label className="flex flex-col gap-1">
-                模型
+              </div>
+              <div className="flex flex-col gap-1">
+                <span>模型</span>
                 <Select
                   value={options.model}
                   disabled={creating || unknown}
@@ -566,7 +590,7 @@ export function AgentsPane({
                     ))}
                   </SelectContent>
                 </Select>
-              </label>
+              </div>
               <label className="flex flex-col gap-1">
                 附加指令
                 <Textarea
@@ -576,8 +600,8 @@ export function AgentsPane({
                   placeholder="补充本次子任务的要求…"
                 />
               </label>
-              <label className="flex flex-col gap-1">
-                技能范围
+              <div className="flex flex-col gap-1">
+                <span>技能范围</span>
                 <Select
                   value={options.skillMode}
                   disabled={creating || unknown}
@@ -596,7 +620,7 @@ export function AgentsPane({
                     <SelectItem value="custom">选择技能</SelectItem>
                   </SelectContent>
                 </Select>
-              </label>
+              </div>
               {options.skillMode === "custom" && (
                 <div className="flex flex-col gap-2">
                   {skills.map((skill) => (
@@ -622,8 +646,8 @@ export function AgentsPane({
                   </p>
                 </div>
               )}
-              <label className="flex flex-col gap-1">
-                工具范围
+              <div className="flex flex-col gap-1">
+                <span>工具范围</span>
                 <Select
                   value={options.toolMode}
                   disabled={creating || unknown}
@@ -642,7 +666,7 @@ export function AgentsPane({
                     <SelectItem value="custom">指定工具</SelectItem>
                   </SelectContent>
                 </Select>
-              </label>
+              </div>
               {options.toolMode === "custom" && (
                 <label className="flex flex-col gap-1">
                   每行一个工具名

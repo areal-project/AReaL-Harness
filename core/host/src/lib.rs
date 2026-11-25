@@ -1,6 +1,7 @@
 //! 每用户共享 Host。客户端发现与项目激活不承载 Core 执行或生命期。
 mod activity;
 mod browser_auth;
+mod builtin_skills;
 mod client;
 #[cfg(target_os = "macos")]
 mod credential_io;
@@ -13,6 +14,7 @@ pub use history_snapshot::{HistorySnapshot, read_history_snapshot};
 mod launch;
 mod local_relay;
 mod migration;
+mod network;
 mod remote_state;
 mod schedule_admission;
 mod schedule_resources;
@@ -28,7 +30,6 @@ pub use space::{
 mod subscription;
 mod vault;
 mod wire;
-mod workbench;
 use areal_local_service::LocalArgs;
 use areal_protocol::service::Service;
 pub use client::{Client, Subscription};
@@ -39,6 +40,7 @@ use serde_json::Value;
 pub use server::{HostExit, RunOptions, run, run_managed};
 pub use service::ServiceInstallation;
 pub use service_run::offline_service_status;
+pub use service_run::run_when_available;
 use std::{collections::BTreeMap, path::PathBuf};
 
 pub const VERSION: u32 = 1;
@@ -55,11 +57,13 @@ pub const CAPABILITIES: &[&str] = &[
     "remoteGatewayV1",
     "subscriptionOwnerV1",
     "activity",
+    "idleReleaseV1",
     "scheduledActivation",
     "scheduledPreparation",
     "powerV1",
     "updates",
     "workbenchUtilities",
+    "botsV1",
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -103,6 +107,8 @@ pub struct HostIdentity {
     pub auth_file: PathBuf,
     pub pid: u32,
     pub executable_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable_digest: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -199,6 +205,28 @@ impl StopStrategy {
     }
 }
 
+// 旧停止准入记录可能先于完整目标快照落盘；只采用同一原操作的快照。
+pub(crate) fn restore_host_stop(receipt: Value, snapshot: Option<Value>) -> Value {
+    if receipt["method"] != "host.stop" || receipt["projects"].is_array() {
+        return receipt;
+    }
+    let Some(mut snapshot) = snapshot else {
+        return receipt;
+    };
+    if ["version", "requestId", "hostId", "generation"]
+        .iter()
+        .any(|key| receipt[*key].is_null() || receipt[*key] != snapshot[*key])
+        || !snapshot["projects"].is_array()
+        || !matches!(snapshot["strategy"].as_str(), Some("ifIdle" | "cancel"))
+    {
+        return receipt;
+    }
+    if snapshot["projects"].as_array().unwrap().is_empty() {
+        snapshot["preparationPending"] = serde_json::json!(true);
+    }
+    snapshot
+}
+
 pub fn operation_offline(
     home: &std::path::Path,
     request_id: &str,
@@ -207,7 +235,14 @@ pub fn operation_offline(
     let record: Option<Value> =
         areal_local_service::storage::read_optional(&wire::operation_path(home, request_id))?;
     if let Some(record) = record {
-        return Ok(Some(record["receipt"].clone()));
+        let snapshot = if record["receipt"]["method"] == "host.stop"
+            && !record["receipt"]["projects"].is_array()
+        {
+            areal_local_service::storage::read_optional(&home.join("host/stop.json"))?
+        } else {
+            None
+        };
+        return Ok(Some(restore_host_stop(record["receipt"].clone(), snapshot)));
     }
     if let Some(receipt) = migration::Migration::operation_offline(home, request_id)? {
         return Ok(Some(receipt));
@@ -223,6 +258,25 @@ pub fn operation_offline(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn stop_snapshot_recovery_requires_all_original_identity_fields() {
+        let receipt = serde_json::json!({"version":1,"method":"host.stop","requestId":"request","hostId":"host","generation":"generation","state":"acceptedPending"});
+        let snapshot = serde_json::json!({"version":1,"requestId":"request","hostId":"host","generation":"generation","strategy":"cancel","projects":[],"state":"acceptedPending"});
+        assert_eq!(
+            super::restore_host_stop(receipt.clone(), Some(snapshot.clone()))["preparationPending"],
+            true
+        );
+        for key in ["version", "requestId", "hostId", "generation"] {
+            let mut other = snapshot.clone();
+            other[key] = serde_json::json!("other");
+            assert_eq!(
+                super::restore_host_stop(receipt.clone(), Some(other)),
+                receipt
+            );
+        }
+        assert_eq!(super::restore_host_stop(receipt.clone(), None), receipt);
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn missing_offline_operation_does_not_initialize_host_storage() {
         let directory = tempfile::tempdir().unwrap();

@@ -13,24 +13,47 @@ import {
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
-export function createTimings() {
+export function createTimings(onUpdate = () => {}) {
   const stages = [];
+  function begin(name) {
+    const start = performance.now();
+    const stage = { name, startedAt: new Date().toISOString(), status: "running", durationMs: 0 };
+    stages.push(stage);
+    onUpdate(stage);
+    return (status, value) => {
+      stage.status = status;
+      stage.completedAt = new Date().toISOString();
+      stage.durationMs = Math.round(performance.now() - start);
+      if (typeof value === "boolean") stage.result = value;
+      if (typeof value?.reused === "boolean") stage.reused = value.reused;
+      onUpdate(stage);
+      console.log(
+        `[package] ${name}: ${stage.status}, ${stage.durationMs} ms${stage.reused ? " (reused)" : ""}`,
+      );
+    };
+  }
   return {
     stages,
     async measure(name, action) {
-      const start = performance.now();
-      const stage = { name, status: "failed", durationMs: 0 };
-      stages.push(stage);
+      const finish = begin(name);
       try {
         const value = await action();
-        stage.status = "ok";
-        if (typeof value?.reused === "boolean") stage.reused = value.reused;
+        finish("ok", value);
         return value;
-      } finally {
-        stage.durationMs = Math.round(performance.now() - start);
-        console.log(
-          `[package] ${name}: ${stage.status}, ${stage.durationMs} ms${stage.reused ? " (reused)" : ""}`,
-        );
+      } catch (error) {
+        finish("failed");
+        throw error;
+      }
+    },
+    measureSync(name, action) {
+      const finish = begin(name);
+      try {
+        const value = action();
+        finish("ok", value);
+        return value;
+      } catch (error) {
+        finish("failed");
+        throw error;
       }
     },
   };
@@ -91,9 +114,9 @@ export async function guiBuildInput(root) {
       "--exclude-standard",
       "-z",
       "clients/gui",
-      "services/workbench",
       "services/remote-relay",
       "core/sdk-typescript",
+      "core/host/src/page_proxy.html",
       "runtime/sdk-typescript",
       "schemas",
       "Makefile",

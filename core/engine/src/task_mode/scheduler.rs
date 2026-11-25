@@ -51,6 +51,7 @@ impl Engine {
         self.tasks.spawn(async move {
             let mut timer = tokio::time::interval(Duration::from_secs(1));
             timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut last_dispatched = None;
             loop {
                 tokio::select! { biased;
                     _ = cancel.cancelled() => break,
@@ -69,7 +70,11 @@ impl Engine {
                     .keys()
                     .cloned()
                     .collect();
-                for id in ids {
+                // 任务按 ID 排序；名额用完时，下次从上次派发位置继续。
+                let start = last_dispatched
+                    .as_ref()
+                    .map_or(0, |last| ids.partition_point(|id| id <= last));
+                for id in ids[start..].iter().chain(&ids[..start]) {
                     if cancel.is_cancelled() {
                         break;
                     }
@@ -82,22 +87,24 @@ impl Engine {
                             continue;
                         }
                     }
+                    last_dispatched = Some(id.clone());
                     let lease = DispatchLease {
                         ids: engine.task_modes.dispatching.clone(),
                         id: id.clone(),
                     };
+                    let task_id = id.clone();
                     let worker = engine.clone();
                     engine.tasks.spawn(async move {
                         let _lease = lease;
                         let engine = worker;
-                        if let Err(error) = engine.advance_task(&id).await {
+                        if let Err(error) = engine.advance_task(&task_id).await {
                             // 用户控制或其他结算已推进 CAS；下一次唤醒重读，不能自行暂停新状态。
                             if matches!(error, Error::Conflict) {
                                 return;
                             }
-                            tracing::error!(task_id=%id,%error,"task dispatch failed");
+                            tracing::error!(task_id=%task_id,%error,"task dispatch failed");
                             if let Err(error) = engine
-                                .edit_task(&id, |task| {
+                                .edit_task(&task_id, |task| {
                                     if task.cancelled
                                         || task.runs.last().is_some_and(|r| {
                                             r.status.terminal()

@@ -2,14 +2,13 @@
 id: settings-select
 title: SettingsSelect
 summary: 设置值选择及辅助显示。
-status: experimental
+status: stable
 entry: compositions
 layer: settings
 category: composition
 aliases: ["设置值选择及辅助显示"]
 related: ["button"]
 exports: ["SettingsSelect", "SettingsLockedValue", "SettingsBadge", "SettingsSwitch", "SettingsValueAction"]
-experimentalExports: ["SettingsLockedValue", "SettingsBadge", "SettingsSwitch", "SettingsValueAction"]
 ---
 
 # SettingsSelect 设置值选择及辅助显示

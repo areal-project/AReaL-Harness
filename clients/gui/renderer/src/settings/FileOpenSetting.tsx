@@ -4,6 +4,7 @@ import { useI18n } from "../i18n/IntlProvider.js";
 import { useEffect, useRef, useState } from "react";
 import { SettingsSelect } from "./SettingsPageParts.js";
 import type { PlatformServices, FileOpenTargets } from "../services.js";
+import { isFileOpenTargets } from "../desktop-response.js";
 
 export function FileOpenSetting({
   service,
@@ -42,7 +43,8 @@ export function FileOpenSetting({
     setBusy(true);
     setError("");
     try {
-      await service({ operation: "setDefault", target });
+      const saved = await service({ operation: "setDefault", target });
+      if (isFileOpenTargets(saved)) setCatalog(saved);
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
@@ -50,6 +52,7 @@ export function FileOpenSetting({
       setBusy(false);
     }
   };
+  if (!service) return null;
   return (
     <SettingsRow
       label={t("settings.fileOpenSetting.openFilesIn")}
