@@ -190,6 +190,15 @@ fn remember(
 fn run_id(task: &Task) -> Option<&str> {
     task.runs.last().map(|r| r.id.as_str())
 }
+
+fn require_server_owned_tools(thread: &Thread) -> Result<()> {
+    if thread.dynamic_tools.is_empty() {
+        Ok(())
+    } else {
+        Err(invalid("detached tasks require server-owned tools"))
+    }
+}
+
 fn new_run(thread_id: Option<String>, scheduled_at: i64) -> TaskRun {
     TaskRun {
         trigger: RunTrigger::Schedule,
@@ -360,6 +369,70 @@ impl Engine {
         Ok(guard)
     }
 
+    pub(super) async fn toolset_admission(&self, thread: &Thread) -> Result<OrdinaryAdmission<'_>> {
+        let guard = self.ordinary_admission(thread).await?;
+        let tasks = &guard._tasks;
+        if self.task_modes.frozen.load(Ordering::Acquire) {
+            return Err(Error::Storage("Task persistence requires restart".into()));
+        }
+        let id = thread.id.as_str();
+        let creation = thread.desktop.as_ref().and_then(|desktop| {
+            desktop.receipts.iter().find_map(|receipt| {
+                (receipt.method == "areal/thread/start")
+                    .then(|| receipt.request_id.strip_prefix("schedule-thread-"))
+                    .flatten()
+                    .map(|run| (run, receipt))
+            })
+        });
+        for task in tasks.tasks.values() {
+            let scheduled = task.mode == TaskMode::Scheduled;
+            let bound = task
+                .source_thread_id
+                .as_deref()
+                .or(task.thread_id.as_deref());
+            for run in &task.runs {
+                // 已停止的可恢复 Run 仍持有执行工具；绑定投递从接收时起即预留目标。
+                let unfinished =
+                    !run.status.terminal() || run.workers.iter().any(|worker| !worker.settled);
+                let assigned = run.thread_id.as_deref();
+                let target = assigned.or_else(|| {
+                    (scheduled && task.delivery == TaskDelivery::Thread)
+                        .then_some(bound)
+                        .flatten()
+                });
+                let dedicated = scheduled && assigned == Some(id) && bound != Some(id);
+                if dedicated || unfinished && target == Some(id) {
+                    return Err(Error::Conflict);
+                }
+                // 专属执行 Thread 的创建回执可能已提交，但 Run 尚未来得及补入 Thread ID。
+                if run.thread_id.is_none()
+                    && scheduled
+                    && let Some((run_id, receipt)) = creation
+                    && run.id == run_id
+                    && task.owner == receipt.identity
+                    && let Some(prepare) = tasks.preparations.get(run_id)
+                    && desktop::digest(prepare)? == receipt.digest
+                {
+                    return Err(Error::Conflict);
+                }
+            }
+        }
+        // 终态专属 Run 可能进入冷历史；用原创建身份定位，不遍历其他任务的历史。
+        if let Some((run_id, receipt)) = creation
+            && let Some((task_id, run)) = tasks.cold_run(None, Some(run_id))?
+            && run.thread_id.as_deref() == Some(id)
+        {
+            let task = tasks
+                .tasks
+                .get(&task_id)
+                .ok_or_else(|| Error::Storage("Task binding owner missing".into()))?;
+            if task.mode == TaskMode::Scheduled && task.owner == receipt.identity {
+                return Err(Error::Conflict);
+            }
+        }
+        Ok(guard)
+    }
+
     async fn save_tasks(
         &self,
         state: &mut Snapshot,
@@ -487,12 +560,19 @@ impl Engine {
                 || request.schedule.as_ref().is_some_and(|s| s.at < 0 || s.interval_seconds.is_some_and(|n| !(1..=31_536_000).contains(&n))) {
                 return Err(invalid("scheduled tasks require a UTC timestamp and optional intervalSeconds in 1..31536000"));
             }
-            if let Some(thread) = &request.thread_id {
-                let cell = engine.cell(thread).await?;
+            let target = match &request.thread_id {
+                Some(id) => Some(engine.cell(id).await?),
+                None => None,
+            };
+            // 后台 Run 不依赖在线客户端。与换表同序持有 Thread → Tasks，直到 Run 已持久预留该 Thread。
+            let _background = if let Some(cell) = &target {
                 let state = cell.state.lock().await;
                 if state.thread.parent_thread_id.is_some() || state.thread.goal_owner.is_some() { return Err(invalid("task binding requires a root Thread")); }
-                if request.mode == TaskMode::Background && !state.thread.dynamic_tools.is_empty() { return Err(invalid("detached tasks require server-owned tools")); }
-            }
+                if request.mode == TaskMode::Background {
+                    require_server_owned_tools(&state.thread)?;
+                    Some(state)
+                } else { None }
+            } else { None };
             if request.mode == TaskMode::Background && request.interaction_mode == Some(InteractionMode::Interactive) { return Err(invalid("detached tasks require asynchronous or headless interactions")); }
             if request.mode != TaskMode::Scheduled && (request.delivery.is_some() || request.model.is_some() || request.parameters.is_some()) {
                 return Err(invalid("delivery and model apply only to scheduled tasks"));

@@ -17,7 +17,7 @@
 | 文件与进程 | 条件文件写入、命令、stdin、PTY、有界输出、Scope 权限收窄及清理；共享服务在容量预警后空闲轮换执行 epoch。原生只读工具可经逐操作审批读取具体外部目录，图片沿媒体链路进入支持视觉输入的模型。[Runtime](api/runtime.md) |
 | 工具结果 | 内置固定版本 rg、历史结果原文分页回取；可配置的搜索分组与精确重复行视图，默认 observe。[工具](guides/tools.md) |
 | 公开多模态输入 | 原生 CLI 只读附件绑定；按需 PNG/JPEG/WebP/GIF 视图，独立模型请求字节限额。[评测输入](benchmarks/README.md#原生平台接入) |
-| 工具扩展 | 命令工具、hooks、客户端动态工具、MCP stdio/Streamable HTTP、可信 Node 插件 Host。[工具](guides/tools.md) |
+| 工具扩展 | 命令工具、hooks、[可在会话空闲时替换的客户端动态工具](api/core.md#dynamic-tools)、MCP stdio/Streamable HTTP、可信 Node 插件 Host。[工具](guides/tools.md) |
 | 网络代理 | 模型、HTTP MCP、OTLP 支持 HTTP/HTTPS/SOCKS5 代理、认证与 NO_PROXY；可信 stdio MCP/插件继承代理环境。macOS GUI 自动读取系统静态代理，模型测试与订阅共用代理快照。[配置](guides/configuration.md#proxies) |
 | 统一子任务 | 单一模型委派入口，Core 自动选择共享只读、共享独占作者或隔离执行；统一等待、取消、制品与交付投影，隔离报告带来源和分页，回执声明补充输入能力；按 Runtime 实测能力呈现创建意图，并在子模型启动前预检最终权限。[Agent 设计](design/multi-agent.md) |
 | Workgroup | DAG、隔离写工作区、制品检查与集成，fixed/auto/adaptive 准入；CLI 和服务接口。[使用指南](guides/workgroups.md) |

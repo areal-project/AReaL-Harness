@@ -30298,6 +30298,53 @@
       "title": "AttachBrowserTools",
       "type": "object"
     },
+    "areal/thread/tools/set": {
+      "$defs": {
+        "ToolDefinition": {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "inputSchema": true,
+            "name": {
+              "type": "string"
+            },
+            "outputSchema": true
+          },
+          "required": [
+            "name",
+            "description",
+            "inputSchema"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "dynamicTools": {
+          "items": {
+            "$ref": "#/$defs/ToolDefinition"
+          },
+          "type": "array"
+        },
+        "expectedToolsetRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId",
+        "expectedToolsetRevision",
+        "dynamicTools"
+      ],
+      "title": "SetThreadTools",
+      "type": "object"
+    },
     "areal/tool/acknowledge": {
       "additionalProperties": false,
       "properties": {
@@ -121296,6 +121343,10 @@
             "cwd": {
               "type": "string"
             },
+            "deferredDynamicToolCount": {
+              "minimum": 1,
+              "type": "integer"
+            },
             "desktop": {
               "anyOf": [
                 {
@@ -125401,6 +125452,24 @@
         "threadId",
         "toolsetRevision"
       ],
+      "type": "object"
+    },
+    "areal/thread/tools/set": {
+      "properties": {
+        "threadId": {
+          "type": "string"
+        },
+        "toolsetRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "threadId",
+        "toolsetRevision"
+      ],
+      "title": "ThreadToolsetVersion",
       "type": "object"
     },
     "areal/tool/acknowledge": {
@@ -152276,6 +152345,10 @@
             },
             "cwd": {
               "type": "string"
+            },
+            "deferredDynamicToolCount": {
+              "minimum": 1,
+              "type": "integer"
             },
             "desktop": {
               "anyOf": [

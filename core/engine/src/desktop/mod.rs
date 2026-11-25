@@ -21,6 +21,7 @@ mod skills;
 mod state;
 mod submissions;
 mod tools;
+mod toolset;
 mod workflows;
 use super::*;
 use areal_protocol::desktop::*;

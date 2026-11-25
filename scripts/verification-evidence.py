@@ -3,11 +3,21 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 
 
 STATUSES = {"passed", "failed", "blocked", "pending", "running", "invalidated", "cancelled"}
 FACT_STATUSES = {"passed", "failed", "blocked", "pending"}
+
+
+def current_identity(plan):
+    return {
+        "planHash": plan["planHash"],
+        **plan["source"],
+        "ciRunId": os.environ.get("GITHUB_RUN_ID"),
+        "ciAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+    }
 
 
 def validate_journey_report(detail, contract, identity, imported=False):
@@ -136,7 +146,7 @@ def indexed(rows, label):
     return values
 
 
-def summarize(plan, results, report_status=None, identity=None):
+def summarize(plan, results, report_status, identity):
     by_id = indexed(results, "result")
     journeys = []
     for name in plan.get("affectedJourneys", []):

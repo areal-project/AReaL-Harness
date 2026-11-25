@@ -28,6 +28,71 @@ function fixture() {
   return { model, previous, items, event, turn };
 }
 
+test("tool replacements and removals survive a late snapshot of the old catalog", () => {
+  const model = new CoreTaskModel();
+  const definition = (name) => ({ name, description: name, inputSchema: { type: "object" } });
+  const source = { sourceTurnId: "first", configurationRevision: 1 };
+  const original = {
+    id: "thread",
+    turns: [
+      {
+        id: "first",
+        status: "completed",
+        items: [{ id: "call", type: "dynamicToolCall", tool: "old" }],
+      },
+    ],
+    dynamicTools: [definition("old")],
+    desktop: { promptPrediction: { ...source, status: "ready", text: "Use the old tool" } },
+  };
+  model.replace(original);
+  const update = (revision, tools) =>
+    model.event("areal/thread/tools/attached", {
+      threadId: original.id,
+      toolsetRevision: revision,
+      dynamicTools: tools,
+    });
+  const next = [definition("new")];
+  update(1, next);
+  const unavailable = { ...source, status: "unavailable" };
+  model.event("areal/thread/predictionChanged", {
+    threadId: original.id,
+    promptPrediction: unavailable,
+  });
+  model.replace(original);
+  const current = () => model.getSnapshot().threads.thread;
+  assert.deepEqual(current().dynamicTools, next);
+  assert.deepEqual(current().desktop.promptPrediction, unavailable);
+  update(2, []);
+  update(1, next);
+  model.replace(original);
+  assert.equal(current().toolsetRevision, 2);
+  assert.deepEqual(current().dynamicTools, []);
+  assert.deepEqual(current().turns, original.turns);
+});
+
+test("a budgeted display snapshot never turns a deferred toolset into an empty or older list", () => {
+  const model = new CoreTaskModel();
+  const id = "thread";
+  const deferred = { id, toolsetRevision: 2, deferredDynamicToolCount: 1 };
+  const tools = [{ name: "lookup", description: "Lookup", inputSchema: { type: "object" } }];
+  const head = () => model.getSnapshot().threads[id];
+  const event = (toolsetRevision, dynamicTools) =>
+    model.event("areal/thread/tools/attached", { threadId: id, toolsetRevision, dynamicTools });
+  model.replace({ id, toolsetRevision: 1, dynamicTools: [{ name: "retired" }] });
+  model.replace(deferred);
+  assert.equal(head().dynamicTools, undefined);
+  assert.equal(head().deferredDynamicToolCount, 1);
+  event(2, tools);
+  model.replace(deferred);
+  assert.deepEqual(head().dynamicTools, tools);
+  assert.equal(head().deferredDynamicToolCount, undefined);
+  event(3, []);
+  model.replace(deferred);
+  assert.equal(head().toolsetRevision, 3);
+  assert.deepEqual(head().dynamicTools, []);
+  assert.equal(head().deferredDynamicToolCount, undefined);
+});
+
 for (const status of ["completed", "interrupted", "failed"]) {
   test(`compacted ${status} turn preserves user, steer, attachments and earlier agent messages`, () => {
     const { model, previous, items, event, turn } = fixture();

@@ -536,9 +536,10 @@ async fn connection(
             || method.starts_with("areal/plugin/")
             || codex_plugins::METHODS.contains(&method)
             || plugin_runtime::METHODS.contains(&method);
-        if (project_permission
-            && (!conn.principal.allows(auth::Permission::Manage)
-                || conn.principal.thread_ids.is_some()))
+        if (method == "areal/thread/tools/set" && !conn.principal.allows(auth::Permission::Tools))
+            || (project_permission
+                && (!conn.principal.allows(auth::Permission::Manage)
+                    || conn.principal.thread_ids.is_some()))
             || !conn.principal.allows(auth::permission(method))
             || ["threadId", "parentThreadId", "sourceThreadId"]
                 .iter()
@@ -1256,6 +1257,15 @@ impl Connection {
             return Ok(result);
         }
         match method {
+            "areal/thread/tools/set" => {
+                let request = parse(params)?;
+                let result = engine
+                    .set_thread_tools(request, self.tool_host.clone())
+                    .await
+                    .map_err(control_mutation_error)
+                    .map_err(map_error)?;
+                Ok(json!(result))
+            }
             "areal/thread/tools/attach" => {
                 if self.principal.id != "desktop-owner"
                     || !self.principal.allows(auth::Permission::Interact)
@@ -1342,6 +1352,11 @@ impl Connection {
                     return Err(RpcError::invalid("unsupported AReaL API version"));
                 }
                 let mut methods = METHODS.to_vec();
+                if !self.principal.allows(auth::Permission::Interact)
+                    || !self.principal.allows(auth::Permission::Tools)
+                {
+                    methods.retain(|method| *method != "areal/thread/tools/set");
+                }
                 let can_attach_browser = self.principal.id == "desktop-owner"
                     && self.principal.allows(auth::Permission::Interact)
                     && self.principal.allows(auth::Permission::Tools)

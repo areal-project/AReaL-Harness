@@ -1,5 +1,6 @@
 //! 先固定桌面准入与忙碌跳过的可观察行为。
 use super::*;
+mod toolset_tests;
 struct Pending;
 #[async_trait::async_trait]
 impl Model for Pending {
@@ -1034,53 +1035,54 @@ async fn stalled_schedule_run_is_settled_when_the_next_trigger_is_due() {
     engine.shutdown().await;
 }
 
+use model::{Message, ModelEvent, ModelStream, RequestPurpose, ToolCall};
+use std::sync::atomic::AtomicUsize;
+struct Complete(AtomicUsize);
+#[async_trait::async_trait]
+impl Model for Complete {
+    fn name(&self) -> &str {
+        "recurring-ledger-fixture"
+    }
+    async fn stream(&self, m: Vec<Message>) -> anyhow::Result<ModelStream> {
+        self.chat_limited(m, vec![], RequestPurpose::Solve, None)
+            .await
+    }
+    async fn chat_limited(
+        &self,
+        m: Vec<Message>,
+        _: Vec<Value>,
+        _: RequestPurpose,
+        _: Option<u64>,
+    ) -> anyhow::Result<ModelStream> {
+        let n = self.0.fetch_add(1, Ordering::SeqCst);
+        let goal: Value = m
+            .iter()
+            .rev()
+            .find_map(|m| {
+                m.text_content()
+                    .split("Current authoritative goal: ")
+                    .nth(1)
+                    .and_then(|s| serde_json::from_str(s).ok())
+            })
+            .unwrap();
+        let event = if n.is_multiple_of(2) {
+            ModelEvent::ToolCall(ToolCall {id:format!("report-{n}"),name:"goal_update".into(),arguments:json!({"expectedRevision":goal["revision"],"status":"complete","summary":"verified","evidence":["fixture"],"remaining":[]}).to_string()})
+        } else {
+            ModelEvent::TextDelta("done".into())
+        };
+        Ok(Box::pin(futures_util::stream::iter(vec![
+            Ok(event),
+            Ok(ModelEvent::Usage(areal_protocol::ModelUsage {
+                input_tokens: 10,
+                cached_input_tokens: 0,
+                output_tokens: 5,
+            })),
+        ])))
+    }
+}
+
 #[tokio::test]
 async fn settled_schedule_history_does_not_stop_the_129th_trigger() {
-    use model::{Message, ModelEvent, ModelStream, RequestPurpose, ToolCall};
-    use std::sync::atomic::AtomicUsize;
-    struct Complete(AtomicUsize);
-    #[async_trait::async_trait]
-    impl Model for Complete {
-        fn name(&self) -> &str {
-            "recurring-ledger-fixture"
-        }
-        async fn stream(&self, m: Vec<Message>) -> anyhow::Result<ModelStream> {
-            self.chat_limited(m, vec![], RequestPurpose::Solve, None)
-                .await
-        }
-        async fn chat_limited(
-            &self,
-            m: Vec<Message>,
-            _: Vec<Value>,
-            _: RequestPurpose,
-            _: Option<u64>,
-        ) -> anyhow::Result<ModelStream> {
-            let n = self.0.fetch_add(1, Ordering::SeqCst);
-            let goal: Value = m
-                .iter()
-                .rev()
-                .find_map(|m| {
-                    m.text_content()
-                        .split("Current authoritative goal: ")
-                        .nth(1)
-                        .and_then(|s| serde_json::from_str(s).ok())
-                })
-                .unwrap();
-            let event = if n.is_multiple_of(2) {
-                ModelEvent::ToolCall(ToolCall {id:format!("report-{n}"),name:"goal_update".into(),arguments:json!({"expectedRevision":goal["revision"],"status":"complete","summary":"verified","evidence":["fixture"],"remaining":[]}).to_string()})
-            } else {
-                ModelEvent::TextDelta("done".into())
-            };
-            Ok(Box::pin(futures_util::stream::iter(vec![
-                Ok(event),
-                Ok(ModelEvent::Usage(areal_protocol::ModelUsage {
-                    input_tokens: 10,
-                    cached_input_tokens: 0,
-                    output_tokens: 5,
-                })),
-            ])))
-        }
-    }
     let run_count = std::env::var("AREAL_TASK_LEDGER_RUNS")
         .ok()
         .map(|n| n.parse::<usize>().unwrap())
@@ -1149,6 +1151,11 @@ async fn settled_schedule_history_does_not_stop_the_129th_trigger() {
     assert!(engine.validate_prompt_limit_owner(goal_id).await.is_err());
     assert!(engine.is_desktop_schedule_goal(goal_id).await.unwrap());
     let thread_id = first.thread_id.as_ref().unwrap();
+    let historical = engine.read(thread_id, true).await.unwrap();
+    assert!(matches!(
+        engine.toolset_admission(&historical).await,
+        Err(Error::Conflict)
+    ));
     let view = engine.goal_get(thread_id).await.unwrap();
     assert!(matches!(
         engine

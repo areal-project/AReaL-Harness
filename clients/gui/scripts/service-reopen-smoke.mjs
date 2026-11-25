@@ -840,12 +840,12 @@ try {
   await until(() => held.size === 0, "completed original model connection closes");
   const completed = page.locator(`[data-turn-id="${attachedTurnId}"]`);
   await until(async () => {
+    if ((await completed.getAttribute("data-turn-status")) !== "completed") return false;
     const text = await completed
       .locator(".assistant-message-final .conversation-markdown")
       .innerText();
     return streamedParts.every((part) => text.includes(part));
-  }, "App renders completed original response");
-  assert.equal(await completed.getAttribute("data-turn-status"), "completed");
+  }, "App renders the original turn's completed status and final response");
   assert.equal(await completed.locator(".assistant-message-final").count(), 1);
   assert.equal(await completed.getByTestId("turn-activity").count(), 0);
   assert.deepEqual(

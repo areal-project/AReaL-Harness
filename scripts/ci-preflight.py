@@ -297,12 +297,7 @@ def run_plan(
         raise ValueError("refusing to overwrite an existing verification attempt")
     platform = platform or sys.platform
     input_probe = input_probe or (lambda: scope.input_key(root, plan["source"]["baseRevision"]))
-    identity = {
-        "planHash": plan["planHash"],
-        **plan["source"],
-        "ciRunId": os.environ.get("GITHUB_RUN_ID"),
-        "ciAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
-    }
+    identity = verification_evidence.current_identity(plan)
     previous = {}
     for report in dependencies:
         if report.get("status") in {"running", "invalidated", "cancelled"}:
