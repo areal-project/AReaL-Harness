@@ -1,0 +1,83 @@
+examples/desktop-api/run.mjs
+  s_a8c06d4af66d17::t_4bd883532c57b4 19,59,459-469,472-477,482-483,488-490,495,499-501,507,512-524,529-531,540
+  s_a8c06d4af66d17::t_8ad47de6c6f7b6 470-471,478-481,484-487,491-494,496-498,502-506,508-511,525-528,532-539
+docs/api/local-service.md
+  s_a8c06d4af66d17::t_7e0a2439980a86 114
+clients/gui/packages/workbench/client/core-model-contract.js
+  s_a8c06d4af66d17::t_ccdd5ed0799dbb 13,126-129
+core/engine/src/task_mode/mod.rs
+  s_a8c06d4af66d17::t_473a92454f7a27 563-568,571-575
+  s_a8c06d4af66d17::t_d953c14ab05c2d 389-392,398-402,425-428
+  s_a8c06d4af66d17::t_756fa22c3ad9b5 193-201
+  s_a8c06d4af66d17::t_7c9e277ab5e367 372-388,393-394,405-407,410,413-424,432-435
+  s_a8c06d4af66d17::t_637cf4a6e39d7a 395-396,408-409,411-412
+  s_a8c06d4af66d17::t_dbba412d7f511a 397,403-404,429-431
+core/engine/src/store/archive/own.rs
+  s_a8c06d4af66d17::t_2d229e585c5b0d 350-352,373-376
+  s_a8c06d4af66d17::t_2c8bf76f96ead1 341-348,365-368
+  s_a8c06d4af66d17::t_e9b37cf8e24a04 103,111,138,304,340,349,379-389,424-425,439-440,531-532,586
+  s_a8c06d4af66d17::t_18d7f26a72b6a6 353-364,369-371,377-378
+  s_a8c06d4af66d17::t_e896e8cdee7df4 372
+core/engine/src/task_mode/scheduler.rs
+  s_a8c06d4af66d17::t_756fa22c3ad9b5 396-399
+docs/api/core.md
+  s_a8c06d4af66d17::t_b4d2def68c7a3e 290
+  s_a8c06d4af66d17::t_ea98d4bf937f6f 298
+core/engine/src/task_mode/desktop_schedules_tests.rs
+  s_a8c06d4af66d17::t_c6f01533081a1a 1154
+  s_a8c06d4af66d17::t_5cdf2d470f48b8 3,1038-1083
+  s_a8c06d4af66d17::t_19614458c91c59 1155-1158
+core/engine/src/task_mode/desktop_schedules_tests/toolset_tests.rs
+  s_a8c06d4af66d17::t_e5fd61eb9dd9e9 1-41,43-47,52,61-69,80-81,87-91,109-114,121,136,138-142,144-147,152-157,162,204,210-215,233-234
+  s_a8c06d4af66d17::t_dbba412d7f511a 128-129,133,173,199
+  s_a8c06d4af66d17::t_637cf4a6e39d7a 42,48-51,53-60,70-79,82-86,92-108,115-120,122-127,132,134-135,137,143,148-151,158-161,163-172,200-203,205-209,216,223-232
+  s_a8c06d4af66d17::t_605b23adb1da17 130-131,174-198,217-222
+clients/gui/packages/workbench/client/core-model.js
+  s_a8c06d4af66d17::t_8ae0aaa848e9e6 49
+  s_a8c06d4af66d17::t_ccdd5ed0799dbb 45-48,51,55,209,215,224
+  s_a8c06d4af66d17::t_1f477c5b9634e0 57-60,216-217
+core/engine/examples/schema/mod.rs
+  s_a8c06d4af66d17::t_7e0a2439980a86 34-35
+examples/desktop-api/fixture.mjs
+  s_a8c06d4af66d17::t_1701b05e0fd6a2 372,376-378,386-388,391-393
+  s_a8c06d4af66d17::t_8ad47de6c6f7b6 373-375,379-385,389-390
+core/app-server/tests/bounded_history.rs
+  s_a8c06d4af66d17::t_2c8bf76f96ead1 756-762,764-768,774-776,778-784,822-831,835,837-840,844-850,853-855,857-863,867-870
+  s_a8c06d4af66d17::t_2d229e585c5b0d 798-813,818-820,851
+  s_a8c06d4af66d17::t_8e86b9855d4c34 750-755,763,769-773,777,785-790,794-795,832-834,841-843,852,856,864-866,871-874
+  s_a8c06d4af66d17::t_1e275e483f4d64 797,814-817,821,836
+  s_a8c06d4af66d17::t_64095445470fe2 791-793,796
+  s_a8c06d4af66d17::t_e42209af51cfef 749
+core/engine/src/task_mode/workers.rs
+  s_a8c06d4af66d17::t_756fa22c3ad9b5 82-83
+core/engine/src/desktop/toolset.rs
+  s_a8c06d4af66d17::t_e904ebe6f01692 36,43,84-103,110-112
+  s_a8c06d4af66d17::t_2ba5b42d4db687 108-109
+  s_a8c06d4af66d17::t_e12c517df77734 154-245
+  s_a8c06d4af66d17::t_b2b48ec47e5cac 51
+docs/api/local-service.en.md
+  s_a8c06d4af66d17::t_7e0a2439980a86 114
+clients/gui/scripts/history.test.mjs
+  s_a8c06d4af66d17::t_ccdd5ed0799dbb 73-95
+docs/api/core.en.md
+  s_a8c06d4af66d17::t_3532dcdfc44126 295
+  s_a8c06d4af66d17::t_56f34ef8cef68f 303
+schemas/areal-core-v1.json
+  s_a8c06d4af66d17::t_14bb4880d8a25c 121346-121349,152349-152352
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4034907f56bafcd99eec32c62a30e97578ffe694",
+  "prompts": {},
+  "sessions": {
+    "s_a8c06d4af66d17": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a210af-b5fd-7f30-8e57-5b904979daeb",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
