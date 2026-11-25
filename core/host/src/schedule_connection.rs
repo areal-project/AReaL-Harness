@@ -240,12 +240,12 @@ impl Connections {
         .context("RESOURCE_UNAVAILABLE")?
     }
 
-    pub(super) fn observation_can_keep_identity(&self, host: &Host, id: &str) -> bool {
-        // 首次连接前，服务监督仍可证明归属；已有连接失效则不能沿用缓存身份。
+    pub(super) fn has_live_connection(&self, host: &Host, id: &str) -> bool {
+        // 仅当存在已被证实仍在当前代际上的实时 Core 连接时，才允许无限期保护缓存的 ready 状态。
         self.sessions
             .borrow()
             .get(id)
-            .is_none_or(|session| session.shared_current(host))
+            .is_some_and(|session| session.shared_current(host))
     }
 
     pub(super) fn shared_identity(
@@ -428,7 +428,15 @@ impl Connections {
         thread: &str,
         max_bytes: usize,
     ) -> Result<(Value, u64, CoreObservation)> {
-        let session = self.workbench_session(host, id, lease)?;
+        let session = self.workbench_session(host, id, lease).map_err(|cause| {
+            crate::wire::staged_error(
+                "CLOUD_CONNECTION_CLOSED",
+                "cloud_observe",
+                "云端连接已断开，请重新连接。",
+                Some(cause.to_string()),
+                true,
+            )
+        })?;
         ensure!(
             session.host_owned.get()
                 && session.remote_source.is_some()
@@ -445,6 +453,22 @@ impl Connections {
             },
         )
         .await
+        .map_err(|cause| {
+            let is_closed = cause
+                .downcast_ref::<crate::wire::Error>()
+                .is_some_and(|err| err.code == "scheduleHostUnavailable");
+            if is_closed {
+                crate::wire::staged_error(
+                    "CLOUD_CONNECTION_CLOSED",
+                    "cloud_observe",
+                    "云端连接在读取对话时中断，请重新连接。",
+                    Some(cause.to_string()),
+                    true,
+                )
+            } else {
+                cause
+            }
+        })
     }
     async fn observe_session(
         &self,
@@ -552,7 +576,17 @@ impl Connections {
             }
         })
         .await
-        .map_err(|_| unavailable())?
+        .map_err(|_| {
+            crate::wire::staged_error(
+                "CORE_CONNECTION_TIMEOUT",
+                "core_connect",
+                "等待项目连接超时，请稍后重试。",
+                Some(format!(
+                    "timed out waiting for project {id} generation {generation}"
+                )),
+                true,
+            )
+        })?
     }
 }
 fn unavailable() -> anyhow::Error {
@@ -1099,7 +1133,19 @@ impl CoreSession {
             receiver.await.map_err(|_| unavailable())?
         })
         .await
-        .map_err(|_| unavailable())?
+        .map_err(|_| {
+            if self.remote_source.is_some() {
+                crate::wire::staged_error(
+                    "CLOUD_GATEWAY_UNAVAILABLE",
+                    "cloud_observe",
+                    "云端会话响应超时，请稍后重试。",
+                    Some(format!("remote RPC {method} timed out")),
+                    true,
+                )
+            } else {
+                unavailable()
+            }
+        })?
     }
 }
 struct Pending<'a> {
@@ -1225,7 +1271,18 @@ async fn connect_authorized(
             .headers_mut()
             .insert("authorization", format!("Bearer {token}").parse()?);
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-        ensure!(!remaining.is_zero(), "WebSocket connect timed out");
+        if remaining.is_zero() {
+            if is_remote {
+                return Err(crate::wire::staged_error(
+                    "CLOUD_HANDSHAKE_TIMEOUT",
+                    "cloud_connect",
+                    "连接云端沙箱超时，请稍后重试。",
+                    Some("WebSocket handshake timed out".into()),
+                    true,
+                ));
+            }
+            anyhow::bail!("WebSocket connect timed out");
+        }
         let attempt = tokio::time::timeout(
             remaining,
             tokio_tungstenite::connect_async_tls_with_config(
@@ -1235,7 +1292,20 @@ async fn connect_authorized(
                 connector.clone(),
             ),
         )
-        .await?;
+        .await
+        .map_err(|_| {
+            if is_remote {
+                crate::wire::staged_error(
+                    "CLOUD_HANDSHAKE_TIMEOUT",
+                    "cloud_connect",
+                    "连接云端沙箱超时，请稍后重试。",
+                    Some("WebSocket handshake timed out".into()),
+                    true,
+                )
+            } else {
+                anyhow::anyhow!("WebSocket connect timed out")
+            }
+        })?;
         match attempt {
             Ok((socket, _)) => break socket,
             Err(tokio_tungstenite::tungstenite::Error::Http(resp)) if is_remote => {
@@ -1257,7 +1327,39 @@ async fn connect_authorized(
                     backoff = (backoff * 2).min(Duration::from_secs(5));
                     continue;
                 }
-                return Err(tokio_tungstenite::tungstenite::Error::Http(resp).into());
+                let (code, message, can_retry) = match status {
+                    401 | 403 => (
+                        "CLOUD_AUTH_REJECTED",
+                        "云端凭据验证未通过，请检查 Cloud 设置中的地址与令牌。",
+                        false,
+                    ),
+                    404 | 410 => (
+                        "CLOUD_SANDBOX_EXPIRED",
+                        "云端沙箱已过期或不存在，请新建云端会话。",
+                        false,
+                    ),
+                    _ => (
+                        "CLOUD_GATEWAY_UNAVAILABLE",
+                        "云端网关暂时不可用，请稍后重试。",
+                        true,
+                    ),
+                };
+                return Err(crate::wire::staged_error(
+                    code,
+                    "cloud_connect",
+                    message,
+                    Some(format!("remote gateway HTTP {status}")),
+                    can_retry,
+                ));
+            }
+            Err(_err) if is_remote => {
+                return Err(crate::wire::staged_error(
+                    "CLOUD_GATEWAY_UNAVAILABLE",
+                    "cloud_connect",
+                    "无法连接到云端服务，请检查网络与 Cloud 设置后重试。",
+                    Some("remote gateway TLS or network connection failed".into()),
+                    true,
+                ));
             }
             Err(err) => return Err(err.into()),
         }
@@ -1373,19 +1475,30 @@ async fn connect_authorized(
         connection.invalidate_reason(reason);
     });
     *session.driver.borrow_mut() = Some(driver.abort_handle());
-    let initialized = session.request("initialize", json!({"clientInfo":{"name":"areal_host_scheduler","version":env!("CARGO_PKG_VERSION")}})).await;
-    match initialized {
-        Ok(value) => *session.capabilities.borrow_mut() = value["capabilities"].clone(),
-        Err(cause) => {
-            session.close();
-            return Err(cause);
+    // 驱动已启动但尚未完成握手移交：若调用方在 initialize 期间被取消（如切换会话或断连），
+    // 必须立刻关闭上游连接并中止驱动，避免遗留无主 WebSocket 与 30s Ping 保活循环。
+    struct InitGuard(Option<Rc<CoreSession>>);
+    impl Drop for InitGuard {
+        fn drop(&mut self) {
+            if let Some(session) = self.0.take() {
+                session.close();
+            }
         }
     }
+    let mut init_guard = InitGuard(Some(session.clone()));
+    let initialized = session
+        .request(
+            "initialize",
+            json!({"clientInfo":{"name":"areal_host_scheduler","version":env!("CARGO_PKG_VERSION")}}),
+        )
+        .await?;
+    *session.capabilities.borrow_mut() = initialized["capabilities"].clone();
     session
         .outgoing
         .send(json!({"method":"initialized"}))
         .await
         .map_err(|_| unavailable())?;
+    init_guard.0 = None;
     Ok(session)
 }
 

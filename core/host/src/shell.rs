@@ -63,6 +63,9 @@ pub(crate) struct ShellProject {
     pub task_revision: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_catalog_revision: Option<String>,
+    /// 区分本地执行项目与云端会话承载项，避免客户端把云端目标误当成本地 Store 处理。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -105,7 +108,11 @@ pub(crate) enum Attention {
 pub(crate) struct CloudSummary {
     pub session_id: String,
     pub connected: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_state: Option<String>,
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -324,6 +331,7 @@ pub(crate) fn snapshot(
                     attention: Attention::Unknown,
                     task_revision: None,
                     model_catalog_revision: None,
+                    kind: Some("local".into()),
                 },
             )
         })

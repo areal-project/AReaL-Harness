@@ -10,23 +10,13 @@ use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-use std::{
-    path::PathBuf,
-    sync::{Arc, OnceLock},
-};
+use std::{path::PathBuf, sync::Arc};
 
 struct PersistedRead {
     snapshot: areal_engine::PersistedConversation,
     data_dir: PathBuf,
     workspace: PathBuf,
     _capacity: tokio::sync::OwnedSemaphorePermit,
-}
-
-fn persisted_capacity() -> Arc<tokio::sync::Semaphore> {
-    static CAPACITY: OnceLock<Arc<tokio::sync::Semaphore>> = OnceLock::new();
-    CAPACITY
-        .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(6)))
-        .clone()
 }
 
 fn existing_lock(path: &std::path::Path) -> Result<std::fs::File> {
@@ -94,7 +84,280 @@ pub(super) struct ConversationReader {
     media_cache: Option<MediaCache>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum OpenMode {
+    Auto,
+    Live,
+    Persisted,
+}
+
 impl ConversationReader {
+    /// 统一会话打开入口：由 Host 原子决策 Cloud 连接与观察、本地实时读取或持久化快照回退，
+    /// 并在单个端到端总预算内结算（严格小于客户端超时，避免超时后遗留孤立订阅）。
+    #[allow(clippy::too_many_arguments)]
+    pub(super) async fn open_auto(
+        host: &std::rc::Rc<Host>,
+        project: &str,
+        expected_generation: Option<&str>,
+        thread_id: &str,
+        mode: OpenMode,
+        reconnect: bool,
+        allow_persisted: bool,
+        cloud_auth: &super::cloud_sessions::CloudActivationAuth,
+    ) -> Result<(Self, Value)> {
+        let is_cloud = super::cloud_sessions::CloudSessions::is_virtual(project);
+        let budget = if is_cloud {
+            std::time::Duration::from_secs(135)
+        } else {
+            std::time::Duration::from_secs(25)
+        };
+        tokio::time::timeout(
+            budget,
+            Self::open_auto_inner(
+                host,
+                project,
+                expected_generation,
+                thread_id,
+                mode,
+                reconnect,
+                allow_persisted,
+                cloud_auth,
+            ),
+        )
+        .await
+        .map_err(|_| {
+            if is_cloud {
+                crate::wire::staged_error(
+                    "CLOUD_HANDSHAKE_TIMEOUT",
+                    "cloud_connect",
+                    "连接云端沙箱超时，请稍后重试。",
+                    Some("cloud session open exceeded end-to-end deadline".into()),
+                    true,
+                )
+            } else {
+                crate::wire::staged_error(
+                    "CORE_CONNECTION_TIMEOUT",
+                    "core_connect",
+                    "等待项目连接超时，请稍后重试。",
+                    Some("local session open exceeded end-to-end deadline".into()),
+                    true,
+                )
+            }
+        })?
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn open_auto_inner(
+        host: &std::rc::Rc<Host>,
+        project: &str,
+        expected_generation: Option<&str>,
+        thread_id: &str,
+        mode: OpenMode,
+        reconnect: bool,
+        allow_persisted: bool,
+        cloud_auth: &super::cloud_sessions::CloudActivationAuth,
+    ) -> Result<(Self, Value)> {
+        ensure!(
+            !thread_id.is_empty() && thread_id.len() <= 256,
+            "INVALID_PARAMS"
+        );
+        if super::cloud_sessions::CloudSessions::is_virtual(project) {
+            ensure!(
+                mode != OpenMode::Persisted,
+                super::error(
+                    "PERSISTED_HISTORY_UNAVAILABLE",
+                    "cloud session history is stored on the remote sandbox"
+                )
+            );
+            host.gateway
+                .workbench
+                .cloud
+                .sessions
+                .bound_thread(host, project, thread_id)?;
+            if mode == OpenMode::Live {
+                let generation = expected_generation.context("INVALID_PARAMS")?;
+                return Self::open(host, project, generation, thread_id).await;
+            }
+            let policy = if reconnect {
+                super::cloud_sessions::CloudReconnect::Force
+            } else {
+                super::cloud_sessions::CloudReconnect::Reuse
+            };
+            let (scope, reused) = host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .ensure_connected(host, project, policy, cloud_auth)
+                .await?;
+            match Self::open(host, project, &scope.identity.1, thread_id).await {
+                Ok(opened) => {
+                    host.gateway.workbench.cloud.sessions.clear_failure_for(
+                        host,
+                        project,
+                        Some(&scope.lease),
+                    );
+                    return Ok(opened);
+                }
+                Err(first_error) if reused && !reconnect => {
+                    let retryable = first_error
+                        .downcast_ref::<crate::wire::Error>()
+                        .is_some_and(|err| {
+                            matches!(
+                                err.code,
+                                "CLOUD_CONNECTION_CLOSED"
+                                    | "CLOUD_DISCONNECTED"
+                                    | "scheduleHostUnavailable"
+                            )
+                        })
+                        || first_error.to_string() == "RESYNC_REQUIRED";
+                    if !retryable {
+                        host.gateway.workbench.cloud.sessions.record_failure_for(
+                            host,
+                            project,
+                            Some(&scope.lease),
+                            &first_error,
+                        );
+                        return Err(first_error);
+                    }
+                    // 仅当当前安装租约仍是本次失败的旧租约时才重连；若另一请求已建立继任租约则直接复用。
+                    let (fresh_scope, _) = host
+                        .gateway
+                        .workbench
+                        .cloud
+                        .sessions
+                        .ensure_connected(
+                            host,
+                            project,
+                            super::cloud_sessions::CloudReconnect::IfLease(scope.lease.clone()),
+                            cloud_auth,
+                        )
+                        .await?;
+                    match Self::open(host, project, &fresh_scope.identity.1, thread_id).await {
+                        Ok(opened) => {
+                            host.gateway.workbench.cloud.sessions.clear_failure_for(
+                                host,
+                                project,
+                                Some(&fresh_scope.lease),
+                            );
+                            return Ok(opened);
+                        }
+                        Err(error) => {
+                            host.gateway.workbench.cloud.sessions.record_failure_for(
+                                host,
+                                project,
+                                Some(&fresh_scope.lease),
+                                &error,
+                            );
+                            return Err(error);
+                        }
+                    }
+                }
+                Err(error) => {
+                    host.gateway.workbench.cloud.sessions.record_failure_for(
+                        host,
+                        project,
+                        Some(&scope.lease),
+                        &error,
+                    );
+                    return Err(error);
+                }
+            }
+        }
+        match mode {
+            OpenMode::Persisted => {
+                ensure!(
+                    allow_persisted,
+                    crate::wire::error("methodNotFound", "persisted history was not negotiated")
+                );
+                Self::open_persisted(host, project, expected_generation, thread_id).await
+            }
+            OpenMode::Live => {
+                let generation = expected_generation.context("INVALID_PARAMS")?;
+                Self::open(host, project, generation, thread_id).await
+            }
+            OpenMode::Auto => {
+                let ready_gen = host.ready_generation(project);
+                if let Some(generation) = ready_gen {
+                    match Self::open(host, project, &generation, thread_id).await {
+                        Ok(opened) => return Ok(opened),
+                        Err(error) if allow_persisted => {
+                            let is_transient = error
+                                .downcast_ref::<crate::wire::Error>()
+                                .is_some_and(|err| {
+                                    matches!(
+                                        err.code,
+                                        "scheduleHostUnavailable" | "CORE_CONNECTION_TIMEOUT"
+                                    )
+                                })
+                                || matches!(
+                                    error.to_string().as_str(),
+                                    "RESYNC_REQUIRED" | "CORE_UNAVAILABLE"
+                                );
+                            if !is_transient {
+                                return Err(error);
+                            }
+                            if let Ok(persisted) =
+                                Self::open_persisted(host, project, None, thread_id).await
+                            {
+                                return Ok(persisted);
+                            }
+                            if let Some(next_gen) = host.ready_generation(project) {
+                                return Self::open(host, project, &next_gen, thread_id).await;
+                            }
+                            return Err(error);
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
+                if allow_persisted {
+                    match Self::open_persisted(host, project, None, thread_id).await {
+                        Ok(opened) => return Ok(opened),
+                        Err(error) => {
+                            let busy = error
+                                .downcast_ref::<crate::wire::Error>()
+                                .is_some_and(|err| err.code == "RESOURCE_BUSY");
+                            if busy {
+                                // Core 正接管 Store 锁：等待当前 ready 代际建立后切入实时观察。
+                                let deadline = tokio::time::Instant::now()
+                                    + std::time::Duration::from_secs(10);
+                                let mut changes = host.changes.subscribe();
+                                while tokio::time::Instant::now() < deadline {
+                                    if let Some(generation) = host.ready_generation(project) {
+                                        return Self::open(host, project, &generation, thread_id)
+                                            .await;
+                                    }
+                                    let wait =
+                                        tokio::time::timeout_at(deadline, changes.changed()).await;
+                                    if wait.is_err() {
+                                        break;
+                                    }
+                                }
+                            }
+                            return Err(error);
+                        }
+                    }
+                }
+                if host.schedules.suppressed(project) {
+                    return Err(crate::wire::staged_error(
+                        "CORE_EXPLICITLY_STOPPED",
+                        "conversation_observe",
+                        "项目已手动停止，请先恢复项目后再打开对话。",
+                        None,
+                        false,
+                    ));
+                }
+                Err(crate::wire::staged_error(
+                    "CORE_UNAVAILABLE",
+                    "conversation_observe",
+                    "项目服务尚未就绪，请稍后重试。",
+                    Some("local project service is not ready".into()),
+                    true,
+                ))
+            }
+        }
+    }
+
     pub(super) async fn open(
         host: &Host,
         project: &str,
@@ -188,7 +451,9 @@ impl ConversationReader {
                 .published()?
                 .iter()
                 .any(|published| published == &registration);
-        let capacity = persisted_capacity()
+        let capacity = host
+            .read_models
+            .persisted_capacity()
             .try_acquire_owned()
             .map_err(|_| super::error("RESOURCE_BUSY", "close another persisted history view"))?;
         let home = host.home.clone();

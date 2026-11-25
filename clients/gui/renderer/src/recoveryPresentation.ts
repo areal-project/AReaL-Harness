@@ -7,6 +7,10 @@ export type RecoveryFailure = DesktopError & {
   activationState?: "pending" | "blocked";
   activationReason?: string;
   activationId?: string;
+  stage?: string;
+  detail?: string;
+  diagnosticId?: string;
+  retryable?: boolean;
 };
 export type RecoveryOperation = Extract<
   NonNullable<DesktopError["outcome"]>,
@@ -20,7 +24,7 @@ export type RecoveryNotice = RecoveryOwner & {
   kind: "error" | "unconfirmed";
   requestId?: string;
   operation?: RecoveryOperation;
-  settings?: "providers" | "session";
+  settings?: "providers" | "session" | "Cloud";
   detail?: string;
 };
 type PendingOperation = {
@@ -148,6 +152,24 @@ export function recoveryMessage(
   if (t && failure instanceof UiMessageError) return errorText(t, failure);
   const code = errorCode(failure);
   if (t && code === "stopInProgress") return errorText(t, failure);
+  if (
+    t &&
+    context === "view" &&
+    code &&
+    code !== "CORE_UNAVAILABLE" &&
+    Object.hasOwn(ERROR_CODES, code) &&
+    (code.startsWith("CLOUD_") ||
+      [
+        "CORE_CONNECTION_TIMEOUT",
+        "CORE_EXPLICITLY_STOPPED",
+        "CORE_INCOMPATIBLE",
+        "PERSISTED_HISTORY_UNAVAILABLE",
+        "RESOURCE_UNAVAILABLE",
+        "LIMIT_EXCEEDED",
+        "FORBIDDEN",
+      ].includes(code))
+  )
+    return errorText(t, failure);
   if (t && context === "operation" && code && Object.hasOwn(ERROR_CODES, code))
     return errorText(t, failure);
   if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(reasonAndCode(failure)))
@@ -188,6 +210,13 @@ export function recoveryMessage(
 }
 
 export function recoverySettings(failure: RecoveryFailure): RecoveryNotice["settings"] {
+  const code = errorCode(failure);
+  if (
+    code === "CLOUD_NOT_CONFIGURED" ||
+    code === "CLOUD_AUTH_REJECTED" ||
+    code === "CLOUD_IMPORT_REQUIRED"
+  )
+    return "Cloud";
   const reason = reasonAndCode(failure);
   if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(reason)) return "providers";
   if (failure.code === -32003 || /permission|forbidden|权限|denied|config|配置/i.test(reason))

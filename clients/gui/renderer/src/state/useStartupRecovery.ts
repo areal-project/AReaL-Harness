@@ -46,7 +46,14 @@ export function useStartupRecovery(
       observationFailure.connectionGeneration === restorationOwner.connectionGeneration)
       ? observationFailure
       : undefined;
-  const viewFailure = currentObservationFailure ?? currentRestoration?.failure;
+  const viewFailure = currentObservationFailure?.code
+    ? currentObservationFailure
+    : (currentRestoration?.failure ?? currentObservationFailure);
+  const isCloudSession = Boolean(
+    project?.state?.threads?.[threadId]?.cloud ??
+    project?.summaries?.find((summary: { id: string; cloud?: unknown }) => summary.id === threadId)
+      ?.cloud,
+  );
   const restorationError = viewFailure
     ? recoveryMessage(viewFailure, "view", t)
     : currentRestoration?.error || "";
@@ -113,5 +120,6 @@ export function useStartupRecovery(
     projectFailureReady,
     restorationNoticeId,
     conversationReadState,
+    isCloudSession,
   };
 }

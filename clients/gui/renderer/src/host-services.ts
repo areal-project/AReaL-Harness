@@ -304,18 +304,19 @@ export function createHostReadServices(
       const shellState = client.readsSnapshot().shell;
       const shell = "value" in shellState ? shellState.value : shellState.previous;
       const execution = shell?.snapshot.projects.find((project) => project.projectId === canonical);
-      if (
+      const isCloud =
+        execution?.kind === "cloud" ||
+        canonical.startsWith("cloud-session:") ||
         execution?.summaries.items.some(
           (summary) => summary.id === target.threadId && summary.cloud,
-        ) &&
-        execution.state !== "ready"
-      ) {
-        const activated = await client.query("project.activate", canonical, {});
-        if (!object(activated) || activated.state !== "ready")
-          throw new Error("Cloud 连接尚未恢复");
-        await client.refreshShell();
-      }
-      await client.selectSession({ ...target, projectId: canonical });
+        ) === true;
+      // Cloud 会话与自动读取由 Host session.open(mode: "auto") 原子完成连接恢复与观察，
+      // 不再由客户端手工先调 30s 的 project.activate 再刷新 Shell。
+      await client.selectSession({
+        ...target,
+        projectId: canonical,
+        ...(isCloud ? { mode: "auto", persisted: false } : {}),
+      });
     },
     history,
     async media(source, signal, target) {
@@ -1009,13 +1010,18 @@ export function createHostReadServices(
         ) {
           let thread: ReadProject["state"]["threads"][string] | undefined =
             target.project.state.threads[target.threadId];
-          if (!thread) {
+          // 保留中的 staleHistory / persistedHistory 正文不能提供给 send/steer 当作当前配置 revision；
+          // 必须先重读当前执行代际的新鲜基线。
+          if (!thread || thread.staleHistory === true || thread.persistedHistory === true) {
             await reads.selectSession({ projectId: target.project.id, threadId: target.threadId });
             thread = (
               snapshot.projects.find((value) => value.id === target.project.id) as
                 | ReadProject
                 | undefined
             )?.state.threads[target.threadId];
+          }
+          if (thread?.staleHistory === true || thread?.persistedHistory === true) {
+            throw new Error("会话尚未同步到当前执行状态，请稍后重试。");
           }
           const config = thread?.desktop?.configuration;
           if (!object(config) || !Number.isSafeInteger(config.revision))

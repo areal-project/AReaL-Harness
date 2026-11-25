@@ -292,6 +292,181 @@ impl Session {
         value["history"] = json!({"truncated":true,"unavailable":true});
         Some(value)
     }
+}
+
+pub(super) struct PreparedConversationOpen {
+    pub(super) project_alias: String,
+    pub(super) project_id: String,
+    pub(super) expected_generation: Option<String>,
+    pub(super) thread_id: String,
+    pub(super) mode: crate::server::conversation_read::OpenMode,
+    pub(super) reconnect: bool,
+    pub(super) cloud_auth: crate::server::cloud_sessions::CloudActivationAuth,
+}
+
+impl Session {
+    pub(super) fn cloud_activation_auth(
+        &self,
+    ) -> crate::server::cloud_sessions::CloudActivationAuth {
+        if self.local {
+            match &self.browser_device {
+                Some(device_id) => {
+                    crate::server::cloud_sessions::CloudActivationAuth::BrowserDevice {
+                        device_id: device_id.clone(),
+                    }
+                }
+                None => crate::server::cloud_sessions::CloudActivationAuth::DesktopLocal,
+            }
+        } else {
+            crate::server::cloud_sessions::CloudActivationAuth::RemotePeer {
+                peer: self.peer.clone(),
+                grant_revision: self.grant["revision"].clone(),
+                transport: self.transport.clone(),
+                kind: self.kind,
+            }
+        }
+    }
+
+    pub(super) fn prepare_conversation_open(
+        &mut self,
+        request: &Value,
+    ) -> Result<PreparedConversationOpen> {
+        ensure!(
+            self.gui_read
+                && exact(request, &["id", "method", "params", "commandId", "context"])
+                && request["method"] == "session.open"
+                && request["id"].as_str().is_some_and(|id| !id.is_empty()),
+            "INVALID_PARAMS"
+        );
+        let params = request["params"].as_object().context("INVALID_PARAMS")?;
+        let params = Value::Object(params.clone());
+        ensure!(
+            params["view"] == "conversation"
+                && exact(&params, &["threadId", "view", "mode", "reconnect"]),
+            "INVALID_PARAMS"
+        );
+        // 未协商 sessionOpenAutoV1 时严格拒绝 mode/reconnect 字段，保持旧契约一致。
+        if params.get("mode").is_some() || params.get("reconnect").is_some() {
+            ensure!(self.session_open_auto, "INVALID_PARAMS");
+        }
+        let thread_id = text(&params, "threadId")?.to_owned();
+        let mode = match params.get("mode").and_then(Value::as_str) {
+            None | Some("live") => crate::server::conversation_read::OpenMode::Live,
+            Some("auto") => crate::server::conversation_read::OpenMode::Auto,
+            _ => anyhow::bail!("INVALID_PARAMS"),
+        };
+        let reconnect = params
+            .get("reconnect")
+            .map(|value| value.as_bool().context("INVALID_PARAMS"))
+            .transpose()?
+            .unwrap_or(false);
+        let supplied = text(&request["context"], "projectId")?;
+        let project_alias = if crate::server::cloud_sessions::CloudSessions::is_virtual(supplied) {
+            self.authorize(Some(supplied), "observe")?;
+            self.host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .bound_thread(&self.host, supplied, &thread_id)?;
+            supplied.to_owned()
+        } else {
+            let alias = self.native_alias(supplied)?;
+            self.authorize(Some(&alias), "observe")?;
+            alias
+        };
+        let (project_id, expected_generation) =
+            if mode == crate::server::conversation_read::OpenMode::Auto {
+                (self.project_id(&project_alias)?, None)
+            } else {
+                // 保持旧线契约：原生远程 session.open 允许只传 context.projectId，由网关解析当前代际；
+                // 若同时传入 serviceGeneration，则要求与当前代际一致。
+                let (id, current) = self.project(&project_alias)?;
+                if let Some(provided) = request["context"].get("serviceGeneration") {
+                    let provided = provided.as_str().context("INVALID_PARAMS")?;
+                    ensure!(current == provided, "RESYNC_REQUIRED");
+                }
+                (id, Some(current))
+            };
+        let cloud_auth = self.cloud_activation_auth();
+        self.viewer = None;
+        Ok(PreparedConversationOpen {
+            project_alias,
+            project_id,
+            expected_generation,
+            thread_id,
+            mode,
+            reconnect,
+            cloud_auth,
+        })
+    }
+
+    pub(super) fn install_conversation_open(
+        &mut self,
+        prepared: &PreparedConversationOpen,
+        opened: Result<(ConversationReader, Value)>,
+    ) -> Result<Value> {
+        self.authorize(Some(&prepared.project_alias), "observe")?;
+        let (reader, result) = opened?;
+        // 安装前再次核验代际归属：若打开期间项目已换代或断开，丢弃陈旧基线并要求重同步。
+        ensure!(reader.current(&self.host), "RESYNC_REQUIRED");
+        if prepared.mode == crate::server::conversation_read::OpenMode::Live
+            && let Some(expected) = prepared.expected_generation.as_deref()
+        {
+            ensure!(
+                self.project(&prepared.project_alias)?.1 == expected,
+                "RESYNC_REQUIRED"
+            );
+        }
+        self.viewer = Some(Viewer::Conversation {
+            project: prepared.project_alias.clone(),
+            reader,
+        });
+        Ok(self.conversation_keys(result, &prepared.project_alias))
+    }
+
+    pub(super) async fn open_session_auto(
+        &mut self,
+        project: &str,
+        params: &Value,
+    ) -> Result<Value> {
+        ensure!(
+            self.gui_read
+                && self.session_open_auto
+                && params["view"] == "conversation"
+                && exact(params, &["threadId", "view", "mode", "reconnect"]),
+            "INVALID_PARAMS"
+        );
+        let thread_id = text(params, "threadId")?;
+        let reconnect = params
+            .get("reconnect")
+            .map(|value| value.as_bool().context("INVALID_PARAMS"))
+            .transpose()?
+            .unwrap_or(false);
+        self.viewer = None;
+        self.authorize(Some(project), "observe")?;
+        let id = self.project_id(project)?;
+        let cloud_auth = self.cloud_activation_auth();
+        let opened = ConversationReader::open_auto(
+            &self.host,
+            &id,
+            None,
+            thread_id,
+            crate::server::conversation_read::OpenMode::Auto,
+            reconnect,
+            false,
+            &cloud_auth,
+        )
+        .await;
+        self.authorize(Some(project), "observe")?;
+        let (reader, result) = opened?;
+        ensure!(reader.current(&self.host), "RESYNC_REQUIRED");
+        self.viewer = Some(Viewer::Conversation {
+            project: project.into(),
+            reader,
+        });
+        Ok(self.conversation_keys(result, project))
+    }
     pub(super) async fn open_session(
         &mut self,
         project: &str,
@@ -302,17 +477,42 @@ impl Session {
             ensure!(
                 self.gui_read
                     && params["view"] == "conversation"
-                    && exact(params, &["threadId", "view"]),
+                    && exact(params, &["threadId", "view", "mode", "reconnect"]),
                 "INVALID_PARAMS"
             );
+            if params.get("mode").is_some() || params.get("reconnect").is_some() {
+                ensure!(self.session_open_auto, "INVALID_PARAMS");
+            }
             let thread_id = text(params, "threadId")?;
+            let mode = match params.get("mode").and_then(Value::as_str) {
+                None | Some("live") => crate::server::conversation_read::OpenMode::Live,
+                Some("auto") => crate::server::conversation_read::OpenMode::Auto,
+                _ => anyhow::bail!("INVALID_PARAMS"),
+            };
+            let reconnect = params
+                .get("reconnect")
+                .map(|value| value.as_bool().context("INVALID_PARAMS"))
+                .transpose()?
+                .unwrap_or(false);
             self.viewer = None;
             self.authorize(Some(project), "observe")?;
             let (id, current) = self.project(project)?;
             ensure!(current == generation, "RESYNC_REQUIRED");
-            let opened = ConversationReader::open(&self.host, &id, generation, thread_id).await;
+            let cloud_auth = self.cloud_activation_auth();
+            let opened = ConversationReader::open_auto(
+                &self.host,
+                &id,
+                Some(generation),
+                thread_id,
+                mode,
+                reconnect,
+                false,
+                &cloud_auth,
+            )
+            .await;
             self.authorize(Some(project), "observe")?;
             let (reader, result) = opened?;
+            ensure!(reader.current(&self.host), "RESYNC_REQUIRED");
             self.viewer = Some(Viewer::Conversation {
                 project: project.into(),
                 reader,

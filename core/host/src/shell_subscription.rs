@@ -22,6 +22,7 @@ pub(super) struct ReadModels {
     pub(super) read_started: tokio::sync::Notify,
     cached: RefCell<Option<(Value, ShellView)>>,
     online: RefCell<BTreeMap<String, Online>>,
+    persisted_capacity: std::sync::OnceLock<std::sync::Arc<tokio::sync::Semaphore>>,
 }
 #[derive(Clone)]
 struct Online {
@@ -56,6 +57,12 @@ fn source_stamp(path: &std::path::Path, directory: bool) -> Result<Value> {
 }
 
 impl ReadModels {
+    pub(super) fn persisted_capacity(&self) -> std::sync::Arc<tokio::sync::Semaphore> {
+        self.persisted_capacity
+            .get_or_init(|| std::sync::Arc::new(tokio::sync::Semaphore::new(6)))
+            .clone()
+    }
+
     pub(super) async fn shell(&self, host: &Host) -> Result<ShellView> {
         self.read(host, false).await
     }

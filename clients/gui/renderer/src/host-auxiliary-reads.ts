@@ -8,6 +8,7 @@ type Cache = Map<
 type ShellProject = {
   projectId: string;
   state: string;
+  kind?: "local" | "cloud";
   serviceGeneration?: unknown;
   modelCatalogRevision?: unknown;
 };
@@ -66,6 +67,12 @@ export function refreshModelCatalogs(
   for (const project of projects) {
     // 过渡：到 0.2.0 删；0.1.23 首次公开发布完成一次停机导入后移除隔离状态。
     if (project.state === "legacyPending") continue;
+    // 未连接的 Cloud 会话没有持久化模型目录，避免每秒轮询触发无意义的 CORE_UNAVAILABLE 重绘风暴。
+    if (
+      (project.kind === "cloud" || project.projectId.startsWith("cloud-session:")) &&
+      project.state !== "ready"
+    )
+      continue;
     const scope = JSON.stringify([connection.identity.connectionId, project.serviceGeneration]);
     const identity = `${scope}#${stale.epoch}#${String(project.modelCatalogRevision ?? "")}#${providerRevision ?? ""}`;
     const previous = catalogs.get(project.projectId);

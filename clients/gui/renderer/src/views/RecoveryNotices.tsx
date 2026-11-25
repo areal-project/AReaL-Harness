@@ -1,5 +1,5 @@
 import { Button } from "../components/ui/button.js";
-import { rawText } from "../errors/errorCopy.js";
+import { diagnosticDetail } from "../errors/errorCopy.js";
 import { FeedbackNotice } from "../FeedbackNotice.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { isTechnicalErrorMessage, recoverySettings } from "../recoveryPresentation.js";
@@ -63,7 +63,9 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
                   {t(
                     notice.settings === "providers"
                       ? "recovery.checkModelSettings"
-                      : "recovery.checkSessionSettings",
+                      : notice.settings === "Cloud"
+                        ? "cloud.openSettings"
+                        : "recovery.checkSessionSettings",
                   )}
                 </Button>
               )}
@@ -93,8 +95,8 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
           tone="error"
           message={restorationError}
           detail={
-            viewFailure && rawText(viewFailure) !== restorationError
-              ? rawText(viewFailure)
+            viewFailure && diagnosticDetail(viewFailure) !== restorationError
+              ? diagnosticDetail(viewFailure)
               : undefined
           }
           onDismiss={() => dismissNotice(restorationNoticeId)}
@@ -109,11 +111,13 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
                     setSettingsOpen(true);
                   }}
                 >
-                  {t("recovery.checkSettings")}
+                  {recoverySettings(viewFailure) === "Cloud"
+                    ? t("cloud.openSettings")
+                    : t("recovery.checkSettings")}
                 </Button>
               )}
               <Button variant="ghost" size="sm" onClick={() => void retryRestoration()}>
-                {t("recovery.retryView")}
+                {startup.isCloudSession ? t("cloud.reconnect") : t("recovery.retryView")}
               </Button>
               {(session.project?.scheduling?.suppressed === true ||
                 viewFailure?.activationReason === "explicitlyStopped") && (

@@ -261,6 +261,7 @@ struct Slot {
     imported_credentials: BTreeSet<String>,
     live_ensure: Option<LiveEnsure>,
     live_idle_stop: Option<LiveIdleStop>,
+    probe_failures: u8,
 }
 struct Host {
     clients: RefCell<BTreeMap<String, Option<u32>>>,
@@ -300,6 +301,7 @@ impl Slot {
             imported_credentials: BTreeSet::new(),
             live_ensure: None,
             live_idle_stop: None,
+            probe_failures: 0,
         }
     }
 }
@@ -1357,6 +1359,7 @@ impl Host {
             if let Ok(Ok(service)) = observed {
                 let mut slots = self.slots.borrow_mut();
                 let slot = slots.get_mut(id).unwrap();
+                slot.probe_failures = 0;
                 slot.state = match service.state {
                     State::Ready
                         if service.owner.as_ref() == Some(&self.owner())
@@ -1379,26 +1382,29 @@ impl Host {
                 } else {
                     "probe_error"
                 };
-                let connection_allows_observation = observed.is_err()
-                    && self
-                        .schedules
-                        .connections
-                        .observation_can_keep_identity(self, id);
+                let has_live_connection =
+                    observed.is_err() && self.schedules.connections.has_live_connection(self, id);
                 let mut slots = self.slots.borrow_mut();
                 let slot = slots.get_mut(id).unwrap();
+                slot.probe_failures = slot.probe_failures.saturating_add(1);
                 let supervised = slot.writer.is_some()
                     && slot
                         .service
                         .as_ref()
                         .is_some_and(|service| service.owner.as_ref() == Some(&self.owner()));
-                // 超时不能撤销仍有权威身份的连接；连接已关闭时也不能沿缓存继续声明 ready。
-                if slot.state == "ready"
-                    && !(connection_allows_observation && supervised && !slot.uncertain_start)
-                {
+                // 已有存活实时连接时允许继续保留 ready；无存活连接时仅给予有限次数的瞬态超时宽限（< 3 次）。
+                let transient_timeout_protected = observed.is_err()
+                    && supervised
+                    && !slot.uncertain_start
+                    && (has_live_connection || slot.probe_failures < 3);
+                if slot.state == "ready" && !transient_timeout_protected {
                     slot.state = "unavailable".into();
                 }
                 if slot.service.is_some() {
-                    eprintln!("Host service observation incomplete: project={id} reason={reason}");
+                    eprintln!(
+                        "Host service observation incomplete: project={id} reason={reason} consecutive={}",
+                        slot.probe_failures
+                    );
                 }
             }
         }

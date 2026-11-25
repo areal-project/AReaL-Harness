@@ -334,6 +334,7 @@ impl Fixture {
             shell: None,
             gui_read: false,
             gui_write: false,
+            session_open_auto: false,
             local: false,
             browser_device: None,
             uploads: Default::default(),

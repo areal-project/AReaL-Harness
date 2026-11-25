@@ -17,7 +17,18 @@ const GENERIC_ERRORS = new Set([
 const ERROR_TEXT: Record<string, string> = {
   FORBIDDEN: "没有权限执行此操作。请在桌面应用的手机与网页设置里重新批准这个浏览器。",
   CAPABILITY_UNAVAILABLE: "桌面后台未运行，此功能暂不可用。",
-  CORE_UNAVAILABLE: "项目服务暂不可用，请稍后重试。",
+  CORE_UNAVAILABLE: "项目暂时没有响应。你的内容已保留，请稍后重试。",
+  CORE_CONNECTION_TIMEOUT: "等待项目连接超时，你的内容已保留，请稍后重试。",
+  CORE_EXPLICITLY_STOPPED: "项目已手动停止，请先恢复项目后再继续。",
+  CORE_INCOMPATIBLE: "项目需要更新后才能继续使用，请重新打开应用完成更新。",
+  CLOUD_NOT_CONFIGURED: "尚未配置云端地址或令牌，请先前往 Cloud 设置完成配置。",
+  CLOUD_AUTH_REJECTED: "云端凭据验证未通过，请检查 Cloud 设置中的地址与令牌。",
+  CLOUD_SANDBOX_EXPIRED: "云端沙箱已过期或不存在，请新建云端会话。",
+  CLOUD_GATEWAY_UNAVAILABLE: "云端服务暂时不可达，请检查网络后重试。",
+  CLOUD_HANDSHAKE_TIMEOUT: "连接云端沙箱超时，请稍后重试。",
+  CLOUD_DISCONNECTED: "云端会话尚未连接，请重新连接以读取远端历史。",
+  CLOUD_CONNECTION_CLOSED: "云端连接已断开，请重新连接。",
+  CLOUD_UNSUPPORTED_SESSION: "此旧版云端会话需使用原客户端打开。",
   RESYNC_REQUIRED: "状态已变化，请刷新后重试。",
   INVALID_PARAMS: "请求无效，请刷新后重试。",
   LIMIT_EXCEEDED: "内容超过大小限制。",
@@ -59,12 +70,14 @@ export async function connectWebSocket(
   const socket = createSocket(bootstrap.websocketUrl);
   let sequence = 0;
   const pending = new Map<string, Pending>();
+  const timedOutOpens = new Map<string, ReadContext | undefined>();
   const close = () => {
     for (const entry of pending.values()) {
       clearTimeout(entry.timer);
       entry.reject(clientError("DISCONNECTED", "Host disconnected"));
     }
     pending.clear();
+    timedOutOpens.clear();
     socket.close();
   };
   const request = (method: string, params: JsonObject, context?: ReadContext) =>
@@ -72,11 +85,25 @@ export async function connectWebSocket(
       if (!current() || socket.readyState !== WebSocket.OPEN)
         return reject(clientError("DISCONNECTED", "Connection unavailable"));
       const id = String(++sequence);
+      // 与 Host 端到端预算对齐（Cloud 135s < 150s，本地 25s < 35s），
+      // 且单次会话读取超时绝不拆毁整条 Host WebSocket；若迟到回复携带 subscriptionId 则主动关闭释放配额。
+      const isSessionOpen = method === "session.open" || method === "session.openPersisted";
+      const isCloudRead =
+        method === "session.open" &&
+        typeof context?.projectId === "string" &&
+        context.projectId.startsWith("cloud-session:");
+      const timeoutMs = isCloudRead ? 150_000 : isSessionOpen ? 35_000 : 15_000;
       const timer = setTimeout(() => {
         pending.delete(id);
+        if (isSessionOpen) {
+          if (timedOutOpens.size >= 32) {
+            const oldest = timedOutOpens.keys().next().value;
+            if (oldest !== undefined) timedOutOpens.delete(oldest);
+          }
+          timedOutOpens.set(id, context);
+        }
         reject(clientError("TIMEOUT", "Host read timed out"));
-        if (method === "session.open" || method === "session.openPersisted") close();
-      }, 15_000);
+      }, timeoutMs);
       pending.set(id, { method, resolve, reject, timer });
       try {
         socket.send(
@@ -89,7 +116,9 @@ export async function connectWebSocket(
               ? {
                   context: {
                     projectId: context.projectId,
-                    serviceGeneration: context.serviceGeneration,
+                    ...(context.serviceGeneration
+                      ? { serviceGeneration: context.serviceGeneration }
+                      : {}),
                   },
                 }
               : {}),
@@ -112,9 +141,13 @@ export async function connectWebSocket(
       if (!current() || socket.readyState !== WebSocket.OPEN)
         return reject(clientError("DISCONNECTED", "Connection unavailable"));
       const id = String(++sequence);
-      // Cloud 沙箱首次启动或休眠唤醒耗时较长，避免客户端过早超时把成功启动误判为结果未知。
-      const timeoutMs =
-        method === "desktop.command" && params.command === "cloudSession" ? 150_000 : 30_000;
+      // Cloud 沙箱首次启动或休眠唤醒耗时较长，project.activate 与 cloudSession 共用 150s 预算。
+      const isCloudWrite =
+        (method === "desktop.command" && params.command === "cloudSession") ||
+        (method === "project.activate" &&
+          typeof context?.projectId === "string" &&
+          context.projectId.startsWith("cloud-session:"));
+      const timeoutMs = isCloudWrite ? 150_000 : 30_000;
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(clientError("TIMEOUT", "Host command timed out"));
@@ -186,8 +219,8 @@ export async function connectWebSocket(
       void request("hello", {
         protocolVersions: [1],
         capabilities: options.writes
-          ? ["gui-read-v1", "gui-write-v1", "persistedHistoryV1"]
-          : ["gui-read-v1", "persistedHistoryV1"],
+          ? ["gui-read-v1", "gui-write-v1", "persistedHistoryV1", "sessionOpenAutoV1"]
+          : ["gui-read-v1", "persistedHistoryV1", "sessionOpenAutoV1"],
         ticket,
         expectedGeneration: generation,
       } satisfies LoopbackHelloParams)
@@ -214,6 +247,7 @@ export async function connectWebSocket(
             gatewayGeneration: generation,
             preferredSourceId,
             persistedHistory: value.negotiatedCapabilities.includes("persistedHistoryV1"),
+            sessionOpenAuto: value.negotiatedCapabilities.includes("sessionOpenAutoV1"),
             ...(writable
               ? {
                   writeMethods: (value.writeMethods as unknown[]).filter(
@@ -250,9 +284,33 @@ export async function connectWebSocket(
           onEvent(message.params);
           return;
         }
-        const handler = pending.get(String(message.id));
-        if (!handler) return;
-        pending.delete(String(message.id));
+        const messageId = String(message.id);
+        const handler = pending.get(messageId);
+        if (!handler) {
+          if (timedOutOpens.has(messageId)) {
+            const timedOutContext = timedOutOpens.get(messageId);
+            timedOutOpens.delete(messageId);
+            if (
+              record(message.result) &&
+              typeof message.result.subscriptionId === "string" &&
+              message.result.subscriptionId &&
+              timedOutContext?.projectId
+            ) {
+              void request(
+                "subscription.close",
+                { subscriptionId: message.result.subscriptionId },
+                {
+                  projectId: timedOutContext.projectId,
+                  ...(typeof message.result.serviceGeneration === "string"
+                    ? { serviceGeneration: message.result.serviceGeneration }
+                    : {}),
+                },
+              ).catch(() => {});
+            }
+          }
+          return;
+        }
+        pending.delete(messageId);
         clearTimeout(handler.timer);
         if (record(message.error)) {
           const generic = message.error.message;
@@ -264,7 +322,20 @@ export async function connectWebSocket(
           // 被拒的方法和 Host 给的排队原因放进详情，用户不必再猜是哪里满了。
           const method = "method" in message.error ? message.error.method : handler.method;
           const reason = "reason" in message.error ? message.error.reason : undefined;
-          const detail = [summary, typeof method === "string" ? method : "", reason]
+          const stage = "stage" in message.error ? message.error.stage : undefined;
+          const rawDetail = "detail" in message.error ? message.error.detail : undefined;
+          const diagnosticId =
+            "diagnosticId" in message.error ? message.error.diagnosticId : undefined;
+          const code = typeof message.error.code === "string" ? message.error.code : undefined;
+          const detail = [
+            summary,
+            code,
+            typeof stage === "string" ? stage : "",
+            typeof method === "string" ? method : "",
+            typeof reason === "string" ? reason : "",
+            typeof rawDetail === "string" ? rawDetail : "",
+            typeof diagnosticId === "string" ? `#${diagnosticId}` : "",
+          ]
             .filter((part): part is string => typeof part === "string" && part !== "")
             .join(" · ");
           handler.reject(

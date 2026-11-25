@@ -3006,3 +3006,128 @@ it("separates connect vs submit activation messages and wakes the execution work
     vi.unstubAllGlobals();
   }
 });
+
+it("retains loaded Cloud history as stale on disconnect and skips model catalog polling for disconnected Cloud sessions", async () => {
+  const cloudId = "cloud-session:source:rec-keep";
+  const modelQueries: string[] = [];
+  let onEvent: ((event: unknown) => void) | undefined;
+  const factory: NonNullable<Parameters<typeof createHostReadServices>[1]["transport"]> = async (
+    lifecycle,
+  ) => {
+    onEvent = lifecycle.onEvent;
+    return {
+      identity: {
+        ...identity,
+        hostId: "host",
+        hostGeneration: identity.gatewayGeneration,
+        preferredSourceId: "source",
+        persistedHistory: true,
+        sessionOpenAuto: true,
+        writeMethods: ["project.models", "project.activate"],
+        writeLimits: {},
+      },
+      transport: {
+        close() {},
+        async request(method, params, context) {
+          if (method === "shell.subscribe") {
+            return {
+              ...identity,
+              subscriptionId: "shell-sub",
+              sequence: 0,
+              snapshot: {
+                projects: [
+                  { ...project, summaries: { state: "fresh", items: [] } },
+                  {
+                    ...project,
+                    projectId: cloudId,
+                    kind: "cloud",
+                    logicalProjectId: "canonical",
+                    alias: { sourceId: "source", projectId: "rec-keep" },
+                    workspace: "cloud://rec-keep",
+                    state: "unavailable",
+                    serviceGeneration: undefined,
+                    summaries: {
+                      state: "cached",
+                      items: [
+                        {
+                          ...project.summaries.items[0],
+                          cloud: {
+                            sessionId: "rec-keep",
+                            connected: false,
+                            connectionState: "disconnected",
+                            error: "Cloud 尚未连接",
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+                navigation: [navigation],
+              },
+            };
+          }
+          if (method === "session.open") {
+            expect(context?.projectId).toBe(cloudId);
+            expect(params.mode).toBe("auto");
+            return {
+              ...identity,
+              projectId: cloudId,
+              serviceGeneration: "cloud-gen-1",
+              threadId: "thread",
+              view: "conversation",
+              snapshot: {
+                ...observation,
+                thread: {
+                  ...observation.thread,
+                  desktop: {
+                    archived: false,
+                    queue: { revision: 1, items: [] },
+                    interactionRevision: 3,
+                    interactions: [],
+                  },
+                },
+              },
+            };
+          }
+          return { closed: true };
+        },
+        async write(method, _params, context) {
+          if (method === "project.models") {
+            modelQueries.push(String(context?.projectId ?? ""));
+            return { models: [], profiles: [] };
+          }
+          return {};
+        },
+      },
+    };
+  };
+  const services = createHostReadServices(undefined, options(factory));
+  await until(services);
+  // 后台模型目录刷新不得轮询未连接的 Cloud 会话。
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  expect(modelQueries).not.toContain(cloudId);
+
+  await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+  const loaded = (await services.snapshot()).projects[0].state.threads.thread;
+  expect(loaded?.id).toBe("thread");
+
+  // 远端断线后，已读正文应保留并标记 staleHistory，不清空界面。
+  onEvent?.({
+    ...identity,
+    event: "session.invalidated",
+    subscriptionId: identity.subscriptionId,
+    sequence: 1,
+    projectId: cloudId,
+    serviceGeneration: "cloud-gen-1",
+    threadId: "thread",
+    view: "conversation",
+    error: { code: "RESYNC_REQUIRED", message: "closed" },
+  });
+  const afterDisconnectSnap = (await services.snapshot()).projects[0];
+  const afterDisconnect = afterDisconnectSnap.state.threads.thread;
+  expect(afterDisconnect?.id).toBe("thread");
+  expect(afterDisconnect?.staleHistory).toBe(true);
+  // 断线后的 stale 正文必须保留可读，但不得继续投影陈旧的队列与交互控件。
+  expect(afterDisconnectSnap.state.queues?.thread).toBeUndefined();
+  expect(afterDisconnectSnap.state.interactions?.thread).toBeUndefined();
+});

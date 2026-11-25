@@ -2,6 +2,7 @@ import type {
   HostStatus,
   LoopbackMethodMap,
   ConversationOpenParams,
+  LoopbackSessionOpenParams,
   ConversationHistoryParams,
   ConversationMediaParams,
 } from "./protocol.js";
@@ -21,7 +22,9 @@ import {
   SESSION_READ_CACHE_MS,
   SESSION_READ_CACHE_LIMIT,
   type ReadSnapshot,
+  type ReadFailure,
   type SessionRead,
+  type ShellProject,
   type ShellRead,
   type JsonObject,
   type MediaSource,
@@ -58,6 +61,7 @@ export type ReadConnectionIdentity = {
   gatewayGeneration: string;
   preferredSourceId?: string;
   persistedHistory?: boolean;
+  sessionOpenAuto?: boolean;
   writeMethods?: readonly string[];
   /** 与桌面输入框一致的上限：正文、附件、引用与 MCP 内容。 */
   writeLimits?: Readonly<Record<string, number>>;
@@ -107,6 +111,31 @@ export interface HostClientOptions {
     onClose(): void;
   }): Promise<ReadConnection>;
 }
+function isCloudProject(project: ShellProject | undefined, projectId?: string) {
+  return project?.kind === "cloud" || Boolean(projectId?.startsWith("cloud-session:"));
+}
+function readFailure(error: unknown, fallback = "Conversation unavailable"): ReadFailure {
+  if (record(error)) {
+    const message = typeof error.message === "string" && error.message ? error.message : fallback;
+    const code =
+      typeof error.code === "string"
+        ? error.code
+        : typeof error.clientCode === "string"
+          ? error.clientCode
+          : undefined;
+    return {
+      message,
+      ...(code ? { code } : {}),
+      ...(typeof error.stage === "string" ? { stage: error.stage } : {}),
+      ...(typeof error.detail === "string" ? { detail: error.detail } : {}),
+      ...(typeof error.diagnosticId === "string" ? { diagnosticId: error.diagnosticId } : {}),
+      ...(typeof error.retryable === "boolean" ? { retryable: error.retryable } : {}),
+      ...(record(error.coreError) ? { coreError: error.coreError as JsonObject } : {}),
+    };
+  }
+  return { message: error instanceof Error && error.message ? error.message : fallback };
+}
+
 export class HostClient {
   #state: HostReadState = { connection: "offline", freshness: "unavailable" };
   #reads: ReadSnapshot = { shell: { state: "loading" }, session: { state: "unavailable" } };
@@ -121,7 +150,12 @@ export class HostClient {
   #abort?: AbortController;
   #timer?: ReturnType<typeof setTimeout>;
   #attempt = 0;
-  #target?: { projectId: string; threadId: string; persisted?: boolean };
+  #target?: {
+    projectId: string;
+    threadId: string;
+    persisted?: boolean;
+    mode?: "auto" | "live" | "persisted";
+  };
   #opening?: { key: string; selection: number; promise: Promise<void> };
   #sessionCache = new Map<string, { value: SessionRead; expires: number }>();
   #watched = new WatchedSessionSet({
@@ -357,6 +391,36 @@ export class HostClient {
     });
     const canReadPersisted =
       this.#state.connection === "ready" && this.#state.identity.persistedHistory === true;
+    const cloudTarget = isCloudProject(after, this.#target?.projectId);
+    if (this.#target && cloudTarget) {
+      if (after && after.state !== "ready") {
+        // Cloud 会话断线或仍在连接中：保留已有正文为 stale，绝不转入本地 session.openPersisted。
+        if (this.#reads.session.state === "fresh") {
+          this.#publishReads({ ...this.#reads, session: stale(this.#reads.session) });
+        }
+        return;
+      }
+      if (
+        after?.state === "ready" &&
+        (before?.state !== "ready" || before?.serviceGeneration !== after.serviceGeneration) &&
+        !(
+          this.#reads.session.state === "fresh" &&
+          this.#reads.session.value.projectId === after.projectId &&
+          this.#reads.session.value.serviceGeneration === after.serviceGeneration
+        ) &&
+        !this.#opening
+      ) {
+        this.#publishReads({
+          ...this.#reads,
+          session:
+            this.#reads.session.state === "loading"
+              ? this.#reads.session
+              : stale(this.#reads.session),
+        });
+        void this.#openSession().catch(() => {});
+      }
+      return;
+    }
     // 持久化快照在执行启动中仍可读；等 Core 就绪再切换，不能重开已经被执行占用的 Store。
     if (
       this.#target &&
@@ -578,34 +642,74 @@ export class HostClient {
   refreshShell() {
     return this.#subscribeShell(true);
   }
-  async selectSession(target: { projectId: string; threadId: string; persisted?: boolean } | null) {
+  #supportsAutoOpen(
+    project: ShellProject | undefined,
+    target:
+      | {
+          projectId: string;
+          threadId: string;
+          persisted?: boolean;
+          mode?: "auto" | "live" | "persisted";
+        }
+      | undefined,
+  ): boolean {
+    if (this.#state.connection !== "ready" || this.#state.identity.sessionOpenAuto !== true) {
+      return false;
+    }
+    return Boolean(target && (target.mode === "auto" || isCloudProject(project, target.projectId)));
+  }
+  async selectSession(
+    target: {
+      projectId: string;
+      threadId: string;
+      persisted?: boolean;
+      mode?: "auto" | "live" | "persisted";
+      reconnect?: boolean;
+    } | null,
+  ) {
     // 读取方式服从当前项目所有者；Core 已运行时不能再争用其 Store 锁。
     const project = previous(this.#reads.shell)?.snapshot.projects.find(
       (value) => value.projectId === target?.projectId,
     );
     const timing = target ? sessionLoadTiming(target.threadId) : undefined;
+    // reconnect 是一次性用户动作，绝不常驻在 #target 上，避免中途目录推送再次触发拆连重连。
+    const reconnect = target?.reconnect === true;
+    const normalizedTarget = target
+      ? {
+          projectId: target.projectId,
+          threadId: target.threadId,
+          ...(target.persisted ? { persisted: true } : {}),
+          ...(target.mode ? { mode: target.mode } : {}),
+        }
+      : undefined;
     if (
-      target &&
-      target.projectId === this.#target?.projectId &&
-      target.threadId === this.#target.threadId
+      normalizedTarget &&
+      normalizedTarget.projectId === this.#target?.projectId &&
+      normalizedTarget.threadId === this.#target.threadId
     ) {
-      if (target.persisted && !this.#target.persisted)
+      if (normalizedTarget.persisted && !this.#target.persisted)
         this.#target = { ...this.#target, persisted: true };
+      if (normalizedTarget.mode) this.#target = { ...this.#target, mode: normalizedTarget.mode };
       const session = this.#reads.session;
-      const persistedRead = project?.state !== "ready" && this.#target.persisted === true;
+      const persistedRead =
+        !isCloudProject(project, normalizedTarget.projectId) &&
+        project?.state !== "ready" &&
+        this.#target.persisted === true;
       if (
+        !reconnect &&
         session.state === "fresh" &&
         this.#state.connection === "ready" &&
         session.value.connectionId === this.#state.identity.connectionId &&
-        (session.value.access?.kind === "persisted") === persistedRead
+        (normalizedTarget.mode === "auto" ||
+          (session.value.access?.kind === "persisted") === persistedRead)
       ) {
         timing?.mark("cache", true);
         return;
       }
-      return this.#openSession();
+      return this.#openSession(reconnect);
     }
     this.#retainSession();
-    this.#target = target ?? undefined;
+    this.#target = normalizedTarget;
     ++this.#selection;
     const old = this.#reads.session.state === "fresh" ? this.#reads.session.value : undefined;
     if (old && this.#transport)
@@ -614,13 +718,13 @@ export class HostClient {
         .catch(() => {});
     this.#pruneSessionCache();
     const cached =
-      target &&
-      !target.persisted &&
+      normalizedTarget &&
+      !normalizedTarget.persisted &&
       project?.serviceGeneration &&
       this.#state.connection === "ready"
         ? this.#sessionCache.get(
             sessionReadKey(this.#state.identity, {
-              ...target,
+              ...normalizedTarget,
               serviceGeneration: project.serviceGeneration,
             }),
           )?.value
@@ -628,17 +732,17 @@ export class HostClient {
     timing?.mark("cache", !!cached);
     this.#publishReads({
       ...this.#reads,
-      sessionTarget: target
-        ? { ...target, serviceGeneration: project?.serviceGeneration }
+      sessionTarget: normalizedTarget
+        ? { ...normalizedTarget, serviceGeneration: project?.serviceGeneration }
         : undefined,
       session: cached ? { state: "stale", value: cached } : { state: "loading" },
     });
-    if (target && !cached && this.options.cache?.loadSession) {
-      const loadTarget = target;
+    if (normalizedTarget && !cached && this.options.cache?.loadSession) {
+      const loadTarget = normalizedTarget;
       void Promise.resolve(
         this.options.cache.loadSession({
-          projectId: target.projectId,
-          threadId: target.threadId,
+          projectId: normalizedTarget.projectId,
+          threadId: normalizedTarget.threadId,
         }),
       )
         .then((persistedSession) => {
@@ -658,17 +762,23 @@ export class HostClient {
         })
         .catch(() => {});
     }
-    if (target && this.#transport) await this.#openSession();
+    if (normalizedTarget && this.#transport) await this.#openSession(reconnect);
   }
-  async #openSession() {
+  async #openSession(reconnect = false) {
     const project = previous(this.#reads.shell)?.snapshot.projects.find(
       (value) => value.projectId === this.#target?.projectId,
     );
-    const key = JSON.stringify([this.#epoch, this.#target, project?.serviceGeneration]);
-    if (this.#opening?.key === key && this.#opening.selection === this.#selection)
+    const autoOpen = this.#supportsAutoOpen(project, this.#target);
+    // auto 模式下连接、项目与会话唯一去重，避免连接过程中目录从 starting -> ready 换代重复发起打开。
+    const key = JSON.stringify([
+      this.#epoch,
+      this.#target,
+      autoOpen ? "auto" : project?.serviceGeneration,
+    ]);
+    if (!reconnect && this.#opening?.key === key && this.#opening.selection === this.#selection)
       return this.#opening.promise;
     // UI 选中与连接恢复可能同时到达；同一连接、项目代次和会话只有一个订阅负责人。
-    const promise = this.#readSession();
+    const promise = this.#readSession(reconnect);
     const opening = { key, selection: this.#selection, promise };
     this.#opening = opening;
     try {
@@ -677,7 +787,7 @@ export class HostClient {
       if (this.#opening === opening) this.#opening = undefined;
     }
   }
-  async #readSession(): Promise<void> {
+  async #readSession(reconnect = false): Promise<void> {
     const transport = this.#transport,
       target = this.#target,
       selection = ++this.#selection;
@@ -685,7 +795,11 @@ export class HostClient {
     const timing = sessionLoadTiming(target.threadId);
     const shell = previous(this.#reads.shell);
     const project = shell?.snapshot.projects.find((p) => p.projectId === target.projectId);
+    const cloudTarget = isCloudProject(project, target.projectId);
+    const autoOpen = this.#supportsAutoOpen(project, target);
     const persisted =
+      !cloudTarget &&
+      !autoOpen &&
       target.persisted === true &&
       project?.state !== "ready" &&
       this.#state.connection === "ready" &&
@@ -696,22 +810,42 @@ export class HostClient {
       sessionTarget: { ...target, serviceGeneration: project?.serviceGeneration },
       session: previousSession ? { state: "stale", value: previousSession } : { state: "loading" },
     });
-    if (!project || (!persisted && (!project.serviceGeneration || project.state !== "ready"))) {
+    if (
+      !autoOpen &&
+      (!project || (!persisted && (!project.serviceGeneration || project.state !== "ready")))
+    ) {
       this.#publishReads({
         ...this.#reads,
-        session: stale(this.#reads.session, "Project Core unavailable"),
+        session: stale(this.#reads.session, {
+          message: "Project Core unavailable",
+          code: "CORE_UNAVAILABLE",
+          stage: "client_precheck",
+          retryable: true,
+        }),
       });
-      throw new Error("Project Core unavailable");
+      throw Object.assign(new Error("Project Core unavailable"), {
+        code: "CORE_UNAVAILABLE",
+        stage: "client_precheck",
+        retryable: true,
+      });
     }
     const context = {
       projectId: target.projectId,
-      ...(project.serviceGeneration ? { serviceGeneration: project.serviceGeneration } : {}),
+      ...(project?.serviceGeneration ? { serviceGeneration: project.serviceGeneration } : {}),
     };
+    const openParams: LoopbackSessionOpenParams | ConversationOpenParams = autoOpen
+      ? {
+          threadId: target.threadId,
+          view: "conversation",
+          mode: "auto",
+          ...(reconnect ? { reconnect: true } : {}),
+        }
+      : { threadId: target.threadId, view: "conversation" };
     try {
       timing?.mark("request");
       const value = await transport.request(
         persisted ? "session.openPersisted" : "session.open",
-        { threadId: target.threadId, view: "conversation" } satisfies ConversationOpenParams,
+        openParams,
         context,
       );
       timing?.mark("response");
@@ -722,6 +856,17 @@ export class HostClient {
             .catch(() => {});
         return;
       }
+      const validPersistedAccess =
+        record(value) &&
+        record(value.access) &&
+        value.access.kind === "persisted" &&
+        value.access.readOnly === true &&
+        typeof value.access.snapshotId === "string";
+      const accessValid = autoOpen
+        ? record(value) && (value.access === undefined || validPersistedAccess)
+        : persisted
+          ? validPersistedAccess
+          : record(value) && value.access === undefined;
       if (
         !identity(value) ||
         value.sequence !== 0 ||
@@ -729,14 +874,10 @@ export class HostClient {
         value.threadId !== target.threadId ||
         typeof value.serviceGeneration !== "string" ||
         !value.serviceGeneration ||
-        (context.serviceGeneration !== undefined &&
+        (!autoOpen &&
+          context.serviceGeneration !== undefined &&
           value.serviceGeneration !== context.serviceGeneration) ||
-        (persisted &&
-          (!record(value.access) ||
-            value.access.kind !== "persisted" ||
-            value.access.readOnly !== true ||
-            typeof value.access.snapshotId !== "string")) ||
-        (!persisted && value.access !== undefined) ||
+        !accessValid ||
         value.view !== "conversation" ||
         !record(value.snapshot) ||
         this.#state.connection !== "ready" ||
@@ -753,13 +894,17 @@ export class HostClient {
         snapshot: value.snapshot,
       };
       timing?.mark("baseline");
-      this.#publishReads({ ...this.#reads, session: { state: "fresh", value: session } });
+      this.#publishReads({
+        ...this.#reads,
+        sessionTarget: { ...target, serviceGeneration: session.serviceGeneration },
+        session: { state: "fresh", value: session },
+      });
       this.#pruneSessionCache();
       void Promise.resolve(this.options.cache?.saveSession?.(session)).catch(() => {});
     } catch (error) {
       // 已被换代或取消的读取不能把旧连接的失败交给当前对话。
       if (selection !== this.#selection || transport !== this.#transport) return;
-      if (record(error) && ["DISCONNECTED", "TIMEOUT"].includes(String(error.clientCode))) {
+      if (record(error) && error.clientCode === "DISCONNECTED") {
         // 只重建读取订阅。写命令仍通过原 commandId 核对。
         void this.retry();
         return;
@@ -789,12 +934,55 @@ export class HostClient {
           return;
         }
       }
+      if (
+        !persisted &&
+        !cloudTarget &&
+        selection === this.#selection &&
+        this.#state.connection === "ready" &&
+        this.#state.identity.persistedHistory === true &&
+        previousSession?.projectId === target.projectId &&
+        previousSession?.threadId === target.threadId &&
+        record(error) &&
+        (error.code === "RESYNC_REQUIRED" ||
+          error.code === "CORE_UNAVAILABLE" ||
+          error.code === "scheduleHostUnavailable" ||
+          error.code === "CORE_CONNECTION_TIMEOUT")
+      ) {
+        // 本地 Core 休眠时若 session.invalidated 先于 shell.updated 到达，先刷新目录核对真实项目状态，
+        // 避免在 stopping/stopped 过渡期向界面闪现临时错误。
+        const currentState = previous(this.#reads.shell)?.snapshot.projects.find(
+          (value) => value.projectId === target.projectId,
+        )?.state;
+        if (currentState === "ready") {
+          try {
+            await this.#subscribeShell(true);
+          } catch {
+            // 目录刷新失败时交由后续常规错误处理。
+          }
+        }
+        if (selection !== this.#selection || transport !== this.#transport) return;
+        const latest = previous(this.#reads.shell)?.snapshot.projects.find(
+          (value) => value.projectId === target.projectId,
+        );
+        if (latest?.state === "stopping") {
+          this.#publishReads({
+            ...this.#reads,
+            session: { state: "stale", value: previousSession },
+          });
+          return;
+        }
+        if (
+          latest?.state === "stopped" &&
+          this.#target?.projectId === target.projectId &&
+          this.#target?.threadId === target.threadId
+        ) {
+          this.#target = { ...this.#target, persisted: true };
+          return this.#readSession();
+        }
+      }
       this.#publishReads({
         ...this.#reads,
-        session: stale(
-          this.#reads.session,
-          error instanceof Error ? error.message : "Conversation unavailable",
-        ),
+        session: stale(this.#reads.session, readFailure(error)),
       });
       throw error;
     }
@@ -970,7 +1158,35 @@ export class HostClient {
     }
     if (String(event.event).startsWith("session.") && this.#watched.accept(event)) return;
     const session = this.#reads.session;
-    if (session.state !== "fresh" || !String(event.event).startsWith("session.")) return;
+    if (!String(event.event).startsWith("session.")) return;
+    // Host 先推送 shell.updated 再推送 session.invalidated：当目录更新先把 Cloud 会话标成 stale 后，
+    // 紧随而至的同订阅 session.invalidated 应把结构化失败详情挂到该 stale Cloud 会话上；
+    // 本地项目处于 stopping -> persisted 静默休眠过渡期时不得附加错误，避免闪现红条。
+    if (session.state === "stale" && event.event === "session.invalidated") {
+      const current = session.value;
+      const staleProject = previous(this.#reads.shell)?.snapshot.projects.find(
+        (project) => project.projectId === current.projectId,
+      );
+      if (
+        isCloudProject(staleProject, current.projectId) &&
+        [
+          "connectionId",
+          "gatewayGeneration",
+          "subscriptionId",
+          "projectId",
+          "serviceGeneration",
+        ].every((key) => event[key] === current[key as keyof SessionRead]) &&
+        event.sequence > current.sequence &&
+        record(event.error)
+      ) {
+        this.#publishReads({
+          ...this.#reads,
+          session: stale(session, readFailure(event.error)),
+        });
+      }
+      return;
+    }
+    if (session.state !== "fresh") return;
     const current = session.value;
     if (
       [
@@ -1005,10 +1221,25 @@ export class HostClient {
           this.#target.persisted = false;
         }
       }
-      this.#publishReads({ ...this.#reads, session: stale(session) });
       const selectedProject = previous(this.#reads.shell)?.snapshot.projects.find(
-        (project) => project.projectId === this.#target?.projectId,
+        (project) => project.projectId === (this.#target?.projectId ?? current.projectId),
       );
+      const cloudTarget = isCloudProject(
+        selectedProject,
+        this.#target?.projectId ?? current.projectId,
+      );
+      const invalidationFailure =
+        cloudTarget && event.event === "session.invalidated" && record(event.error)
+          ? readFailure(event.error)
+          : undefined;
+      this.#publishReads({ ...this.#reads, session: stale(session, invalidationFailure) });
+      if (cloudTarget) {
+        // 序号缺口且远端仍在线时重新观察以补齐事件；显式失效（断连/换代）则保留 stale 正文与错误详情，不走本地 openPersisted。
+        if (event.event !== "session.invalidated" && selectedProject?.state === "ready") {
+          void this.#openSession().catch(() => {});
+        }
+        return;
+      }
       const canReadPersisted =
         this.#state.connection === "ready" && this.#state.identity.persistedHistory === true;
       if (canReadPersisted && this.#target) {

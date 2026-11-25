@@ -2121,6 +2121,397 @@ async fn native_cloud_sessions_create_and_submit_without_node_or_local_core() {
     }).await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn cold_persisted_cloud_session_opens_atomically_and_classifies_remote_http_failures() {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::{
+        Message,
+        handshake::server::{ErrorResponse, Request, Response},
+    };
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().canonicalize().unwrap();
+            let (mut host, input, source) = resumable_host(&root);
+            Rc::get_mut(&mut Rc::get_mut(&mut host).unwrap().migration)
+                .unwrap()
+                .vault = crate::vault::Vault::isolated_files(&host.home);
+            storage::private_dir(&host.home.join("host/projects")).unwrap();
+            let options = frontend_options(&host, &source, input.options, None).unwrap();
+            host.schedules
+                .connections
+                .frontend_subscribe(&host, "cloud-cold", &source, options, None)
+                .unwrap();
+            let workspace = root.join("workspace");
+            storage::private_dir(&workspace).unwrap();
+            let alias = super::super::worktree_catalog::add_project(
+                &host,
+                &source,
+                json!({"root": workspace}),
+            )
+            .await
+            .unwrap()["projectId"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+
+            // 1. 远端 HTTP 401 -> CLOUD_AUTH_REJECTED (不再压成 CORE_UNAVAILABLE)
+            let auth_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let auth_addr = auth_listener.local_addr().unwrap();
+            let record_id = uuid::Uuid::new_v4().to_string();
+            let auth_server = tokio::task::spawn_local(async move {
+                let (stream, _) = auth_listener.accept().await.unwrap();
+                #[allow(clippy::result_large_err)]
+                let reject = |_req: &Request,
+                              _resp: Response|
+                 -> std::result::Result<Response, ErrorResponse> {
+                    Err(tokio_tungstenite::tungstenite::http::Response::builder()
+                        .status(401)
+                        .body(Some("unauthorized".into()))
+                        .unwrap())
+                };
+                let _ = tokio_tungstenite::accept_hdr_async(stream, reject).await;
+            });
+            host.gateway
+                .workbench
+                .cloud
+                .settings(
+                    &host,
+                    &source,
+                    &json!({"operation":"save","baseURL":format!("ws://{auth_addr}/app-server/"),"token":"bad-token"}),
+                )
+                .await
+                .unwrap();
+            let home = super::super::library_store::source_home(&host, &source).unwrap();
+            let virtual_id = format!("cloud-session:{source}:{record_id}");
+            storage::write(
+                &home.join("cloud-sessions.json"),
+                &json!([{
+                    "id": record_id,
+                    "projectId": alias,
+                    "title": "Cloud · 冷启动测试",
+                    "createdAt": 1700000000,
+                    "updatedAt": 1700000001,
+                    "nativeAdmission": true,
+                    "binding": {
+                        "baseURL": format!("ws://{auth_addr}/app-server/{record_id}/"),
+                        "workspace": record_id,
+                        "createId": record_id,
+                        "threadRequestId": record_id,
+                        "threadId": "cold-thread-1",
+                        "cwd": "/home/workspace"
+                    }
+                }]),
+            )
+            .unwrap();
+            let mut gateway =
+                crate::server::gateway_owner::LocalSession::new(host.clone(), "cold-reader".into())
+                    .unwrap();
+            let err = gateway
+                .request(&json!({
+                    "id": "cold-401",
+                    "method": "session.open",
+                    "context": { "projectId": virtual_id },
+                    "params": { "threadId": "cold-thread-1", "view": "conversation", "mode": "auto" }
+                }))
+                .await
+                .unwrap_err();
+            let wire_err = err.downcast_ref::<crate::wire::Error>().expect("must return structured wire::Error");
+            assert_eq!(wire_err.code, "CLOUD_AUTH_REJECTED");
+            assert_eq!(wire_err.stage, Some("cloud_connect"));
+            assert_eq!(wire_err.detail.as_deref(), Some("remote gateway HTTP 401"));
+            assert_eq!(wire_err.retryable, Some(false));
+            auth_server.await.unwrap();
+
+            // 2. 正常冷启动：仅有 cloud-sessions.json 持久记录（无内存 Scope、未预调 project.activate），
+            // 直接 session.open(mode: "auto") 原子完成连接与观察，且绝不触发 areal/thread/start。
+            let ok_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let ok_addr = ok_listener.local_addr().unwrap();
+            let ok_record = uuid::Uuid::new_v4().to_string();
+            let ok_virtual = format!("cloud-session:{source}:{ok_record}");
+            let starts = Rc::new(std::cell::Cell::new(0usize));
+            let starts_srv = starts.clone();
+            let ok_server = tokio::task::spawn_local(async move {
+                let (stream, _) = ok_listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+                let thread = json!({
+                    "id": "cold-thread-ok",
+                    "turns": [{"id": "t1", "status": "completed", "items": [{"id": "i1", "type": "agentMessage", "text": "COLD_RECOVERED"}]}],
+                    "status": {"type": "idle"},
+                    "desktop": {"archived": false, "configuration": {"revision": 1}}
+                });
+                while let Some(Ok(Message::Text(raw))) = socket.next().await {
+                    let req: Value = serde_json::from_str(&raw).unwrap();
+                    if req.get("id").is_none() {
+                        continue;
+                    }
+                    let result = match req["method"].as_str().unwrap() {
+                        "initialize" => json!({}),
+                        "areal/capabilities" => json!({
+                            "apiVersion": "areal.core.v1",
+                            "methods": ["areal/thread/observe", "thread/read"],
+                            "features": {"conversationObservation": true}
+                        }),
+                        "areal/thread/start" => {
+                            starts_srv.set(starts_srv.get() + 1);
+                            panic!("cold session open must never replay areal/thread/start");
+                        }
+                        "areal/thread/observe" | "thread/read" => json!({"thread": thread}),
+                        other => panic!("unexpected remote method {other}"),
+                    };
+                    socket
+                        .send(Message::Text(
+                            json!({"jsonrpc": "2.0", "id": req["id"], "result": result})
+                                .to_string()
+                                .into(),
+                        ))
+                        .await
+                        .unwrap();
+                }
+            });
+            host.gateway
+                .workbench
+                .cloud
+                .settings(
+                    &host,
+                    &source,
+                    &json!({"operation":"save","baseURL":format!("ws://{ok_addr}/app-server/"),"token":"valid-token"}),
+                )
+                .await
+                .unwrap();
+            storage::write(
+                &home.join("cloud-sessions.json"),
+                &json!([{
+                    "id": ok_record,
+                    "projectId": alias,
+                    "title": "Cloud · 冷启动恢复",
+                    "createdAt": 1700000000,
+                    "updatedAt": 1700000002,
+                    "nativeAdmission": true,
+                    "binding": {
+                        "baseURL": format!("ws://{ok_addr}/app-server/{ok_record}/"),
+                        "workspace": ok_record,
+                        "createId": ok_record,
+                        "threadRequestId": ok_record,
+                        "threadId": "cold-thread-ok",
+                        "cwd": "/home/workspace"
+                    }
+                }]),
+            )
+            .unwrap();
+            let shell_before = serde_json::to_value(host.read_models.shell(&host).await.unwrap()).unwrap();
+            let cold_proj = shell_before["projects"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["projectId"] == ok_virtual)
+                .unwrap();
+            assert_eq!(cold_proj["kind"], "cloud");
+            assert_eq!(cold_proj["state"], "unavailable");
+
+            let opened = gateway
+                .request(&json!({
+                    "id": "cold-open-ok",
+                    "method": "session.open",
+                    "context": { "projectId": ok_virtual },
+                    "params": { "threadId": "cold-thread-ok", "view": "conversation", "mode": "auto" }
+                }))
+                .await
+                .unwrap();
+            assert_eq!(
+                opened["snapshot"]["thread"]["turns"][0]["items"][0]["text"],
+                "COLD_RECOVERED"
+            );
+            assert_eq!(starts.get(), 0);
+            host.gateway.workbench.cloud.sessions.close_all(&host);
+            ok_server.await.unwrap();
+
+            // 3. 并发旧租约恢复（IfLease）只建一个新租约 B，且 observe-only 允许复用在线租约但禁止唤醒离线会话。
+            let lease_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let lease_addr = lease_listener.local_addr().unwrap();
+            let lease_record = uuid::Uuid::new_v4().to_string();
+            let lease_virtual = format!("cloud-session:{source}:{lease_record}");
+            let attach_count = Rc::new(std::cell::Cell::new(0usize));
+            let attach_srv = attach_count.clone();
+            let lease_server = tokio::task::spawn_local(async move {
+                let mut tasks = tokio::task::JoinSet::new();
+                while let Ok((stream, _)) = lease_listener.accept().await {
+                    let count = attach_srv.get() + 1;
+                    attach_srv.set(count);
+                    tasks.spawn_local(async move {
+                        let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+                        let thread = json!({
+                            "id": "lease-thread",
+                            "turns": [{"id": "t1", "status": "completed", "items": [{"id": "i1", "type": "agentMessage", "text": format!("LEASE_{count}")}]}],
+                            "status": {"type": "idle"},
+                            "desktop": {"archived": false, "configuration": {"revision": 1}}
+                        });
+                        while let Some(Ok(Message::Text(raw))) = socket.next().await {
+                            let req: Value = serde_json::from_str(&raw).unwrap();
+                            if req.get("id").is_none() {
+                                continue;
+                            }
+                            let result = match req["method"].as_str().unwrap() {
+                                "initialize" => json!({}),
+                                "areal/capabilities" => json!({
+                                    "apiVersion": "areal.core.v1",
+                                    "methods": ["areal/thread/observe", "thread/read"],
+                                    "features": {"conversationObservation": true}
+                                }),
+                                "areal/thread/observe" | "thread/read" => json!({"thread": thread}),
+                                _ => json!({}),
+                            };
+                            if socket
+                                .send(Message::Text(
+                                    json!({"jsonrpc": "2.0", "id": req["id"], "result": result})
+                                        .to_string()
+                                        .into(),
+                                ))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                    });
+                    if count >= 2 {
+                        break;
+                    }
+                }
+                while tasks.join_next().await.is_some() {}
+            });
+            host.gateway
+                .workbench
+                .cloud
+                .settings(
+                    &host,
+                    &source,
+                    &json!({"operation":"save","baseURL":format!("ws://{lease_addr}/app-server/"),"token":"valid-token"}),
+                )
+                .await
+                .unwrap();
+            storage::write(
+                &home.join("cloud-sessions.json"),
+                &json!([{
+                    "id": lease_record,
+                    "projectId": alias,
+                    "title": "Cloud · 并发恢复与权限",
+                    "createdAt": 1700000000,
+                    "updatedAt": 1700000003,
+                    "nativeAdmission": true,
+                    "binding": {
+                        "baseURL": format!("ws://{lease_addr}/app-server/{lease_record}/"),
+                        "workspace": lease_record,
+                        "createId": lease_record,
+                        "threadRequestId": lease_record,
+                        "threadId": "lease-thread",
+                        "cwd": "/home/workspace"
+                    }
+                }]),
+            )
+            .unwrap();
+            // 离线状态下只读权限（Static(false)）禁止唤醒 Cloud 沙箱。
+            let observe_cold = host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .ensure_connected(
+                    &host,
+                    &lease_virtual,
+                    super::super::cloud_sessions::CloudReconnect::Reuse,
+                    &super::super::cloud_sessions::CloudActivationAuth::Static(false),
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(
+                observe_cold.downcast_ref::<crate::wire::Error>().map(|e| e.code),
+                Some("FORBIDDEN")
+            );
+            assert_eq!(attach_count.get(), 0);
+
+            // 提交权限建立租约 A 后，只读权限可以复用已建立的租约 A（不新建连接）。
+            let (scope_a, reused_a) = host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .ensure_connected(
+                    &host,
+                    &lease_virtual,
+                    super::super::cloud_sessions::CloudReconnect::Reuse,
+                    &super::super::cloud_sessions::CloudActivationAuth::Static(true),
+                )
+                .await
+                .unwrap();
+            assert!(!reused_a);
+            assert_eq!(attach_count.get(), 1);
+            let (scope_obs, reused_obs) = host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .ensure_connected(
+                    &host,
+                    &lease_virtual,
+                    super::super::cloud_sessions::CloudReconnect::Reuse,
+                    &super::super::cloud_sessions::CloudActivationAuth::Static(false),
+                )
+                .await
+                .unwrap();
+            assert!(reused_obs);
+            assert_eq!(scope_obs.lease, scope_a.lease);
+            assert_eq!(attach_count.get(), 1);
+
+            // 模拟两个客户端同时因租约 A 失效触发 IfLease(scope_a.lease) 恢复：
+            // 第一个安装继任租约 B，第二个在门锁内发现当前已是 B，直接复用 B，绝不拆毁 B 重建第三次！
+            let (res_1, res_2) = tokio::join!(
+                host.gateway.workbench.cloud.sessions.ensure_connected(
+                    &host,
+                    &lease_virtual,
+                    super::super::cloud_sessions::CloudReconnect::IfLease(scope_a.lease.clone()),
+                    &super::super::cloud_sessions::CloudActivationAuth::Static(true),
+                ),
+                host.gateway.workbench.cloud.sessions.ensure_connected(
+                    &host,
+                    &lease_virtual,
+                    super::super::cloud_sessions::CloudReconnect::IfLease(scope_a.lease.clone()),
+                    &super::super::cloud_sessions::CloudActivationAuth::Static(true),
+                ),
+            );
+            let (scope_b1, _) = res_1.unwrap();
+            let (scope_b2, _) = res_2.unwrap();
+            assert_ne!(scope_b1.lease, scope_a.lease);
+            assert_eq!(scope_b1.lease, scope_b2.lease);
+            assert_eq!(attach_count.get(), 2);
+
+            // 旧租约 A 的迟到失败不得覆盖继任租约 B 的健康诊断状态。
+            host.gateway.workbench.cloud.sessions.record_failure_for(
+                &host,
+                &lease_virtual,
+                Some(&scope_a.lease),
+                &anyhow::anyhow!("late error from A"),
+            );
+            let shell_after = serde_json::to_value(host.read_models.shell(&host).await.unwrap()).unwrap();
+            let lease_proj = shell_after["projects"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["projectId"] == lease_virtual)
+                .unwrap();
+            assert_eq!(lease_proj["state"], "ready");
+            assert_eq!(
+                lease_proj["summaries"]["items"][0]["cloud"]["connectionState"],
+                "connected"
+            );
+            assert!(lease_proj["summaries"]["items"][0]["cloud"]["lastError"].is_null());
+
+            host.gateway.workbench.cloud.sessions.close_all(&host);
+            lease_server.await.unwrap();
+        })
+        .await;
+}
+
 #[tokio::test]
 async fn native_gui_terminal_uses_its_attachment_and_original_process_receipt() {
     use futures_util::{SinkExt, StreamExt};

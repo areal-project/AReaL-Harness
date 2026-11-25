@@ -28,9 +28,18 @@ export type SubscriptionIdentity = Pick<
 >;
 export type ShellRead = ShellSubscriptionResult;
 export type SessionRead = ConversationOpenResult;
+export type ReadFailure = {
+  message: string;
+  code?: string;
+  stage?: string;
+  detail?: string;
+  diagnosticId?: string;
+  retryable?: boolean;
+  coreError?: JsonObject;
+};
 export type Fresh<T> =
-  | { state: "loading" | "unavailable"; previous?: T; error?: string }
-  | { state: "stale"; value: T; error?: string }
+  | { state: "loading" | "unavailable"; previous?: T; error?: string; failure?: ReadFailure }
+  | { state: "stale"; value: T; error?: string; failure?: ReadFailure }
   | { state: "fresh"; value: T };
 export type ReadSnapshot = {
   shell: Fresh<ShellRead>;
@@ -56,9 +65,17 @@ export function sessionReadKey(
 export function previous<T>(state: Fresh<T>): T | undefined {
   return "value" in state ? state.value : state.previous;
 }
-export function stale<T>(state: Fresh<T>, error?: string): Fresh<T> {
+export function stale<T>(state: Fresh<T>, error?: string | ReadFailure): Fresh<T> {
   const value = previous(state);
-  return value ? { state: "stale", value, error } : { state: "unavailable", error };
+  const failure = typeof error === "string" ? { message: error } : error;
+  const text = failure?.message;
+  return value
+    ? { state: "stale", value, ...(text ? { error: text } : {}), ...(failure ? { failure } : {}) }
+    : {
+        state: "unavailable",
+        ...(text ? { error: text } : {}),
+        ...(failure ? { failure } : {}),
+      };
 }
 export function identity(value: unknown): value is SubscriptionIdentity & JsonObject {
   return (
@@ -178,6 +195,7 @@ function shellProject(p: unknown): p is ShellProject {
     p.summaries.items.every(summary) &&
     (p.taskRevision === undefined || typeof p.taskRevision === "string") &&
     (p.modelCatalogRevision === undefined || typeof p.modelCatalogRevision === "string") &&
+    (p.kind === undefined || p.kind === "local" || p.kind === "cloud") &&
     record(p.attention) &&
     (p.attention.state === "unknown" ||
       (p.attention.state === "fresh" &&

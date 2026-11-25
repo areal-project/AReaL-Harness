@@ -1028,3 +1028,38 @@ it("commits waitForReady selection when not superseded and cancels on selectDraf
   await disposed;
   expect(storage.has(`areal-gui:thread:${owner.projectId}`)).toBe(false);
 });
+
+it("recovers through persisted fallback when live local open hits CORE_CONNECTION_TIMEOUT", async () => {
+  seed.snapshot = {
+    connection: { state: "ready" },
+    projects: [
+      {
+        id: owner.projectId,
+        root: "/fixture",
+        state: { connected: true, hostState: "ready", threads: {} },
+      },
+    ],
+  };
+  const f = fixture(true, async () => {}, false, true, "");
+  let calls = 0;
+  let sawPersistedFallback = false;
+  f.selectSession.mockImplementation(async (target?: { persisted?: boolean } | null) => {
+    calls += 1;
+    if (calls === 1) {
+      throw Object.assign(new Error("等待项目连接超时，请稍后重试。"), {
+        code: "CORE_CONNECTION_TIMEOUT",
+        stage: "core_connect",
+        retryable: true,
+      });
+    }
+    if (calls === 2) {
+      expect(target?.persisted).toBe(true);
+      sawPersistedFallback = true;
+    }
+  });
+  await f.navigation.selectConversation(owner.projectId, "t-timeout", { waitForReady: true });
+  expect(sawPersistedFallback).toBe(true);
+  expect(calls).toBeGreaterThanOrEqual(2);
+  expect(f.navigation.restoration?.error ?? "").toBe("");
+  f.navigation.dispose();
+});

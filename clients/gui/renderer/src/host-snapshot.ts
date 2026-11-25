@@ -397,12 +397,9 @@ export function createHostSnapshotProjector(
       const bound = !!navigation?.bindings.some(
         (binding) => binding.projectId === project.projectId && binding.alias === id,
       );
+      // 保留同一已授权目标的已读正文：断线或换代期间标为 staleHistory，避免屏幕突然清空。
       const selectedSession =
-        currentSession?.projectId === project.projectId &&
-        (currentSession.serviceGeneration === project.serviceGeneration ||
-          currentSession.access?.kind === "persisted")
-          ? currentSession
-          : undefined;
+        currentSession?.projectId === project.projectId ? currentSession : undefined;
       const inspectedThread = selectedSession ? native?.thread : undefined;
       const configuration = inspectedThread?.desktop?.configuration;
       const inspectionEntry = inspectedThread && inspections.get(`${id}:${inspectedThread.id}`);
@@ -432,9 +429,11 @@ export function createHostSnapshotProjector(
       const displayVersion = selectedSession ? historyVersion : 0;
       const sessionFreshness = selectedSession ? client.readsSnapshot().session.state : undefined;
       const reads = client.readsSnapshot();
+      const isCloudProject =
+        project.kind === "cloud" || project.projectId.startsWith("cloud-session:");
       const sessionTarget =
         reads.sessionTarget?.projectId === project.projectId &&
-        reads.sessionTarget.serviceGeneration === project.serviceGeneration
+        (reads.sessionTarget.serviceGeneration === project.serviceGeneration || isCloudProject)
           ? reads.sessionTarget
           : undefined;
       const sessionState = sessionTarget ? reads.session : undefined;
@@ -472,6 +471,14 @@ export function createHostSnapshotProjector(
       let thread = selectedSession ? native?.thread : undefined;
       if (thread && selectedSession?.access?.kind === "persisted")
         thread = { ...thread, persistedHistory: true };
+      const isStaleHistory = Boolean(
+        thread &&
+        selectedSession &&
+        selectedSession.access?.kind !== "persisted" &&
+        (sessionFreshness === "stale" ||
+          selectedSession.serviceGeneration !== project.serviceGeneration),
+      );
+      if (thread && isStaleHistory) thread = { ...thread, staleHistory: true };
       if (thread && session && readingWindow)
         thread = projectReadingWindow(thread, readingWindow, sessionFreshness);
       const executionCore = {
@@ -559,7 +566,9 @@ export function createHostSnapshotProjector(
                 .filter(([, side]) => side.desktop?.queue)
                 .map(([key, side]) => [key, side.desktop!.queue]),
             ),
-            ...(thread && threadDesktop?.queue ? { [thread.id]: threadDesktop.queue } : {}),
+            ...(thread && !isStaleHistory && threadDesktop?.queue
+              ? { [thread.id]: threadDesktop.queue }
+              : {}),
           },
           interactions: {
             ...Object.fromEntries(
@@ -573,7 +582,7 @@ export function createHostSnapshotProjector(
                   },
                 ]),
             ),
-            ...(thread && threadDesktop?.interactions
+            ...(thread && !isStaleHistory && threadDesktop?.interactions
               ? {
                   [thread.id]: {
                     revision: threadDesktop.interactionRevision ?? 0,
@@ -615,11 +624,16 @@ export function createHostSnapshotProjector(
               }
             : {},
         observationErrors:
-          sessionTarget && sessionState && "error" in sessionState && sessionState.error
+          sessionTarget &&
+          sessionState &&
+          (("failure" in sessionState && sessionState.failure) ||
+            ("error" in sessionState && sessionState.error))
             ? {
                 [sessionTarget.threadId]: {
-                  message: sessionState.error,
-                  connectionGeneration: sessionTarget.serviceGeneration ?? "",
+                  ...("failure" in sessionState && sessionState.failure
+                    ? sessionState.failure
+                    : { message: "error" in sessionState ? sessionState.error : "" }),
+                  connectionGeneration: project.serviceGeneration ?? "",
                 },
               }
             : {},

@@ -209,6 +209,16 @@ pub(crate) fn error_code(message: &str) -> &str {
         | "CAPABILITY_UNAVAILABLE"
         | "RESOURCE_UNAVAILABLE"
         | "CORE_INCOMPATIBLE"
+        | "CORE_CONNECTION_TIMEOUT"
+        | "CORE_EXPLICITLY_STOPPED"
+        | "CLOUD_NOT_CONFIGURED"
+        | "CLOUD_AUTH_REJECTED"
+        | "CLOUD_SANDBOX_EXPIRED"
+        | "CLOUD_GATEWAY_UNAVAILABLE"
+        | "CLOUD_HANDSHAKE_TIMEOUT"
+        | "CLOUD_DISCONNECTED"
+        | "CLOUD_CONNECTION_CLOSED"
+        | "CLOUD_UNSUPPORTED_SESSION"
         | "LIMIT_EXCEEDED"
         | "CAPACITY_EXCEEDED"
         | "TURN_BUSY"
@@ -246,6 +256,7 @@ pub(crate) struct Session {
     shell: Option<crate::server::shell_subscription::Subscription>,
     gui_read: bool,
     gui_write: bool,
+    session_open_auto: bool,
     local: bool,
     browser_device: Option<String>,
     uploads: uploads::Uploads,
@@ -541,6 +552,16 @@ impl Session {
                         .iter()
                         .any(|capability| capability == "gui-write-v1")
                 }),
+            session_open_auto: hello["capabilities"]
+                .as_array()
+                .is_some_and(|capabilities| {
+                    capabilities
+                        .iter()
+                        .any(|capability| capability == "gui-read-v1")
+                        && capabilities
+                            .iter()
+                            .any(|capability| capability == "sessionOpenAutoV1")
+                }),
             local: false,
             browser_device: None,
             uploads: Default::default(),
@@ -575,22 +596,51 @@ impl Session {
         let mut budget = RequestBudget::new(Instant::now());
         let mut shell_tick = tokio::time::interval(Duration::from_millis(500));
         shell_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        type PendingRemoteOpen = (
+            Value,
+            observer::PreparedConversationOpen,
+            tokio_util::task::AbortOnDropHandle<
+                Result<(crate::server::conversation_read::ConversationReader, Value)>,
+            >,
+        );
+        let mut pending_open: Option<PendingRemoteOpen> = None;
         loop {
             enum Incoming {
                 Request(Option<RequestMessage>),
                 Event(Result<observer::ViewerEvent>),
                 Shell,
+                Opened(
+                    Box<
+                        std::result::Result<
+                            Result<(crate::server::conversation_read::ConversationReader, Value)>,
+                            tokio::task::JoinError,
+                        >,
+                    >,
+                ),
             }
             let incoming = tokio::select! {
                 request = requests.recv() => Incoming::Request(request),
                 event = session.next_event() => Incoming::Event(event),
                 _ = shell_tick.tick(), if session.shell.is_some() => Incoming::Shell,
+                opened = async { (&mut pending_open.as_mut().unwrap().2).await }, if pending_open.is_some() => Incoming::Opened(Box::new(opened)),
             };
             let bytes = match incoming {
                 Incoming::Shell => {
                     if let Some(event) = session.shell_event().await? {
                         wire::write_json(&mut writer, &serde_json::to_vec(&event)?, limits).await?;
                     }
+                    continue;
+                }
+                Incoming::Opened(opened) => {
+                    let (req, prepared, _) = pending_open.take().unwrap();
+                    let result = (*opened)
+                        .context("Host session open task failed")
+                        .and_then(|res| session.install_conversation_open(&prepared, res));
+                    let response = match result {
+                        Ok(result) => json!({"id":req["id"],"result":result}),
+                        Err(error) => session.format_error_response(&req, &error),
+                    };
+                    wire::write_json(&mut writer, &serde_json::to_vec(&response)?, limits).await?;
                     continue;
                 }
                 Incoming::Request(bytes) => bytes,
@@ -616,74 +666,210 @@ impl Session {
             drop(bytes);
             let now = Instant::now();
             let method = request["method"].as_str();
-            let result = match budget.check(method, now) {
-                Ok(()) => session.request(&request).await,
-                Err(error) => {
-                    if let Some(diagnostic) = budget.rejection_diagnostic(
-                        &error,
-                        method,
-                        now,
-                        session.kind,
-                        &session.connection,
-                        &session.generation,
-                    ) {
-                        use std::io::Write;
-                        let _ = writeln!(std::io::stderr().lock(), "{diagnostic}");
-                    }
-                    Err(error.into())
+            if let Err(error) = budget.check(method, now) {
+                if let Some(diagnostic) = budget.rejection_diagnostic(
+                    &error,
+                    method,
+                    now,
+                    session.kind,
+                    &session.connection,
+                    &session.generation,
+                ) {
+                    use std::io::Write;
+                    let _ = writeln!(std::io::stderr().lock(), "{diagnostic}");
                 }
-            };
+                let response = session.format_error_response(&request, &error.into());
+                wire::write_json(&mut writer, &serde_json::to_vec(&response)?, limits).await?;
+                continue;
+            }
+            // 远端 gui-read-v1 的会话打开（含 Cloud 冷启动）挂在可取消任务上，不阻塞目录推送与其他请求。
+            if session.gui_read
+                && method == Some("session.open")
+                && request["params"]["view"] == "conversation"
+            {
+                match session.prepare_conversation_open(&request) {
+                    Ok(prepared) => {
+                        if let Some((old_req, _, old_handle)) = pending_open.take() {
+                            drop(old_handle);
+                            let cancelled = session.format_error_response(
+                                &old_req,
+                                &anyhow::anyhow!("RESYNC_REQUIRED"),
+                            );
+                            wire::write_json(&mut writer, &serde_json::to_vec(&cancelled)?, limits)
+                                .await?;
+                        }
+                        let host = session.host.clone();
+                        let project_id = prepared.project_id.clone();
+                        let expected_generation = prepared.expected_generation.clone();
+                        let thread_id = prepared.thread_id.clone();
+                        let mode = prepared.mode;
+                        let reconnect = prepared.reconnect;
+                        let cloud_auth = prepared.cloud_auth.clone();
+                        let handle = tokio_util::task::AbortOnDropHandle::new(
+                            tokio::task::spawn_local(async move {
+                                crate::server::conversation_read::ConversationReader::open_auto(
+                                    &host,
+                                    &project_id,
+                                    expected_generation.as_deref(),
+                                    &thread_id,
+                                    mode,
+                                    reconnect,
+                                    false,
+                                    &cloud_auth,
+                                )
+                                .await
+                            }),
+                        );
+                        pending_open = Some((request, prepared, handle));
+                    }
+                    Err(error) => {
+                        let response = session.format_error_response(&request, &error);
+                        wire::write_json(&mut writer, &serde_json::to_vec(&response)?, limits)
+                            .await?;
+                    }
+                }
+                continue;
+            }
+            // 旧版 session.open（不带 view: "conversation"）也必须取消挂起中的 native open，
+            // 防止旧任务稍后完成并覆盖更新的 viewer；subscription.close 只关闭参数指定的已建立订阅，不得误取消新打开。
+            if method == Some("session.open")
+                && let Some((old_req, _, old_handle)) = pending_open.take()
+            {
+                drop(old_handle);
+                let cancelled =
+                    session.format_error_response(&old_req, &anyhow::anyhow!("RESYNC_REQUIRED"));
+                wire::write_json(&mut writer, &serde_json::to_vec(&cancelled)?, limits).await?;
+            }
+            let result = session.request(&request).await;
             let response = match result {
                 Ok(result) => json!({"id":request["id"],"result":result}),
-                Err(error) => {
-                    let message = error.to_string();
-                    let code = error_code(&message);
-                    let description = match error.downcast_ref::<BudgetExceeded>() {
-                        Some(BudgetExceeded::Requests) => "请求过于频繁",
-                        Some(BudgetExceeded::Writes) => "命令超过允许的预算",
-                        None => "请求暂不可用，请重新读取原状态",
-                    };
-                    let mut response =
-                        json!({"id":request["id"],"error":{"code":code,"message":description}});
-                    if session.gui_read
-                        && matches!(method, Some("session.history" | "artifact.read"))
-                        && let Some(native) =
-                            error.downcast_ref::<crate::server::schedule_connection::RpcFailure>()
-                    {
-                        response["error"]["coreError"] = native.0.clone();
-                    }
-                    if matches!(
-                        request["method"].as_str(),
-                        Some(
-                            "session.create"
-                                | "session.send"
-                                | "session.control"
-                                | "turn.stop"
-                                | "task.pause"
-                                | "task.question.reply"
-                                | "interaction.respond"
-                                | "device.push.register"
-                                | "device.push.unregister"
-                                | "command.read"
-                                | "library.command"
-                                | "worktree.command"
-                        )
-                    ) {
-                        response["error"]["submissionUnknown"] =
-                            json!(submission_unknown(code, &error));
-                        if let Some(id) = request
-                            .get("commandId")
-                            .or_else(|| request["params"].get("commandId"))
-                            .and_then(Value::as_str)
-                        {
-                            response["error"]["commandId"] = json!(id);
-                        }
-                    }
-                    response
-                }
+                Err(error) => session.format_error_response(&request, &error),
             };
             wire::write_json(&mut writer, &serde_json::to_vec(&response)?, limits).await?;
         }
+    }
+
+    fn known_method(method: &str) -> bool {
+        METHODS.contains(&method)
+            || shared_reads::METHODS.contains(&method)
+            || uploads::METHODS.contains(&method)
+            || workbench_route::METHODS.contains(&method)
+            || crate::server::plugins::METHODS.contains(&method)
+            || crate::server::bots::METHODS.contains(&method)
+            || matches!(method, "desktop.command" | "worktree.project.add")
+    }
+
+    fn verified_project_label(&self, supplied: &str) -> Option<String> {
+        if self.host.slots.borrow().contains_key(supplied) {
+            return Some(supplied.to_owned());
+        }
+        if crate::server::cloud_sessions::CloudSessions::is_virtual(supplied)
+            && self
+                .host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .owner(&self.host, supplied)
+                .is_ok()
+        {
+            return Some(supplied.to_owned());
+        }
+        self.bindings()
+            .ok()?
+            .into_iter()
+            .find(|(id, alias)| id == supplied || alias == supplied)
+            .map(|(id, _)| id)
+    }
+
+    fn format_error_response(&self, request: &Value, error: &anyhow::Error) -> Value {
+        let method = request["method"].as_str();
+        let message = error.to_string();
+        let wire_err = error.downcast_ref::<crate::wire::Error>();
+        let code = wire_err
+            .map(|err| err.code)
+            .unwrap_or_else(|| error_code(&message));
+        let description = match error.downcast_ref::<BudgetExceeded>() {
+            Some(BudgetExceeded::Requests) => "请求过于频繁",
+            Some(BudgetExceeded::Writes) => "命令超过允许的预算",
+            None => wire_err
+                .map(|err| err.message.as_str())
+                .unwrap_or("请求暂不可用，请重新读取原状态"),
+        };
+        let diag_id = crate::wire::diagnostic_id();
+        let mut error_obj = json!({"code":code,"message":description,"diagnosticId":diag_id});
+        if let Some(err) = wire_err {
+            if let Some(stage) = err.stage {
+                error_obj["stage"] = json!(stage);
+            }
+            if let Some(detail) = &err.detail {
+                error_obj["detail"] = json!(detail);
+            }
+            if let Some(retryable) = err.retryable {
+                error_obj["retryable"] = json!(retryable);
+            }
+        }
+        let log_cause = if error.downcast_ref::<serde_json::Error>().is_some() {
+            "invalid_json_params".to_owned()
+        } else if let Some(err) = wire_err {
+            err.detail
+                .as_deref()
+                .map(crate::wire::sanitize_detail)
+                .unwrap_or_else(|| err.code.to_owned())
+        } else if matches!(
+            code,
+            "INVALID_PARAMS" | "FORBIDDEN" | "RESYNC_REQUIRED" | "RESOURCE_UNAVAILABLE"
+        ) {
+            code.to_owned()
+        } else {
+            crate::wire::sanitize_detail(&message)
+        };
+        let log_method = method
+            .filter(|name| Self::known_method(name))
+            .unwrap_or("<unknown>");
+        let log_project = request["context"]["projectId"]
+            .as_str()
+            .and_then(|supplied| self.verified_project_label(supplied))
+            .unwrap_or_else(|| "-".into());
+        eprintln!(
+            "Host gateway request failed: diagnosticId={diag_id} method={log_method} project={log_project} code={code} stage={} cause={log_cause}",
+            error_obj["stage"].as_str().unwrap_or("-"),
+        );
+        let mut response = json!({"id":request["id"],"error":error_obj});
+        if self.gui_read
+            && matches!(method, Some("session.history" | "artifact.read"))
+            && let Some(native) =
+                error.downcast_ref::<crate::server::schedule_connection::RpcFailure>()
+        {
+            response["error"]["coreError"] = native.0.clone();
+        }
+        if matches!(
+            method,
+            Some(
+                "session.create"
+                    | "session.send"
+                    | "session.control"
+                    | "turn.stop"
+                    | "task.pause"
+                    | "task.question.reply"
+                    | "interaction.respond"
+                    | "device.push.register"
+                    | "device.push.unregister"
+                    | "command.read"
+                    | "library.command"
+                    | "worktree.command"
+            )
+        ) {
+            response["error"]["submissionUnknown"] = json!(submission_unknown(code, error));
+            if let Some(id) = request
+                .get("commandId")
+                .or_else(|| request["params"].get("commandId"))
+                .and_then(Value::as_str)
+            {
+                response["error"]["commandId"] = json!(id);
+            }
+        }
+        response
     }
     async fn reject_hello<W: AsyncWrite + Unpin>(
         writer: &mut W,
@@ -776,11 +962,14 @@ impl Session {
             value["writeLimits"] = write_limits();
         }
         if self.gui_read {
-            value["negotiatedCapabilities"] = json!(if self.gui_write {
-                json!(["gui-read-v1", "gui-write-v1"])
-            } else {
-                json!(["gui-read-v1"])
-            });
+            let mut negotiated = vec!["gui-read-v1"];
+            if self.gui_write {
+                negotiated.push("gui-write-v1");
+            }
+            if self.session_open_auto {
+                negotiated.push("sessionOpenAutoV1");
+            }
+            value["negotiatedCapabilities"] = json!(negotiated);
             value["authorityHostId"] = json!(self.host.identity.host_id);
             value["hostGeneration"] = json!(self.host.identity.generation);
             value["readMethods"] = json!([
@@ -830,6 +1019,7 @@ impl Session {
             shell: None,
             gui_read: true,
             gui_write: true,
+            session_open_auto: true,
             local: true,
             browser_device: None,
             uploads: Default::default(),
@@ -1417,6 +1607,13 @@ impl Session {
         if matches!(method, "task.pause" | "task.question.reply") {
             let generation = text(&request["context"], "serviceGeneration")?;
             return self.task_command(&project, generation, request).await;
+        }
+        if method == "session.open"
+            && self.gui_read
+            && params["view"] == "conversation"
+            && params["mode"] == "auto"
+        {
+            return self.open_session_auto(&project, params).await;
         }
         if method == "project.models" && self.project(&project).is_err() {
             return self.persisted_model_catalog(&project, request);
