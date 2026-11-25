@@ -1,0 +1,34 @@
+docs/design/execution-handoff.md
+  s_3c65d7e52c635a::t_248d6a4b0674dc 1-17,25-40,42-50,55-56,58,61-62,65-66,68,72-80,83-93
+  s_3c65d7e52c635a::t_74cad30815b5c3 41,52-53
+  s_3c65d7e52c635a::t_6858170a4ad078 64,67,69-70
+  s_3c65d7e52c635a::t_234893e82b0be2 18-24
+  s_3c65d7e52c635a::t_f415e9402231f3 51,54
+  s_3c65d7e52c635a::t_957e46089216a1 57,59-60,63,71,94
+  s_3c65d7e52c635a::t_df36c721e96b20 81-82
+docs/README.md
+  s_3c65d7e52c635a::t_a46e04b4993c71 11-12
+docs/README.en.md
+  s_3c65d7e52c635a::t_a46e04b4993c71 11-12
+docs/design/execution-handoff.en.md
+  s_3c65d7e52c635a::t_74cad30815b5c3 41,53-54,57
+  s_3c65d7e52c635a::t_df36c721e96b20 81-82
+  s_3c65d7e52c635a::t_c6614d23c9f124 1-40,42-52,55-56,58,61-62,64-70,72-80,83-93
+  s_3c65d7e52c635a::t_957e46089216a1 59-60,63,71,94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e73e6d4c0d8bb04b67dfb29fb0d911180ab0ad49",
+  "prompts": {},
+  "sessions": {
+    "s_3c65d7e52c635a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a210d8-fa65-7550-a4b2-60912747932f",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
