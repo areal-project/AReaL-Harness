@@ -288,9 +288,7 @@ jobs:
             package-lock.json
             runtime/sdk-typescript/package-lock.json
             core/sdk-typescript/package-lock.json
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
-        with:
-          python-version: '3.13'
+      # 保持系统 /usr/bin/python3 在 PATH 首位，避免 Bubblewrap 只挂载 /usr 时无法 exec /opt/hostedtoolcache Python。
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           shared-key: host-debug-${{ runner.os }}
@@ -314,6 +312,7 @@ jobs:
         run: |
           tar -xzf target/ci/linux-core-build.tar.gz
           test "$(cat target/ci/linux-source.sha)" = "$(git rev-parse HEAD)"
+          test -r target/debug/verification-build.json
           test -x target/debug/areal
           test -x target/debug/areal-runtime
           test -x target/debug/areal-runtime-fs
@@ -321,6 +320,7 @@ jobs:
       - name: Run Linux Harness integration shard ${{ matrix.shard }}
         env:
           NO_PROXY: 127.0.0.1,localhost
+          AREAL_PREBUILT_CORE: '1'
         run: python3 scripts/ci-preflight.py --groups verify-integration --item "${{ matrix.item }}" --dependencies target/ci/checks/linux-build/report.json --output "target/ci/checks/linux-integration-${{ matrix.shard }}" 2>&1 | tee "target/ci/linux-integration-${{ matrix.shard }}.log"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: failure()
@@ -435,7 +435,7 @@ jobs:
               exec bwrap --unshare-all --die-with-parent --cap-drop ALL \
                 --ro-bind / / --proc /proc --dev /dev -- /bin/true
             '
-      - uses: docker/setup-buildx-action@f87e5991a6d451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       # 普通 PR 复用宿主同 glibc 构建与 rust-cache，避免容器内 16 分钟重复编译 Rust；
       # Dockerfile / runtime/exec-native 变更或 main / 手动运行仍执行完整 Alpine 构建。
       - if: needs.plan.outputs.container_full != 'true'

@@ -213,7 +213,10 @@ harness-smoke: build sdk-build ## 原生 SDK 与完整读改测试/强杀恢复
 	$(MAKE) harness-smoke-core
 	$(MAKE) harness-smoke-extended
 
-harness-smoke-core: build sdk-build ## 原生工具、SDK、权限与统一委派分片（CI 并行用）
+# CI 已校验并还原同提交 Linux Core 产物时设置 AREAL_PREBUILT_CORE=1，避免下游集成 job 重复编译 workspace。
+CORE_BUILD_DEP := $(if $(AREAL_PREBUILT_CORE),,build)
+
+harness-smoke-core: $(CORE_BUILD_DEP) sdk-build ## 原生工具、SDK、权限与统一委派分片（CI 并行用）
 	python3 scripts/native-tools-smoke.py --bin-dir target/debug
 	python3 scripts/navigation-read-scope-smoke.py --bin-dir target/debug
 	python3 scripts/native-python-smoke.py --bin-dir target/debug
@@ -224,7 +227,7 @@ harness-smoke-core: build sdk-build ## 原生工具、SDK、权限与统一委�
 	node scripts/unified-execution-smoke.mjs
 	node scripts/delegation-permissions-smoke.mjs
 
-harness-smoke-extended: build sdk-build ## 插件、权限模式、Git 认证、TUI 与共享服务分片（CI 并行用）
+harness-smoke-extended: $(CORE_BUILD_DEP) sdk-build ## 插件、权限模式、Git 认证、TUI 与共享服务分片（CI 并行用）
 	node scripts/plugin-smoke.mjs
 	node scripts/permissions-smoke.mjs
 	node scripts/permission-modes-smoke.mjs
@@ -258,7 +261,7 @@ upgrade-smoke: ## 构建真实 CLI 并隔离验证升级、旧版本保留与 Ho
 tui-upgrade-smoke: ## 用两套固定真实产物验证新旧 TUI 共存与后台换代保护
 	uv run --locked --only-group dev python scripts/tui-upgrade-smoke.py $(ARGS)
 
-workgroup-smoke: build ## 真实 Runtime 的 Workgroup 写入、组合、期限与故障结算回归
+workgroup-smoke: $(CORE_BUILD_DEP) ## 真实 Runtime 的 Workgroup 写入、组合、期限与故障结算回归
 	$(WORKGROUP_ENV) cargo test --locked -p areal-engine --test workgroup real_core_workers_use_private_runtimes_and_final_combination_is_verified -- --ignored --exact
 	$(WORKGROUP_ENV) cargo test --locked -p areal-engine --test workgroup real_verification_inherits_the_configured_runtime_command_deadline -- --ignored --exact
 	$(WORKGROUP_ENV) cargo test --locked -p areal-engine --test workgroup real_runtime_checkpoint_settles_writers_and_requires_independent_checks -- --ignored --exact
@@ -319,7 +322,7 @@ lazy-mcp-compare: ## MCP 按需加载关/开真实模型对照（用本机模型
 	python3 scripts/lazy-mcp-compare.py $(ARGS)
 
 .PHONY: examples-desktop-api desktop-schemas desktop-schema-check package
-examples-desktop-api: build sdk-build ## 真实 Core/Runtime 的桌面 API 与 CLI 确定性验收
+examples-desktop-api: $(CORE_BUILD_DEP) sdk-build ## 真实 Core/Runtime 的桌面 API 与 CLI 确定性验收
 	node examples/desktop-api/run.mjs --all
 	node examples/desktop-api/task-controls.mjs
 	node examples/desktop-api/cli.mjs

@@ -1,0 +1,19 @@
+# 覆盖根 .dockerignore 的 target 整目录忽略规则，仅向快速 PR 容器上下文传递暂存二进制与测试夹具。
+.git
+.areal
+target/*
+!target/ci-container-bin
+!target/ci-container-tests
+**/node_modules
+**/dist
+**/.venv
+**/.ruff_cache
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.tmp
+**/.DS_Store
+tests/perf/model.toml
+tests/perf/**/output
+clients/gui
+docs

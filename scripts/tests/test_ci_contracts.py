@@ -928,6 +928,14 @@ class CiContracts(unittest.TestCase):
 
     def test_fast_container_routing_and_full_alpine_triggers(self):
         self.assertFalse(scope.full_container_required(["core/host/src/lib.rs"], "pull_request"))
+        self.assertFalse(
+            scope.full_container_required(["tests/e2e/docker/Dockerfile.ci-fast"], "pull_request")
+        )
+        self.assertFalse(
+            scope.full_container_required(
+                ["tests/e2e/docker/Dockerfile.ci-fast.dockerignore"], "pull_request"
+            )
+        )
         self.assertTrue(
             scope.full_container_required(["tests/e2e/docker/Dockerfile"], "pull_request")
         )
@@ -941,6 +949,9 @@ class CiContracts(unittest.TestCase):
         self.assertTrue(
             scope.full_container_required(["core/host/src/lib.rs"], "pull_request", fallback=True)
         )
+        fast_ignore = (ROOT / "tests/e2e/docker/Dockerfile.ci-fast.dockerignore").read_text()
+        self.assertIn("!target/ci-container-bin", fast_ignore)
+        self.assertIn("!target/ci-container-tests", fast_ignore)
 
     def test_runner_subtest_omission_is_rejected_even_with_a_successful_job(self):
         plan, reports = self.gate_fixture()

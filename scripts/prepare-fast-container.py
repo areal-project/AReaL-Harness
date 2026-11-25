@@ -66,7 +66,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-manifest = json.loads(Path("/src/target/ci/test-binaries.json").read_text())
+manifest = json.loads(Path("/src/target/debug/test-binaries.json").read_text())
 exit_code = 0
 for entry in manifest:
     cmd = [entry["binary"], *entry["args"]]
@@ -152,7 +152,7 @@ def main():
             manifest.append(
                 {
                     "group": group,
-                    "binary": f"/src/target/ci/deps/{binary.name}",
+                    "binary": f"/src/target/debug/deps/{binary.name}",
                     "args": extra_args,
                 }
             )

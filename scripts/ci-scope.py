@@ -988,10 +988,22 @@ def browser_matrix(plan):
     return {"include": include}
 
 
+FAST_CONTAINER_FILES = frozenset(
+    {
+        "tests/e2e/docker/Dockerfile.ci-fast",
+        "tests/e2e/docker/Dockerfile.ci-fast.dockerignore",
+    }
+)
+
+
 def full_container_required(paths, event_name=None, fallback=False):
     if fallback or event_name in {"push", "workflow_dispatch"}:
         return True
-    return any(path.startswith(("tests/e2e/docker/", "runtime/exec-native/")) for path in paths)
+    return any(
+        path not in FAST_CONTAINER_FILES
+        and path.startswith(("tests/e2e/docker/", "runtime/exec-native/"))
+        for path in paths
+    )
 
 
 def require_result(needed, result):

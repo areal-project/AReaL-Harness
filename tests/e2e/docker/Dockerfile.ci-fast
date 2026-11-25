@@ -33,7 +33,7 @@ FROM base AS runtime-tests
 
 ARG HOST_WORKSPACE=/src
 WORKDIR /src
-COPY target/ci-container-tests /src/target/ci
+COPY target/ci-container-tests /src/target/debug
 COPY tests/fixtures/mcp-server.py /src/tests/fixtures/mcp-server.py
 COPY Cargo.toml /src/Cargo.toml
 COPY core/app-server/Cargo.toml /src/core/app-server/Cargo.toml
@@ -41,14 +41,15 @@ COPY core/engine/Cargo.toml /src/core/engine/Cargo.toml
 COPY runtime/daemon/Cargo.toml /src/runtime/daemon/Cargo.toml
 COPY runtime/exec-native/Cargo.toml /src/runtime/exec-native/Cargo.toml
 COPY core/engine/tests/fixtures /src/core/engine/tests/fixtures
-# 保持宿主编译测试二进制内嵌的 CARGO_MANIFEST_DIR 路径在容器内可解析。
+# 保持宿主编译测试二进制内嵌的 CARGO_MANIFEST_DIR 与 CARGO_BIN_EXE_* 路径在容器内可解析。
 RUN if [ "$HOST_WORKSPACE" != "/src" ]; then \
       mkdir -p "$(dirname "$HOST_WORKSPACE")" && ln -s /src "$HOST_WORKSPACE"; \
     fi \
-    && test -x /src/target/ci/areal-runtime \
-    && test -x /src/target/ci/areal-runtime-fs \
-    && test -x /src/target/ci/deps/areal-runtime-reaper \
+    && test -x /src/target/debug/areal-runtime \
+    && test -x /src/target/debug/areal-runtime-fs \
+    && test -x /src/target/debug/areal-runtime-reaper \
+    && test -x /src/target/debug/deps/areal-runtime-reaper \
     && test -r /src/tests/fixtures/mcp-server.py
 
-ENV AREAL_TEST_BIN_DIR=/src/target/ci
-CMD ["python3", "/src/target/ci/run-container-tests.py"]
+ENV AREAL_TEST_BIN_DIR=/src/target/debug
+CMD ["python3", "/src/target/debug/run-container-tests.py"]
