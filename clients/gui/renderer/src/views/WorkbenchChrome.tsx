@@ -1,7 +1,8 @@
 import { useReadOnly } from "../PlatformReadContext.js";
 import React, { useState } from "react";
+import { TitleTooltip } from "@areal/ui";
 import { BugReportDialog } from "../BugReportDialog.js";
-import { Bot, Bug, Route } from "lucide-react";
+import { Bot, Bug, Cloud, Route } from "lucide-react";
 import { ApplicationRail } from "../app-shell/ApplicationNavigation.js";
 import { WorkspaceHeader } from "../app-shell/WorkbenchShell.js";
 import { Button } from "../components/ui/button.js";
@@ -319,7 +320,19 @@ export function ConversationHeader({
       {!sidebar && !settingsOpen && workspaceNavigation}
       {!pluginsOpen && !settingsOpen && !taskCenterOpen && (!empty || (!thread && !!threadId)) && (
         <div className="header-context">
-          <ProjectFolderIcon />
+          {thread?.cloud ? (
+            <TitleTooltip title={t("resources.cloud")}>
+              <span
+                className="inline-flex shrink-0 items-center text-foreground-subtle"
+                aria-label={t("resources.cloud")}
+                data-testid="header-cloud-badge"
+              >
+                <Cloud className="size-4" aria-hidden="true" />
+              </span>
+            </TitleTooltip>
+          ) : (
+            <ProjectFolderIcon />
+          )}
           <strong className="header-task">{currentTitle}</strong>
         </div>
       )}

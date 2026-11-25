@@ -1,12 +1,13 @@
 import type { Attachment } from "./services.js";
+import { composerDraftStorage, flushComposerDrafts } from "./composerDraftStorage.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
-import { errorText } from "./errors/errorCopy.js";
+import { errorCode, errorText } from "./errors/errorCopy.js";
 import { DraftAttachment } from "./MessageAttachment.js";
 import { AttachmentIcon } from "./interfaceIcons.js";
 import { forgetComposerUploads } from "./ComposerUploadState.js";
 import { uploadComposerFiles } from "./ComposerUploads.js";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Action, Data } from "./services.js";
 import { Button } from "./components/ui/button.js";
 import { Input } from "./components/ui/input.js";
@@ -26,25 +27,63 @@ export function CloudComposer({
   thread,
   action,
   onOpen,
+  cloudConfigured,
+  cloudStatusChecking = false,
+  cloudStatusError,
+  onOpenCloudSettings,
 }: {
   project: Data;
   thread?: Data;
   action: Action;
   onOpen?: (projectId: string, threadId: string) => Promise<void>;
+  /** 新建草稿态下由宿主传入 Cloud 配置状态；已有云端会话忽略此字段。 */
+  cloudConfigured?: boolean;
+  cloudStatusChecking?: boolean;
+  cloudStatusError?: string;
+  onOpenCloudSettings?: () => void;
 }) {
   const { t } = useI18n();
   const input = useRef<LexicalChatInputHandle | null>(null);
   const prefs = useApplicationPreferences();
-  const key = `areal-cloud-draft:${project.id}:${thread?.id ?? "new"}`;
-  const [text, setText] = useState(() => localStorage.getItem(key) ?? "");
+  // 新建草稿与本地 DraftComposer 共用纯文本键，切换「本地 ↔ 云端」时不丢已输入文本。
+  const draftKey = thread
+    ? `areal-cloud-draft:${project.id}:${thread.id}`
+    : `areal-gui:draft:${project.id}:new`;
+  const createRequestKey = `areal-cloud-draft:${project.id}:${thread?.id ?? "new"}:create`;
+  const unknownKey = `areal-cloud-draft:${project.id}:${thread?.id ?? "new"}:unknown`;
+  const fileKey = `areal-cloud-draft:${project.id}:${thread?.id ?? "new"}`;
+  const [text, setText] = useState(() => composerDraftStorage.getItem(draftKey) ?? "");
   const upload = useRef<HTMLInputElement>(null);
-  const [files, setFiles] = useState<File[]>(() => fileDrafts.get(key) ?? []);
+  const [files, setFiles] = useState<File[]>(() => fileDrafts.get(fileKey) ?? []);
+  const [busy, setBusy] = useState(false);
+  const [error, setErrorState] = useState<string | UiMessage>(() => draftErrors.get(fileKey) ?? "");
+  const [unknown, setUnknown] = useState(() => localStorage.getItem(unknownKey) === "true");
+  const unconfigured = !thread && cloudConfigured === false && !cloudStatusChecking;
+
+  useEffect(() => flushComposerDrafts, [draftKey]);
+  useEffect(() => {
+    const refreshDraft = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== draftKey) return;
+      const next = composerDraftStorage.getItem(draftKey) ?? "";
+      setText(next);
+      input.current?.setText(next);
+    };
+    window.addEventListener("areal-draft-change", refreshDraft);
+    return () => window.removeEventListener("areal-draft-change", refreshDraft);
+  }, [draftKey]);
+
+  const setError = (message: string | UiMessage) => {
+    if (message) draftErrors.set(fileKey, message);
+    else draftErrors.delete(fileKey);
+    setErrorState(message);
+  };
   const updateFiles = (next: File[]) => {
-    fileDrafts.set(key, next);
+    fileDrafts.set(fileKey, next);
     setFiles(next);
   };
+  const running = thread?.turns?.find((turn: Data) => turn.status === "inProgress");
   const addFiles = (incoming: File[]) => {
-    if (busy || running || unknown) return;
+    if (busy || running || unknown || unconfigured) return;
     if (files.length + incoming.length > 16) {
       setError({ id: "cloud.attachmentsLimit" });
       return;
@@ -56,15 +95,6 @@ export function CloudComposer({
     updateFiles([...files, ...incoming]);
     setError("");
   };
-  const [busy, setBusy] = useState(false);
-  const [error, setErrorState] = useState<string | UiMessage>(() => draftErrors.get(key) ?? "");
-  const setError = (message: string | UiMessage) => {
-    if (message) draftErrors.set(key, message);
-    else draftErrors.delete(key);
-    setErrorState(message);
-  };
-  const [unknown, setUnknown] = useState(() => localStorage.getItem(`${key}:unknown`) === "true");
-  const running = thread?.turns?.find((turn: Data) => turn.status === "inProgress");
   const reconnect = async () => {
     if (busy || !thread) return;
     setBusy(true);
@@ -76,27 +106,35 @@ export function CloudComposer({
         threadId: thread.id,
       });
     } catch (cause) {
-      setError((cause as Error).message);
+      setError(errorText(t, cause));
     } finally {
       setBusy(false);
     }
   };
   const send = async () => {
-    if (busy || running || unknown || (!text.trim() && !files.length)) return;
+    if (
+      busy ||
+      running ||
+      unknown ||
+      unconfigured ||
+      (!thread && cloudStatusChecking) ||
+      (!text.trim() && !files.length)
+    )
+      return;
     setBusy(true);
     setError("");
     let target = thread?.id;
     try {
       if (!target) {
-        const requestId = localStorage.getItem(`${key}:create`) ?? crypto.randomUUID();
-        localStorage.setItem(`${key}:create`, requestId);
+        const requestId = localStorage.getItem(createRequestKey) ?? crypto.randomUUID();
+        localStorage.setItem(createRequestKey, requestId);
         const created = await action("cloudSession", {
           operation: "create",
           projectId: project.id,
           requestId,
         });
         target = created.threadId;
-        localStorage.setItem(`areal-cloud-draft:${project.id}:${target}`, text);
+        composerDraftStorage.setItem(`areal-cloud-draft:${project.id}:${target}`, text);
         // 先在原组件提交首轮，再切换；避免两个 Composer 同时拥有同一草稿。
       }
       const receiptKey = `${project.id}:${target}`;
@@ -112,54 +150,76 @@ export function CloudComposer({
       });
       forgetComposerUploads(JSON.stringify([project.id, target]), files);
       uploadReceipts.delete(receiptKey);
-      fileDrafts.delete(key);
+      fileDrafts.delete(fileKey);
       setFiles([]);
-      localStorage.removeItem(key);
-      localStorage.removeItem(`${key}:create`);
-      localStorage.removeItem(`areal-cloud-draft:${project.id}:${target}`);
+      composerDraftStorage.removeItem(draftKey);
+      localStorage.removeItem(createRequestKey);
+      composerDraftStorage.removeItem(`areal-cloud-draft:${project.id}:${target}`);
       setText("");
       input.current?.setText("");
       if (!thread) await onOpen?.(project.id, target);
     } catch (cause) {
       const failure = cause as Error & { submissionUnknown?: boolean };
       setError(errorText(t, failure));
-      if (failure.submissionUnknown) {
+      if (errorCode(failure) === "SUBMISSION_UNKNOWN") {
         setUnknown(true);
-        localStorage.setItem(`${key}:unknown`, "true");
+        localStorage.setItem(unknownKey, "true");
         if (target)
           localStorage.setItem(`areal-cloud-draft:${project.id}:${target}:unknown`, "true");
       }
       if (target && !thread) {
         const targetKey = `areal-cloud-draft:${project.id}:${target}`;
-        localStorage.setItem(targetKey, text);
+        composerDraftStorage.setItem(targetKey, text);
         fileDrafts.set(targetKey, files);
         draftErrors.set(targetKey, currentErrorText(failure));
         // 创建已完成，失败草稿归属该会话；后续新聊天必须生成独立的创建标识。
-        localStorage.removeItem(key);
-        localStorage.removeItem(`${key}:create`);
-        localStorage.removeItem(`${key}:unknown`);
-        fileDrafts.delete(key);
-        draftErrors.delete(key);
+        composerDraftStorage.removeItem(draftKey);
+        localStorage.removeItem(createRequestKey);
+        localStorage.removeItem(unknownKey);
+        fileDrafts.delete(fileKey);
+        draftErrors.delete(fileKey);
         await onOpen?.(project.id, target);
       }
     } finally {
       setBusy(false);
     }
   };
+  const disconnected = Boolean(thread && !thread.cloud?.connected);
   const failureMessage = formatUiMessage(t, error || thread?.cloud?.error || "");
+  const reconnectAction = disconnected ? (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      disabled={busy}
+      onClick={() => void reconnect()}
+    >
+      {t("cloud.reconnect")}
+    </Button>
+  ) : undefined;
   return (
     <div className="composer-dock cloud-composer flex flex-col gap-2">
-      {!thread?.cloud?.connected && !busy && !unknown && !failureMessage && (
+      {unconfigured && (
         <FeedbackNotice
-          tone="warning"
-          message={t("cloud.disconnected")}
+          tone="info"
+          message={cloudStatusError || t("cloud.unconfiguredNotice")}
           actions={
-            thread && (
-              <Button type="button" variant="ghost" size="sm" onClick={() => void reconnect()}>
-                {t("cloud.reconnect")}
+            onOpenCloudSettings && (
+              <Button type="button" variant="ghost" size="sm" onClick={onOpenCloudSettings}>
+                {t("cloud.openSettings")}
               </Button>
             )
           }
+        />
+      )}
+      {!thread && busy && !unknown && (
+        <FeedbackNotice tone="info" message={t("cloud.startingSandbox")} />
+      )}
+      {disconnected && !busy && !unknown && !failureMessage && (
+        <FeedbackNotice
+          tone="warning"
+          message={t("cloud.disconnected")}
+          actions={reconnectAction}
         />
       )}
       <Input
@@ -180,9 +240,16 @@ export function CloudComposer({
         inputApiRef={input}
         inputTestId="cloud-chat-input"
         submitTestId="cloud-chat-send"
-        placeholder={t("cloud.prompt")}
+        placeholder={!thread ? t("cloud.draftHint") : t("cloud.prompt")}
         disabled={busy || !!running || unknown}
-        submitDisabled={busy || !!running || unknown || (!text.trim() && !files.length)}
+        submitDisabled={
+          busy ||
+          !!running ||
+          unknown ||
+          unconfigured ||
+          (!thread && cloudStatusChecking) ||
+          (!text.trim() && !files.length)
+        }
         submitting={busy}
         enterSubmits={prefs.sendShortcut === "enter"}
         enableMentionPanel={false}
@@ -232,7 +299,7 @@ export function CloudComposer({
         submitLabel={t("cloud.send")}
         onChange={(value) => {
           setText(value);
-          localStorage.setItem(key, value);
+          composerDraftStorage.scheduleItem(draftKey, value);
         }}
         onSubmit={() => {
           void send();
@@ -258,27 +325,27 @@ export function CloudComposer({
         }
       />
       {unknown && (
-        <>
-          <FeedbackNotice
-            tone="warning"
-            message={t("cloud.submissionUnknown")}
-            detail={failureMessage || undefined}
-          />
-          <Button
-            type="button"
-            onClick={() => {
-              setUnknown(false);
-              localStorage.removeItem(`${key}:unknown`);
-            }}
-          >
-            {t("cloud.acknowledgeUnknown")}
-          </Button>
-        </>
-      )}
-      {thread && !thread.cloud?.connected && (
-        <Button type="button" disabled={busy} onClick={() => void reconnect()}>
-          {t("cloud.reconnect")}
-        </Button>
+        <FeedbackNotice
+          tone="warning"
+          message={t("cloud.submissionUnknown")}
+          detail={failureMessage || undefined}
+          actions={
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setUnknown(false);
+                  localStorage.removeItem(unknownKey);
+                }}
+              >
+                {t("cloud.acknowledgeUnknown")}
+              </Button>
+              {reconnectAction}
+            </>
+          }
+        />
       )}
       {!unknown && failureMessage && (
         <FeedbackNotice
@@ -287,6 +354,7 @@ export function CloudComposer({
             isTechnicalErrorMessage(failureMessage) ? t("recovery.operationFailed") : failureMessage
           }
           detail={isTechnicalErrorMessage(failureMessage) ? failureMessage : undefined}
+          actions={reconnectAction}
         />
       )}
     </div>

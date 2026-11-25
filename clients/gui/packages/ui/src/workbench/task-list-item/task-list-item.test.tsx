@@ -86,4 +86,27 @@ describe("Worktree identity badge (WT-IDENTITY-01)", () => {
     );
     expect(html).toContain("size-4 shrink-0");
   });
+
+  it("renders a compact cloud badge for cloud conversations", () => {
+    const html = renderToStaticMarkup(
+      createElement(MemoTaskItem, {
+        id: "cloud-thread",
+        title: "Cloud · Run sandbox task",
+        cloud: true,
+        cloudLabel: "云端环境",
+        cloudTitle: "云端环境",
+        active: false,
+        pinned: false,
+        running: false,
+        attention: false,
+        archived: false,
+        disabled: false,
+        onSelect() {},
+        onRename() {},
+        onPin() {},
+      }),
+    );
+    expect(html).toContain('data-testid="task-cloud-badge"');
+    expect(html).toContain('aria-label="云端环境"');
+  });
 });

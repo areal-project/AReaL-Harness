@@ -1328,3 +1328,143 @@ async fn idle_retirement_avoids_spurious_error_and_late_guard_preserves_successo
         })
         .await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn host_owned_cloud_terminal_connection_forwards_live_events_to_subscribers() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
+            let server = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders)
+                    .await
+                    .unwrap();
+                while let Some(Ok(Message::Text(text))) = socket.next().await {
+                    let request: Value = serde_json::from_str(&text).unwrap();
+                    if request.get("id").is_none() {
+                        continue;
+                    }
+                    send(&mut socket, json!({"id": request["id"], "result": {}})).await;
+                }
+            });
+            let session = connect_authorized(
+                host.clone(),
+                "cloud-session:src:rec",
+                service,
+                true,
+                "fixture-owner-token".into(),
+                Some("src".into()),
+            )
+            .await
+            .unwrap();
+            session.host_owned.set(true);
+            let mut subscriber = session.events.subscribe();
+            publish_event(
+                &host,
+                &session,
+                json!({"method":"turn/completed","params":{"threadId":"cloud-t1","turn":{"id":"turn-2","status":"completed"}}}),
+            );
+            let received = subscriber.try_recv().expect("Host-owned Cloud 会话必须把实时事件推送给观察者");
+            assert_eq!(received.value["method"], "turn/completed");
+            assert_eq!(received.value["params"]["turn"]["id"], "turn-2");
+            session.close();
+            server.abort();
+        })
+        .await;
+}
+
+#[test]
+fn cloud_wss_endpoint_uses_explicit_ring_tls_connector() {
+    assert!(
+        tls_connector_for_endpoint("ws://127.0.0.1:9999/app-server/")
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        tls_connector_for_endpoint("wss://example.com/openapi/v1/app-server/test/")
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cloud_observe_negotiates_bounded_mode_when_remote_lacks_conversation_observation() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let observed_mode = Rc::new(RefCell::new(None::<String>));
+            let captured_mode = observed_mode.clone();
+            let server = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders)
+                    .await
+                    .unwrap();
+                while let Some(Ok(Message::Text(text))) = socket.next().await {
+                    let request: Value = serde_json::from_str(&text).unwrap();
+                    if request.get("id").is_none() {
+                        continue;
+                    }
+                    let result = match request["method"].as_str().unwrap() {
+                        "areal/capabilities" => json!({
+                            "apiVersion": "areal.core.v1",
+                            "methods": ["areal/thread/observe"],
+                            "features": { "boundedObservation": true }
+                        }),
+                        "areal/thread/observe" => {
+                            *captured_mode.borrow_mut() =
+                                request["params"]["mode"].as_str().map(str::to_owned);
+                            json!({
+                                "thread": { "id": "cloud-t1", "turns": [] },
+                                "history": { "complete": true, "nextCursor": null, "snapshotId": "snap-1" }
+                            })
+                        }
+                        _ => json!({}),
+                    };
+                    send(&mut socket, json!({"id": request["id"], "result": result})).await;
+                }
+            });
+            let service = service(&host, format!("ws://{address}/"));
+            let session = connect_authorized(
+                host.clone(),
+                "cloud-session:src:rec",
+                service,
+                true,
+                "fixture-owner-token".into(),
+                Some("src".into()),
+            )
+            .await
+            .unwrap();
+            session.host_owned.set(true);
+            let generation = session.service.identity.generation.clone();
+            *session.workbench_lease.borrow_mut() = Some("lease-1".into());
+            host.schedules
+                .connections
+                .terminals
+                .borrow_mut()
+                .insert("lease-1".into(), session.clone());
+            let (snapshot, _, _observation) = host
+                .schedules
+                .connections
+                .cloud_observe(
+                    &host,
+                    "cloud-session:src:rec",
+                    "lease-1",
+                    &generation,
+                    "cloud-t1",
+                    65536,
+                )
+                .await
+                .unwrap();
+            assert_eq!(observed_mode.borrow().as_deref(), Some("bounded"));
+            assert_eq!(snapshot["thread"]["id"], "cloud-t1");
+            session.close();
+            server.abort();
+        })
+        .await;
+}

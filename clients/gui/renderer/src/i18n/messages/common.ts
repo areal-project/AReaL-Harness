@@ -1193,6 +1193,20 @@ export const commonMessages = {
   },
   "workspace.environment": { "zh-CN": "会话运行环境", en: "Session environment" },
   "workspace.cloud": { "zh-CN": "云端", en: "Cloud" },
+  "cloud.unconfiguredTag": { "zh-CN": "未配置", en: "Not configured" },
+  "cloud.unconfiguredNotice": {
+    "zh-CN": "尚未配置云端服务。请先填写后端地址与 Token，完成后即可启动沙箱。",
+    en: "Cloud service is not configured. Add the backend address and token to start a sandbox.",
+  },
+  "cloud.openSettings": { "zh-CN": "前往云端设置", en: "Open Cloud settings" },
+  "cloud.startingSandbox": {
+    "zh-CN": "正在连接云端并启动沙箱…",
+    en: "Connecting to Cloud and starting sandbox…",
+  },
+  "cloud.draftHint": {
+    "zh-CN": "发送后将在云端启动独立沙箱执行",
+    en: "Starts an isolated Cloud sandbox when you send",
+  },
   "cloud.attachmentsLimit": {
     "zh-CN": "每条消息最多 16 个附件",
     en: "Each message supports up to 16 attachments.",

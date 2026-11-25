@@ -112,10 +112,13 @@ export async function connectWebSocket(
       if (!current() || socket.readyState !== WebSocket.OPEN)
         return reject(clientError("DISCONNECTED", "Connection unavailable"));
       const id = String(++sequence);
+      // Cloud 沙箱首次启动或休眠唤醒耗时较长，避免客户端过早超时把成功启动误判为结果未知。
+      const timeoutMs =
+        method === "desktop.command" && params.command === "cloudSession" ? 150_000 : 30_000;
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(clientError("TIMEOUT", "Host command timed out"));
-      }, 30_000);
+      }, timeoutMs);
       pending.set(id, { method, resolve, reject, timer });
       try {
         socket.send(

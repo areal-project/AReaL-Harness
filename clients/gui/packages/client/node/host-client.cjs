@@ -309,9 +309,17 @@ class HostClient {
     if (bytes.length > this.maxFrame)
       return Promise.reject(new Error("Host request exceeds 1 MiB"));
     return new Promise((resolve, reject) => {
+      // Cloud 沙箱冷启动或休眠唤醒可能超过 30 秒，避免过早断开 Host 控制连接。
+      const timeoutMs =
+        method === "desktop.command" &&
+        params &&
+        typeof params === "object" &&
+        /** @type {{ command?: unknown }} */ (params).command === "cloudSession"
+          ? 150000
+          : 30000;
       const timeout = setTimeout(
         () => this.fail(new Error("Host request timed out; mutation outcome may be unknown")),
-        30000,
+        timeoutMs,
       );
       this.pending.set(id, {
         resolve: (value) => {

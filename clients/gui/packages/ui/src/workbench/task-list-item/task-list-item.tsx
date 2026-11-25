@@ -2,7 +2,7 @@ import { TitleTooltip } from "../../components/tooltip/tooltip.js";
 /* Adapted from ZCode 872ad960 TaskListItem.tsx: original default row markup,
  * title overflow and action geometry. Core supplies state and callbacks. */
 import { memo, type ReactNode, type ComponentProps } from "react";
-import { LoaderIcon, CircleDashed, GitFork } from "lucide-react";
+import { Cloud, LoaderIcon, CircleDashed, GitFork } from "lucide-react";
 import {
   ArchiveChatIcon as Archive,
   PinChatIcon as Pin,
@@ -37,6 +37,7 @@ export const MemoTaskItem = memo(function TaskListItem({
   id,
   title,
   worktree,
+  cloud = false,
   active,
   pinned,
   running,
@@ -51,6 +52,8 @@ export const MemoTaskItem = memo(function TaskListItem({
   reducedMotion = false,
   worktreeLabel,
   worktreeTitle,
+  cloudLabel,
+  cloudTitle,
   organizationActions,
   readOnly = false,
   labels,
@@ -62,6 +65,7 @@ export const MemoTaskItem = memo(function TaskListItem({
   id: string;
   title: string;
   worktree?: { branch: string; directory: string; state?: string };
+  cloud?: boolean;
   active: boolean;
   pinned: boolean;
   running: boolean;
@@ -76,6 +80,8 @@ export const MemoTaskItem = memo(function TaskListItem({
   reducedMotion?: boolean;
   worktreeLabel?: string;
   worktreeTitle?: string;
+  cloudLabel?: string;
+  cloudTitle?: string;
   organizationActions?: ReactNode;
   readOnly?: boolean;
   labels?: TaskListItemLabels;
@@ -163,6 +169,17 @@ export const MemoTaskItem = memo(function TaskListItem({
             aria-label={worktreeLabel}
           >
             <GitFork className="size-3.5" aria-hidden="true" />
+          </span>
+        </TitleTooltip>
+      )}
+      {!worktree && cloud && (
+        <TitleTooltip title={cloudTitle ?? cloudLabel}>
+          <span
+            data-testid="task-cloud-badge"
+            className="task-cloud-badge shrink-0 text-foreground-subtle"
+            aria-label={cloudLabel}
+          >
+            <Cloud className="size-3.5" aria-hidden="true" />
           </span>
         </TitleTooltip>
       )}

@@ -13,7 +13,7 @@ import { useApplicationPreferences } from "./settings/applicationPreferences.js"
 import { settingsNavigationGroups } from "./settings/settingsNavigation.js";
 import { labsAvailable, useLabsFeature } from "./settings/labsFeatures.js";
 import { SettingsNavigation } from "./settings/SettingsWorkspace.js";
-import { useGuardedQuit } from "./settings/UnsavedChanges.js";
+import { useGuardedQuit, useNavigationBusy } from "./settings/UnsavedChanges.js";
 import { useTrajectoryPolling } from "./settings/useTrajectoryPolling.js";
 import { useNavigationWorkspace } from "./state/navigationWorkspace.js";
 import { projectExecutionBlocked } from "./state/projectExecution.js";
@@ -67,6 +67,7 @@ function AppContent({ services }: { services: PlatformServices }) {
   const [upgradeAvailable, setUpgradeAvailable] = React.useState(false);
   const [upgradeOpenRequest, setUpgradeOpenRequest] = React.useState(0);
   const requestNavigation = useGuardedQuit(services);
+  const navigationBusy = useNavigationBusy();
   const { terminalLocation, nextPromptSuggestions } = useApplicationPreferences();
   const session = useSessionNavigation(services, (message) => setError(message));
   const {
@@ -297,6 +298,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     setSettingsOpen(true);
   });
   const { backendActionPending, backendActionError, runBackendAction, quitStartup } = backend;
+  const composerWorkspace = useComposerWorkspace(project);
   const navigationCommands = useWorkbenchNavigation(
     services,
     session,
@@ -309,6 +311,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     requestNavigation,
     setSidebar,
     setError,
+    composerWorkspace.resetDraftEnvironment,
   );
   const { choose, open, newTask, traverseWorkspaceHistory } = navigationCommands;
   useEffect(surfaces.restorePluginFocus, [
@@ -320,7 +323,6 @@ function AppContent({ services }: { services: PlatformServices }) {
     threadId,
     thread,
   ]);
-  const composerWorkspace = useComposerWorkspace(project);
 
   useEffect(navigationCommands.subscribeNotifications, [
     services,
@@ -791,6 +793,7 @@ function AppContent({ services }: { services: PlatformServices }) {
                         type="button"
                         variant="ghost-subtle"
                         size="icon-sm"
+                        disabled={navigationBusy}
                         aria-label={t("settings.settingsWorkspace.backToApp")}
                         title={t("settings.settingsWorkspace.backToApp")}
                         onClick={() => requestNavigation(() => setSettingsOpen(false))}

@@ -6,8 +6,11 @@ import {
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { DelayedVisible } from "@areal/ui";
 import { ThreadFindBar, ThreadSummaryItem, ThreadSummaryPanel } from "@areal/ui/compositions";
+import { Check, Cloud } from "lucide-react";
 import { matchesWorkspaceShortcut, useWorkspaceShortcuts } from "../settings/workspaceShortcuts.js";
 import { projectUserState } from "../state/userStates.js";
+import { useCloudConfigStatus } from "../state/useCloudConfigStatus.js";
+import { flushComposerDrafts } from "../composerDraftStorage.js";
 import { ComposerSurface } from "../prompt-editor/ComposerSurface.js";
 import { Button } from "../components/ui/button.js";
 import {
@@ -22,7 +25,12 @@ import { Composer } from "../Composer.js";
 import { ComposerWorkspaceContext } from "../ComposerWorkspaceContext.js";
 import { ConversationDraftEmptyState } from "../ConversationDraftEmptyState.js";
 import { DraftComposer } from "../DraftComposer.js";
-import { LeaveProjectIcon, NewProjectIcon, ProjectFolderIcon } from "../homeChromeIcons.js";
+import {
+  LeaveProjectIcon,
+  NewProjectIcon,
+  ProjectFolderIcon,
+  WorkspaceLocalIcon,
+} from "../homeChromeIcons.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { DismissIcon } from "../interfaceIcons.js";
 import { Messages } from "../Messages.js";
@@ -602,6 +610,8 @@ function ActiveConversation() {
 }
 function DraftConversation() {
   const readOnly = useReadOnly();
+  const conversationCreateReadOnly = useConversationCreateReadOnly();
+  const conversationSubmitReadOnly = useConversationSubmitReadOnly();
   const {
     session,
     services,
@@ -621,12 +631,34 @@ function DraftConversation() {
   const { workspaceView } = workspacePanels.view;
 
   const { showPanel } = panelNavigation;
-  const { worktreeSelection, changeWorktreeSelection } = composerWorkspace;
+  const {
+    worktreeSelection,
+    changeWorktreeSelection,
+    draftEnvironment = "local",
+    changeDraftEnvironment,
+  } = composerWorkspace;
   const { openImageAnnotation } = annotation;
 
   const { newTask, choose, leaveProject, open } = navigationCommands;
   const { setWorktreeSettingsTarget, setSettingsTab, setSettingsOpen } = surfaces;
   const { t } = useI18n();
+  const canSelectEnvironment = Boolean(
+    project &&
+    !project.projectless &&
+    !readOnly &&
+    !conversationCreateReadOnly &&
+    !conversationSubmitReadOnly,
+  );
+  const inCloud = canSelectEnvironment && draftEnvironment === "cloud";
+  const cloudStatus = useCloudConfigStatus(
+    resourceAction,
+    canSelectEnvironment && snapshot.connection?.state === "ready",
+  );
+  const selectEnvironment = (next: "local" | "cloud") => {
+    if (!project || next === draftEnvironment) return;
+    flushComposerDrafts();
+    changeDraftEnvironment?.(project.id, next);
+  };
   const draftSettings = startup.viewFailure && recoverySettings(startup.viewFailure);
   const waitForProjectCapabilities = async (
     initial: NonNullable<typeof project>,
@@ -687,7 +719,7 @@ function DraftConversation() {
       : undefined;
   return (
     <>
-      {project && !projectUserState(project).canAct && startup.restorationFailed && (
+      {!inCloud && project && !projectUserState(project).canAct && startup.restorationFailed && (
         <FeedbackNotice
           tone="error"
           message={startup.restorationError || t("startup.projectStartFailed")}
@@ -782,17 +814,61 @@ function DraftConversation() {
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+            {canSelectEnvironment && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost-subtle"
+                      size="chip"
+                      className="shrink-0"
+                      aria-label={t("workspace.environment")}
+                      data-testid="draft-environment-trigger"
+                    >
+                      {inCloud ? (
+                        <Cloud className="size-4 shrink-0" aria-hidden="true" />
+                      ) : (
+                        <WorkspaceLocalIcon />
+                      )}
+                      <span>{inCloud ? t("workspace.cloud") : t("workspace.local")}</span>
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="start" className="gap-0">
+                  <DropdownMenuItem
+                    data-testid="draft-environment-local"
+                    onClick={() => selectEnvironment("local")}
+                  >
+                    <WorkspaceLocalIcon />
+                    <span className="flex-1">{t("workspace.local")}</span>
+                    {!inCloud && <Check className="size-3.5 shrink-0" aria-hidden="true" />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    data-testid="draft-environment-cloud"
+                    onClick={() => selectEnvironment("cloud")}
+                  >
+                    <Cloud className="size-4 shrink-0" aria-hidden="true" />
+                    <span className="flex-1">{t("workspace.cloud")}</span>
+                    {cloudStatus.state === "ready" && !cloudStatus.configured && (
+                      <span className="text-foreground-subtle">{t("cloud.unconfiguredTag")}</span>
+                    )}
+                    {inCloud && <Check className="size-3.5 shrink-0" aria-hidden="true" />}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {project && !readOnly && (
               <ComposerWorkspaceContext
                 project={project}
                 showBranch={false}
+                cloud={inCloud}
                 quietConnecting
                 action={resourceAction}
                 backendReady={snapshot.connection?.state === "ready"}
               />
             )}
           </div>
-          {project && (
+          {project && !inCloud && (
             <WorktreeStarter
               key={project.id}
               project={project}
@@ -816,25 +892,41 @@ function DraftConversation() {
           )}
         </div>
         {project ? (
-          <DraftComposer
-            prepareBrowserDraft={session.prepareBrowserDraft}
-            worktree={worktreeSelection}
-            onWorktreeCreated={() => changeWorktreeSelection(project.id, undefined)}
-            conversationReferences={conversationReferences}
-            surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
-            onAnnotate={openImageAnnotation}
-            key={project.id}
-            project={project}
-            backendReady={snapshot.connection?.state === "ready"}
-            modelCatalogReady={Boolean(
-              project.models?.length || project.core?.features?.conversation,
-            )}
-            prepareProject={prepareProject}
-            action={action}
-            readAction={resourceAction}
-            onOpen={(pid, id) => open(pid, id, "replace")}
-            onPanel={showPanel}
-          />
+          inCloud ? (
+            <CloudComposer
+              key={`${project.id}:cloud-draft`}
+              project={project}
+              action={resourceAction}
+              onOpen={(pid, id) => open(pid, id, "replace")}
+              cloudConfigured={cloudStatus.configured}
+              cloudStatusChecking={cloudStatus.state === "idle" || cloudStatus.state === "loading"}
+              cloudStatusError={cloudStatus.error}
+              onOpenCloudSettings={() => {
+                setSettingsTab("Cloud");
+                setSettingsOpen(true);
+              }}
+            />
+          ) : (
+            <DraftComposer
+              prepareBrowserDraft={session.prepareBrowserDraft}
+              worktree={worktreeSelection}
+              onWorktreeCreated={() => changeWorktreeSelection(project.id, undefined)}
+              conversationReferences={conversationReferences}
+              surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
+              onAnnotate={openImageAnnotation}
+              key={project.id}
+              project={project}
+              backendReady={snapshot.connection?.state === "ready"}
+              modelCatalogReady={Boolean(
+                project.models?.length || project.core?.features?.conversation,
+              )}
+              prepareProject={prepareProject}
+              action={action}
+              readAction={resourceAction}
+              onOpen={(pid, id) => open(pid, id, "replace")}
+              onPanel={showPanel}
+            />
+          )
         ) : !readOnly ? (
           <ProjectlessDraft
             onAnnotate={openImageAnnotation}

@@ -86,6 +86,7 @@ function SidebarTaskRow({ row }: { row: Data }) {
       nested={!row.pinned}
       title={row.title}
       worktree={row.summary.worktree}
+      cloud={Boolean(row.summary.cloud)}
       active={projectId === row.owner.id && threadId === row.summary.id}
       pinned={row.pinned}
       running={row.running}

@@ -59,12 +59,23 @@ const remote = createServer((_q, r) => {
   r.writeHead(404);
   r.end();
 });
-const wss = new WebSocketServer({ server: remote });
+const wss = new WebSocketServer({ noServer: true });
 let allocations = 0,
   queries = 0,
   unknown = false,
   deferNext = false,
-  rejectNext = false;
+  rejectNext = false,
+  offlineMode = false;
+remote.on("upgrade", (req, socket, head) => {
+  if (offlineMode) {
+    socket.write("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
+    socket.destroy();
+    return;
+  }
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit("connection", ws, req);
+  });
+});
 const thread = {
   id: "native-cloud-thread",
   turns: [],
@@ -175,6 +186,9 @@ wss.on("connection", (ws, req) => {
       case "turn/interrupt":
         result = {};
         break;
+      case "areal/subscription/remove":
+        result = { subscriptionCount: 0 };
+        break;
       default:
         throw Error(`Unexpected remote method ${q.method}`);
     }
@@ -183,10 +197,29 @@ wss.on("connection", (ws, req) => {
       const turn = thread.turns.at(-1);
       ws.send(
         JSON.stringify({
-          method: turn.status === "inProgress" ? "turn/started" : "turn/completed",
-          params: { threadId: thread.id, turn },
+          jsonrpc: "2.0",
+          method: "turn/started",
+          params: { threadId: thread.id, turn: { id: turn.id, status: "inProgress", items: [] } },
         }),
       );
+      if (turn.status !== "inProgress") {
+        for (const item of turn.items) {
+          ws.send(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              method: "item/completed",
+              params: { threadId: thread.id, turnId: turn.id, item },
+            }),
+          );
+        }
+        ws.send(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            method: "turn/completed",
+            params: { threadId: thread.id, turn },
+          }),
+        );
+      }
     }
   });
 });
@@ -293,9 +326,16 @@ try {
   assert.equal(evidence.backendStatus.owned, false);
   assert.equal(evidence.backendStatus.service, null);
   evidence.reached.push("browser authorized against native Host without Node backend");
+  stage = "unconfigured cloud draft guidance";
+  await page.getByTestId("chat-input").waitFor();
+  await page.getByTestId("draft-environment-trigger").click();
+  await page.getByTestId("draft-environment-cloud").click();
+  await page.getByTestId("cloud-chat-input").waitFor();
+  await page.getByText("尚未配置云端服务", { exact: false }).waitFor();
+  assert.equal(await page.getByText("Cloud 未连接", { exact: false }).count(), 0);
+  assert.equal(allocations, 0);
+  await page.getByRole("button", { name: "前往云端设置", exact: true }).click();
   stage = "settings";
-  await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.getByRole("button", { name: "云端", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Cloud 后端地址" })
     .fill(`http://127.0.0.1:${remote.address().port}/app-server/`);
@@ -312,44 +352,55 @@ try {
   await page.screenshot({ path: join(root, "saved-without-connection.png") });
   evidence.reached.push("settings saved without remote allocation");
   await page.getByRole("button", { name: "返回应用", exact: true }).click();
-  await page.getByTestId("chat-input").waitFor();
+  await page.getByTestId("cloud-chat-input").waitFor();
+  assert.equal(await page.getByText("尚未配置云端服务", { exact: false }).count(), 0);
+  assert.equal(await page.getByText("Cloud 未连接", { exact: false }).count(), 0);
   assert.equal(allocations, 0);
-  assert.equal(await page.getByTestId("cloud-chat-input").count(), 0);
-  assert.doesNotMatch(await page.locator(".composer-project-bar").innerText(), /Cloud|Local|本地/);
+  assert.equal(evidence.calls.length, 0);
+  await page.getByTestId("draft-environment-trigger").click();
+  await page.getByTestId("draft-environment-local").click();
+  await page.getByTestId("chat-input").waitFor();
+  await page.getByTestId("chat-input").fill("first query");
+  await page.getByTestId("draft-environment-trigger").click();
+  await page.getByTestId("draft-environment-cloud").click();
+  await page.getByTestId("cloud-chat-input").waitFor();
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-testid="cloud-chat-input"]')?.textContent?.trim() ===
+      "first query",
+  );
+  assert.equal(allocations, 0);
   assert.equal(evidence.calls.length, 0);
   await page.screenshot({ path: join(root, "draft-without-allocation.png") });
   evidence.reached.push("new project draft without allocation");
   stage = "cloud creation";
-  const created = await rpc("desktop.command", {
-    sourceId,
-    command: "cloudSession",
-    request: { operation: "create", projectId, requestId: randomUUID() },
-  });
-  assert.equal(created.threadId, thread.id);
-  await page.reload();
-  await page.getByTestId(`task-item-${thread.id}`).click();
+  await page.getByTestId("cloud-chat-send").click();
   await page.waitForFunction(
     (id) => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId === id,
     thread.id,
   );
-  await page.getByTestId("cloud-chat-input").waitFor();
-  await page.getByTestId("cloud-chat-input").fill("first query");
-  await page.getByTestId("cloud-chat-send").click();
   await page.getByText("QUERY_OK_1", { exact: true }).waitFor();
+  await page.getByTestId(`task-item-${thread.id}`).getByTestId("task-cloud-badge").waitFor();
+  await page.getByTestId("header-cloud-badge").waitFor();
   assert.equal(allocations, 1);
   assert.equal(queries, 1);
   await page.screenshot({ path: join(root, "connected-session.png") });
   evidence.reached.push("actual remote thread created and turn observed");
   stage = "reconnect";
+  offlineMode = true;
   for (const ws of wss.clients) ws.close();
-  await page
-    .getByTestId("chat-view")
-    .getByRole("button", { name: "恢复连接", exact: true })
-    .waitFor();
-  await page
-    .getByTestId("chat-view")
-    .getByRole("button", { name: "恢复连接", exact: true })
-    .click();
+  const reconnectButton = () =>
+    page.getByTestId("chat-view").getByRole("button", { name: /^(恢复连接|重试加载对话)$/ });
+  const englishReconnectButton = () =>
+    page
+      .getByTestId("chat-view")
+      .getByRole("button", { name: /^(Reconnect|Retry loading conversation)$/ });
+  await reconnectButton().waitFor();
+  assert.equal(await reconnectButton().count(), 1);
+  offlineMode = false;
+  await reconnectButton().click();
+  await reconnectButton().waitFor({ state: "hidden" });
+  await page.getByTestId("cloud-chat-input").waitFor();
   await page.getByTestId("cloud-chat-input").fill("second query");
   await page.getByTestId("cloud-chat-send").click();
   await page.getByText("QUERY_OK_2", { exact: true }).waitFor();
@@ -362,20 +413,15 @@ try {
   await page.getByTestId("cloud-chat-input").fill("complete while offline");
   await page.getByTestId("cloud-chat-send").click();
   await page.getByRole("button", { name: "停止", exact: true }).waitFor();
+  offlineMode = true;
   for (const ws of wss.clients) ws.close();
-  await page
-    .getByTestId("chat-view")
-    .getByRole("button", { name: "恢复连接", exact: true })
-    .waitFor();
-  assert.equal(await page.getByTestId("cloud-chat-input").getAttribute("contenteditable"), "false");
+  await reconnectButton().waitFor();
   const offline = thread.turns.at(-1);
   offline.status = "completed";
   offline.items = [{ id: "offline-answer", type: "agentMessage", text: "OFFLINE_COMPLETED" }];
   await page.screenshot({ path: join(root, "running-disconnected.png") });
-  await page
-    .getByTestId("chat-view")
-    .getByRole("button", { name: "恢复连接", exact: true })
-    .click();
+  offlineMode = false;
+  await reconnectButton().click();
   await page.getByText("OFFLINE_COMPLETED", { exact: true }).waitFor();
   await page.getByRole("button", { name: "停止", exact: true }).waitFor({ state: "hidden" });
   assert.equal(await page.getByTestId("cloud-chat-input").getAttribute("contenteditable"), "true");
@@ -394,20 +440,13 @@ try {
     window.dispatchEvent(new StorageEvent("storage", { key, newValue }));
   });
   assert.equal(await page.getByText("Cloud connected", { exact: true }).count(), 0);
+  offlineMode = true;
   for (const ws of wss.clients) ws.close();
-  await page
-    .getByTestId("chat-view")
-    .getByRole("button", { name: "Reconnect", exact: true })
-    .waitFor();
+  await englishReconnectButton().waitFor();
   await page.screenshot({ path: join(root, "reconnect-english.png") });
-  await page
-    .getByTestId("chat-view")
-    .getByRole("button", { name: "Reconnect", exact: true })
-    .click();
-  await page
-    .getByTestId("chat-view")
-    .getByRole("button", { name: "Reconnect", exact: true })
-    .waitFor({ state: "hidden" });
+  offlineMode = false;
+  await englishReconnectButton().click();
+  await englishReconnectButton().waitFor({ state: "hidden" });
   assert.equal(queries, 3);
   assert.equal(await page.getByText("Cloud connected", { exact: true }).count(), 0);
   await page.waitForFunction(
@@ -432,7 +471,10 @@ try {
   rejectNext = true;
   await page.getByTestId("cloud-chat-input").fill("rejected draft");
   await page.getByTestId("cloud-chat-send").click();
-  await page.getByText("操作没有完成，请重试。", { exact: true }).waitFor();
+  await page
+    .getByTestId("feedback-notice")
+    .filter({ hasText: /项目暂时没有响应|操作没有完成/ })
+    .waitFor();
   assert.equal(await page.getByText("提交结果未知", { exact: false }).count(), 0);
   assert.equal(queries, 4);
   assert.equal(await page.getByTestId("cloud-chat-input").innerText(), "rejected draft");
@@ -443,18 +485,16 @@ try {
   await page.getByTestId("cloud-chat-input").fill("keep this unknown draft");
   await page.getByTestId("cloud-chat-send").click();
   await page.getByText("QUERY_OK_5", { exact: true }).waitFor();
-  await page.getByTestId("toast").filter({ hasText: "提交结果未知" }).waitFor();
+  await page.getByTestId("feedback-notice").filter({ hasText: "提交结果未知" }).waitFor();
   assert.equal(await page.getByTestId("cloud-chat-input").innerText(), "keep this unknown draft");
   assert.equal(queries, 5);
-  const bounds = await page.getByTestId("toast").boundingBox();
-  assert.ok(bounds.y < 100 && Math.abs(bounds.x + bounds.width / 2 - 720) < 5);
   assert.equal(await page.getByTestId("chat-view").getByRole("alert").count(), 0);
   await page.screenshot({ path: join(root, "unknown-receipt-draft.png") });
   evidence.reached.push("unknown receipt retains draft without replay");
   await page.getByRole("button", { name: "新会话", exact: true }).click();
   await page.getByTestId("chat-input").waitFor();
   assert.equal(await page.getByTestId("cloud-chat-input").count(), 0);
-  assert.doesNotMatch(await page.locator(".composer-project-bar").innerText(), /Cloud|Local|本地/);
+  assert.match(await page.getByTestId("draft-environment-trigger").innerText(), /本地/);
   assert.equal(queries, 5);
   assert.equal(evidence.calls.filter((x) => x.method === "areal/thread/start").length, 1);
   await page.screenshot({ path: join(root, "new-draft-after-unknown.png") });

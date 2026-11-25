@@ -20,6 +20,7 @@ export function useWorkbenchNavigation(
   requestNavigation: ReturnType<typeof useGuardedNavigation>,
   setSidebar: (show: boolean) => void,
   setError: (message: string) => void,
+  onResetDraftEnvironment?: () => void,
 ) {
   const {
     resourceAction,
@@ -36,6 +37,7 @@ export function useWorkbenchNavigation(
     try {
       const id = await services.chooseProject();
       if (id) {
+        onResetDraftEnvironment?.();
         workspacePanels.selectPanel("");
         recordWorkspaceLocation({
           projectId: id,
@@ -53,6 +55,7 @@ export function useWorkbenchNavigation(
   const open = useCallback(
     async (pid: string, id: string, navigation: "push" | "replace" | "restore" = "push") => {
       if (!initialReleased) return;
+      onResetDraftEnvironment?.();
       if (navigation !== "restore")
         recordWorkspaceLocation({ projectId: pid, threadId: id }, navigation === "replace");
       surfaces.leavePlugins();
@@ -60,7 +63,13 @@ export function useWorkbenchNavigation(
       if (matchMedia("(max-width: 640px)").matches) setSidebar(false);
       await session.selectConversation(pid, id, { waitForReady: navigation === "replace" });
     },
-    [initialReleased, snapshot.projects, restoreConversation, recordWorkspaceLocation],
+    [
+      initialReleased,
+      snapshot.projects,
+      restoreConversation,
+      recordWorkspaceLocation,
+      onResetDraftEnvironment,
+    ],
   );
   const newTask = (pid = project?.id, record = true) => {
     if (
@@ -73,6 +82,7 @@ export function useWorkbenchNavigation(
       return;
     }
     requestNavigation(() => {
+      onResetDraftEnvironment?.();
       if (record) recordWorkspaceLocation({ projectId: pid, threadId: "" });
       surfaces.leavePlugins();
       tasks.close();
@@ -85,6 +95,7 @@ export function useWorkbenchNavigation(
   const leaveProject = (record = true) => {
     if (!initialReleased) return;
     requestNavigation(() => {
+      onResetDraftEnvironment?.();
       if (record) recordWorkspaceLocation({ projectId: "", threadId: "" });
       surfaces.leavePlugins();
       tasks.close();

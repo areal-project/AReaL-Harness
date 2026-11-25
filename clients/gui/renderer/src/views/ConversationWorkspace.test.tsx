@@ -41,6 +41,14 @@ vi.mock("../WorktreeStarter.js", () => ({
   WorktreeStarter: () => createElement("div", { "data-testid": "worktree-starter" }),
 }));
 
+vi.mock("../CloudComposer.js", () => ({
+  CloudComposer: (props: Record<string, unknown>) =>
+    createElement("div", {
+      "data-testid": "cloud-composer",
+      "data-cloud-configured": String(props.cloudConfigured),
+    }),
+}));
+
 vi.mock("../pendingMessage.js", () => ({
   usePendingMessage: () => undefined,
 }));
@@ -386,4 +394,115 @@ it("prepareProject does not pass resumeScheduling: true and respects another win
   const readyProject = (await capturedPrepareProject?.()) as Record<string, unknown>;
   expect(resourceAction).toHaveBeenCalledWith("connect", { projectId: "p1" });
   expect(readyProject).toMatchObject({ id: "p1", state: { connected: true } });
+});
+
+it("renders the draft Local/Cloud switcher for regular projects and switches to CloudComposer in cloud mode", () => {
+  const renderDraftWithEnvironment = (
+    draftEnvironment: "local" | "cloud",
+    projectOverride?: Record<string, unknown>,
+  ) =>
+    renderToStaticMarkup(
+      createElement(
+        IntlProvider,
+        { locale: "zh-CN", messages: catalogs["zh-CN"] },
+        createElement(ConversationWorkspace, {
+          session: {
+            project:
+              projectOverride === null
+                ? undefined
+                : {
+                    id: "p1",
+                    root: "/tmp/demo",
+                    state: { connected: true, hostState: "ready", threads: {} },
+                    ...projectOverride,
+                  },
+            thread: undefined,
+            threadId: "",
+            readOnly: false,
+            projects: [{ id: "p1", root: "/tmp/demo" }],
+            library: { projects: {}, threads: {}, projectOrder: [], settings: {} },
+            snapshot: { connection: { state: "ready" }, projects: [] },
+            resourceAction: vi.fn(async () => ({})),
+            retryRestoration: vi.fn(),
+            pendingRestoration: vi.fn(),
+            prepareBrowserDraft: { current: null },
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["session"],
+          services: { snapshot: vi.fn() } as unknown as Parameters<
+            typeof ConversationWorkspace
+          >[0]["services"],
+          action: vi.fn(),
+          dark: true,
+          empty: true,
+          admitting: false,
+          mainPane: { current: null },
+          workspacePanels: {
+            view: { workspaceView: "conversation" },
+            removeTerminalTab: vi.fn(),
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["workspacePanels"],
+          side: {
+            sideChats: { pendingCreation: vi.fn(), creationError: vi.fn() },
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["side"],
+          fork: {} as Parameters<typeof ConversationWorkspace>[0]["fork"],
+          preview: { onLink: vi.fn() } as unknown as Parameters<
+            typeof ConversationWorkspace
+          >[0]["preview"],
+          documents: {} as Parameters<typeof ConversationWorkspace>[0]["documents"],
+          panelNavigation: {
+            terminalOpen: false,
+            setTerminalOpen: vi.fn(),
+            showPanel: vi.fn(),
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["panelNavigation"],
+          composerWorkspace: {
+            worktreeSelection: undefined,
+            changeWorktreeSelection: vi.fn(),
+            draftEnvironment,
+            changeDraftEnvironment: vi.fn(),
+            resetDraftEnvironment: vi.fn(),
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["composerWorkspace"],
+          annotation: { openImageAnnotation: vi.fn() } as unknown as Parameters<
+            typeof ConversationWorkspace
+          >[0]["annotation"],
+          surfaces: {
+            setWorktreeSettingsTarget: vi.fn(),
+            setSettingsTab: vi.fn(),
+            setSettingsOpen: vi.fn(),
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["surfaces"],
+          tasks: {} as Parameters<typeof ConversationWorkspace>[0]["tasks"],
+          startup: {
+            restorationFailed: false,
+            restorationError: "",
+            viewFailure: undefined,
+            viewRefreshing: false,
+            currentRestoration: { pending: false },
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["startup"],
+          navigationCommands: {
+            newTask: vi.fn(),
+            choose: vi.fn(),
+            leaveProject: vi.fn(),
+            open: vi.fn(),
+          } as unknown as Parameters<typeof ConversationWorkspace>[0]["navigationCommands"],
+          setError: vi.fn(),
+          conversationReferences: [],
+          readTurnReview: vi.fn(),
+          pending: false,
+        }),
+      ),
+    );
+
+  const localHtml = renderDraftWithEnvironment("local");
+  expect(localHtml).toContain('data-testid="draft-environment-trigger"');
+  expect(localHtml).toContain("本地");
+  expect(localHtml).toContain('data-testid="draft-composer"');
+  expect(localHtml).toContain('data-testid="worktree-starter"');
+  expect(localHtml).not.toContain('data-testid="cloud-composer"');
+
+  const cloudHtml = renderDraftWithEnvironment("cloud");
+  expect(cloudHtml).toContain('data-testid="draft-environment-trigger"');
+  expect(cloudHtml).toContain("云端");
+  expect(cloudHtml).toContain('data-testid="cloud-composer"');
+  expect(cloudHtml).not.toContain('data-testid="draft-composer"');
+  expect(cloudHtml).not.toContain('data-testid="worktree-starter"');
+
+  const projectlessHtml = renderDraftWithEnvironment("local", { projectless: true });
+  expect(projectlessHtml).not.toContain('data-testid="draft-environment-trigger"');
 });

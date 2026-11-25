@@ -440,7 +440,7 @@ impl Connections {
         &self,
         host: &Host,
         session: Rc<CoreSession>,
-        options: areal_protocol::desktop::ObserveThread,
+        mut options: areal_protocol::desktop::ObserveThread,
     ) -> Result<(Value, u64, CoreObservation)> {
         if options.mode.is_some() {
             let capabilities = session
@@ -450,10 +450,16 @@ impl Connections {
                 })
                 .await?;
             ensure!(session.shared_current(host), unavailable());
-            ensure!(
-                capabilities["features"]["conversationObservation"] == true,
-                "CORE_INCOMPATIBLE"
-            );
+            if capabilities["features"]["conversationObservation"] == true {
+                // 远端和本机均优先使用 conversation 观察模式。
+            } else if session.remote_source.is_some()
+                && capabilities["features"]["boundedObservation"] == true
+            {
+                // 远端 Cloud 沙箱镜像版本独立发布，未声明 conversationObservation 时按能力回退到 bounded 观察。
+                options.mode = Some(areal_protocol::desktop::ObservationMode::Bounded);
+            } else {
+                anyhow::bail!("CORE_INCOMPATIBLE");
+            }
         }
         let events = session.events.subscribe();
         *session
@@ -661,9 +667,13 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
             || connection.remote_source.is_some())
             && let Some(lease) = connection.workbench_lease.borrow().as_deref()
         {
-            let mut event = value;
+            let mut event = value.clone();
             event["sequence"] = json!(sequence);
             emit_workbench_event(host, &connection.project_id, lease, &event);
+        }
+        // Host 持有的 Cloud 会话复用 terminal 连接池，同时由 ConversationReader 经 connection.events 订阅实时事件。
+        if connection.host_owned.get() {
+            let _ = connection.events.send(CoreEvent { sequence, value });
         }
         return;
     }
@@ -1159,6 +1169,26 @@ async fn connect_owned(
         .context("schedule host principal has no token")?;
     connect_authorized(host, id, service, terminal, token.to_owned(), None).await
 }
+fn tls_connector_for_endpoint(endpoint: &str) -> Result<Option<tokio_tungstenite::Connector>> {
+    if !endpoint.starts_with("wss://") {
+        return Ok(None);
+    }
+    // 完整二进制同时链接 ring 和 aws-lc，wss:// 必须显式传入连接级 Rustls provider，避免进程默认 provider 冲突。
+    let certificates = rustls_native_certs::load_native_certs();
+    let mut roots = rustls::RootCertStore::empty();
+    roots.add_parsable_certificates(certificates.certs);
+    ensure!(!roots.is_empty(), "no system TLS trust roots available");
+    let config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()?
+    .with_root_certificates(roots)
+    .with_no_client_auth();
+    Ok(Some(tokio_tungstenite::Connector::Rustls(
+        std::sync::Arc::new(config),
+    )))
+}
+
 async fn connect_authorized(
     host: Rc<Host>,
     id: &str,
@@ -1167,15 +1197,61 @@ async fn connect_authorized(
     token: String,
     remote_source: Option<String>,
 ) -> Result<Rc<CoreSession>> {
-    let mut request = service.endpoint.as_str().into_client_request()?;
-    request
-        .headers_mut()
-        .insert("authorization", format!("Bearer {token}").parse()?);
-    let (socket, _) = tokio::time::timeout(
-        Duration::from_secs(10),
-        tokio_tungstenite::connect_async(request),
-    )
-    .await??;
+    let connector = tls_connector_for_endpoint(&service.endpoint)?;
+    // 远端 Cloud 沙箱冷启动可能需要数十秒完成 WebSocket 握手，网关在冷启动交界期可能返回 409/502/503/504；
+    // 在总唤醒预算内退避重试，本机回环仍保持单次 10 秒上限。
+    let is_remote = remote_source.is_some();
+    let deadline = tokio::time::Instant::now()
+        + if is_remote {
+            Duration::from_secs(120)
+        } else {
+            Duration::from_secs(10)
+        };
+    let mut backoff = Duration::from_secs(2);
+    let mut http_retries = 0usize;
+    let socket = loop {
+        let mut request = service.endpoint.as_str().into_client_request()?;
+        request
+            .headers_mut()
+            .insert("authorization", format!("Bearer {token}").parse()?);
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        ensure!(!remaining.is_zero(), "WebSocket connect timed out");
+        let attempt = tokio::time::timeout(
+            remaining,
+            tokio_tungstenite::connect_async_tls_with_config(
+                request,
+                None,
+                false,
+                connector.clone(),
+            ),
+        )
+        .await?;
+        match attempt {
+            Ok((socket, _)) => break socket,
+            Err(tokio_tungstenite::tungstenite::Error::Http(resp)) if is_remote => {
+                let status = resp.status().as_u16();
+                let non_retryable_409 = status == 409
+                    && resp
+                        .body()
+                        .as_deref()
+                        .and_then(|bytes| std::str::from_utf8(bytes).ok())
+                        .is_some_and(|body| {
+                            body.to_ascii_lowercase()
+                                .contains("reconciliation required")
+                        });
+                let retryable = !non_retryable_409 && matches!(status, 409 | 502 | 503 | 504);
+                if retryable && http_retries < 2 && tokio::time::Instant::now() + backoff < deadline
+                {
+                    http_retries += 1;
+                    tokio::time::sleep(backoff).await;
+                    backoff = (backoff * 2).min(Duration::from_secs(5));
+                    continue;
+                }
+                return Err(tokio_tungstenite::tungstenite::Error::Http(resp).into());
+            }
+            Err(err) => return Err(err.into()),
+        }
+    };
     let (outgoing, mut messages) = mpsc::channel::<Value>(MAX_PENDING);
     let session = Rc::new(CoreSession {
         project_id: id.into(),
@@ -1219,8 +1295,20 @@ async fn connect_authorized(
         let _guard = DriverGuard(connection.clone(), Rc::downgrade(&host));
         let (mut writer, mut reader) = socket.split();
         let mut callbacks = JoinSet::new();
+        // 远端 Cloud 网关在模型长思考期间若无帧往来会主动回收空闲连接，每 30 秒发一次 Ping 保活。
+        let keepalive_enabled = connection.remote_source.is_some();
+        let mut keepalive = tokio::time::interval_at(
+            tokio::time::Instant::now() + Duration::from_secs(30),
+            Duration::from_secs(30),
+        );
+        keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let reason = loop {
             tokio::select! {
+                _ = keepalive.tick(), if keepalive_enabled => {
+                    if writer.send(Message::Ping(Vec::new().into())).await.is_err() {
+                        break "socket_keepalive_error";
+                    }
+                }
                 outgoing = messages.recv() => {
                     let Some(value) = outgoing else { break "outgoing_closed"; };
                     if writer.send(Message::Text(value.to_string().into())).await.is_err() { break "socket_write_error"; }
