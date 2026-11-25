@@ -212,6 +212,7 @@ harness: ## 通过可信独立启动器启动工具 Harness；ARGS 指定工作�
 harness-smoke: build sdk-build ## 原生 SDK 与完整读改测试/强杀恢复
 	$(MAKE) harness-smoke-core
 	$(MAKE) harness-smoke-extended
+	python3 scripts/native-rust-smoke.py --bin-dir target/debug
 
 # CI 已校验并还原同提交 Linux Core 产物时设置 AREAL_PREBUILT_CORE=1，避免下游集成 job 重复编译 workspace。
 CORE_BUILD_DEP := $(if $(AREAL_PREBUILT_CORE),,build)
@@ -220,7 +221,6 @@ harness-smoke-core: $(CORE_BUILD_DEP) sdk-build ## 原生工具、SDK、权限�
 	python3 scripts/native-tools-smoke.py --bin-dir target/debug
 	python3 scripts/navigation-read-scope-smoke.py --bin-dir target/debug
 	python3 scripts/native-python-smoke.py --bin-dir target/debug
-	python3 scripts/native-rust-smoke.py --bin-dir target/debug
 	python3 scripts/runtime-sdk-smoke.py
 	node scripts/harness-smoke.mjs
 	node scripts/workgroup-smoke.mjs
@@ -237,9 +237,10 @@ harness-smoke-extended: $(CORE_BUILD_DEP) sdk-build ## 插件、权限模式、G
 	node scripts/local-service-smoke.mjs
 	node scripts/runtime-rotation-smoke.mjs
 
-macos-native-smoke: build ## macOS 原生差异验证（Seatbelt、私有 Bash、共享服务与 Git 认证）
+macos-native-smoke: build ## macOS 原生差异验证（Seatbelt、Apple 工具链编译、私有 Bash、共享服务与 Git 认证）
 	$(MAKE) -k -j2 runtime-smoke git-auth-smoke local-service-smoke
 	python3 scripts/native-tools-smoke.py --bin-dir target/debug
+	python3 scripts/native-rust-smoke.py --bin-dir target/debug
 
 unified-execution-smoke: build ## 真实 Runtime 的统一委派、组合交付、取消和恢复回归
 	node scripts/unified-execution-smoke.mjs
