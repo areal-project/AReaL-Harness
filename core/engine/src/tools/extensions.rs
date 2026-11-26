@@ -295,15 +295,13 @@ impl Invocation<'_> {
         } else {
             None
         };
-        let approval_arguments = browser_plan
-            .as_ref()
-            .map(|plan| json!({"arguments":arguments,"plan":plan}));
         self.engine
-            .approval(
+            .approval_with_browser_plan(
                 self.cell,
                 &self.call.id,
                 &self.call.name,
-                approval_arguments.as_ref().unwrap_or(&arguments),
+                &arguments,
+                browser_plan.as_ref(),
                 self.cancel,
             )
             .await?;

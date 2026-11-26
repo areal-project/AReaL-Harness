@@ -264,7 +264,7 @@ JSONL 的 30 天期限按文件最后修改时间计算，不逐条检查行的�
 
 Chat Completions 和 Responses 的单个工具调用 ID 上限为 64 KiB（含边界），字节数同时计入响应的工具总缓冲。Chat 的同一调用按分片累计。合法 ID 按原值与工具结果关联；超出预算时拒绝该响应的工具调用，不截断 ID。
 
-结构化 `agent_spawn` 的内部去重键由父 Thread、Turn 和完整调用 ID 派生。独立权限审查的摘要绑定完整调用 ID；发送给审查模型的操作说明省略该 ID，仍受 48 KiB 限制。
+结构化 `agent_spawn` 的内部去重键由父 Thread、Turn 和完整调用 ID 派生。独立权限审查的摘要绑定完整调用 ID 和操作，包括已绑定宿主准备的浏览器计划。审查模型的输入省略协议调用 ID，以及计划和批量子步骤中与它一致的副本。工具参数、页面数据原样保留，仍计入 48 KiB 上限。计划中的关联 ID 不一致时，独立审查失败，不派发操作。
 
 工具错误审计新增 `errorCode` 与 `toolCallError`：`invalid_tool_call_index` 附固定原因、协议、字段路径、从 1 开始的 SSE 数据事件序号、index JSON 类型及已缓冲调用数量；`tool_call_budget_exceeded` 附预算类别、上限和观测值。字段只含固定标签和有界数值，诊断不复制 SSE、参数、reasoning 或非法字段值，使用同一记录的本地 `requestId` 关联。`responseShape.toolArgumentBytes` 沿用旧名称，实际累计通过校验的 id/name/arguments 字节。
 
