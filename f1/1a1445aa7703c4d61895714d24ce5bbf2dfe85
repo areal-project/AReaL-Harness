@@ -1,0 +1,23 @@
+core/engine/src/tools/presentation.rs
+  s_9b36f1138b8feb::t_69077a736f676d 22,35,41
+core/server/src/tool_extensions.rs
+  s_9b36f1138b8feb::t_69077a736f676d 54
+clients/cli/src/run.rs
+  s_9b36f1138b8feb::t_69077a736f676d 323-324,384
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f11a1445aa7703c4d61895714d24ce5bbf2dfe85",
+  "prompts": {},
+  "sessions": {
+    "s_9b36f1138b8feb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a20b9c-6040-7a01-bd2e-30eb8ddd1094",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
