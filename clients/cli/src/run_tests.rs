@@ -10,6 +10,27 @@ async fn configure_requests(
     previous: Option<bool>,
     model: Option<&str>,
 ) -> (Vec<Value>, String) {
+    capture_configuration(
+        supported,
+        disable,
+        previous,
+        model,
+        json!({"options":{}}),
+        json!({"tools":[]}),
+        &[],
+    )
+    .await
+}
+
+async fn capture_configuration(
+    supported: bool,
+    disable: bool,
+    previous: Option<bool>,
+    model: Option<&str>,
+    saved: Value,
+    inspection: Value,
+    flags: &[&str],
+) -> (Vec<Value>, String) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!("ws://{}", listener.local_addr().unwrap());
     let requests = Arc::new(Mutex::new(Vec::new()));
@@ -32,14 +53,14 @@ async fn configure_requests(
                     {"providerId":"other","modelId":"terra"}
                 ]}),
                 "areal/thread/start" | "areal/thread/observe" | "thread/read" => {
-                    let mut options = json!({});
+                    let mut config = saved.clone();
                     if let Some(enabled) = previous {
-                        options["automaticSessionName"] = json!(enabled);
+                        config["options"]["automaticSessionName"] = json!(enabled);
                     }
-                    json!({"thread":{"id":"session","cwd":"/workspace",
-                        "desktop":{"configuration":{"revision":3,"options":options}}}})
+                    config["revision"] = json!(3);
+                    json!({"thread":{"id":"session","cwd":"/workspace","desktop":{"configuration":config}}})
                 }
-                "areal/thread/inspect" => json!({"tools":[]}),
+                "areal/thread/inspect" => inspection.clone(),
                 "areal/profile/list" => json!({"data":[]}),
                 "areal/thread/configure" => {
                     // 在读取 stdin/提交 Turn 之前结束夹具，检验真实 RPC 请求而非重复拼装逻辑。
@@ -88,6 +109,7 @@ async fn configure_requests(
     if let Some(model) = model {
         arguments.extend(["--model", model]);
     }
+    arguments.extend_from_slice(flags);
     let args = LegacyArgs::try_parse_from(arguments).unwrap().cli;
     let error = tokio::time::timeout(Duration::from_secs(5), execute(&args))
         .await
@@ -180,4 +202,104 @@ async fn ambiguous_model_is_rejected_before_creating_a_session() {
         "{error}"
     );
     assert!(requests.iter().all(|r| r["method"] != "areal/thread/start"));
+}
+
+#[tokio::test]
+async fn model_and_effort_changes_never_freeze_a_projected_menu_as_an_allowlist() {
+    // 模拟旧模型可见菜单与同一会话的授权目录不同。只切换模型/强度不应写目录快照。
+    let projected = json!({"tools":[{"function":{"name":"read_file"}}],"authorizedToolNames":["read_file","tool_search"]});
+    let fresh = json!({"options":{}});
+    let mut legacy = projected.clone();
+    legacy
+        .as_object_mut()
+        .unwrap()
+        .remove("authorizedToolNames");
+    for (inspection, flags, expected) in [
+        (&projected, vec!["--effort", "high"], Value::Null),
+        (&legacy, vec!["--effort", "high"], json!(["read_file"])),
+        (
+            &projected,
+            vec!["--tools", "tool_search", "--effort", "high"],
+            json!(["tool_search"]),
+        ),
+        (
+            &projected,
+            vec![
+                "--disallowedTools",
+                "tool_search,read_file",
+                "--effort",
+                "high",
+            ],
+            json!([]),
+        ),
+    ] {
+        let (requests, error) = capture_configuration(
+            true,
+            false,
+            None,
+            Some("arena:terra"),
+            fresh.clone(),
+            inspection.clone(),
+            &flags,
+        )
+        .await;
+        assert!(error.contains("configuration captured"), "{error}");
+        let request = &requests
+            .iter()
+            .find(|r| r["method"] == "areal/thread/configure")
+            .unwrap()["params"];
+        assert_eq!(request["model"]["providerId"], "arena");
+        assert_eq!(request["parameters"]["reasoningEffort"], "high");
+        assert_eq!(request["options"]["toolAllowlist"], expected);
+    }
+}
+
+#[tokio::test]
+async fn resume_keeps_stored_authorization_while_changing_route_or_narrowing_filters() {
+    let saved = json!({"readOnly":true, "toolAllowlist":["read_file"], "options":{"toolAllowlist":["read_file"],
+        "systemPrompt":"fixed","permissionPreset":"autoReview","approvalTools":["*"],"preapprovedTools":[],
+        "maxModelRounds":4}});
+    // 即使对端诊断返回过宽的目录，显式工具选择也不能超出这条恢复会话原有边界。
+    let inspection =
+        json!({"tools":[],"authorizedToolNames":["read_file","edit_files","tool_search"]});
+    for (flags, expected) in [
+        (
+            vec!["--effort", "max", "--tools", "default"],
+            Some(json!(["read_file"])),
+        ),
+        (vec!["--disallowedTools", "read_file"], Some(json!([]))),
+        (vec!["--tools", "edit_files"], None),
+        (vec!["--allowedTools", "edit_files"], None),
+    ] {
+        let (requests, error) = capture_configuration(
+            true,
+            false,
+            Some(false),
+            Some("arena:terra"),
+            saved.clone(),
+            inspection.clone(),
+            &flags,
+        )
+        .await;
+        let configure = requests
+            .iter()
+            .find(|r| r["method"] == "areal/thread/configure");
+        let Some(expected) = expected else {
+            assert!(configure.is_none() && error.contains("unknown"), "{error}");
+            continue;
+        };
+        assert!(error.contains("configuration captured"), "{error}");
+        let options = &configure.unwrap()["params"]["options"];
+        assert_eq!(options["toolAllowlist"], expected);
+        assert_eq!(options["readOnly"], true);
+        for field in [
+            "systemPrompt",
+            "permissionPreset",
+            "approvalTools",
+            "preapprovedTools",
+            "maxModelRounds",
+        ] {
+            assert_eq!(options[field], saved["options"][field]);
+        }
+    }
 }

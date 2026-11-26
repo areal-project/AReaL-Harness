@@ -286,12 +286,22 @@ async fn run_configured(mut args: Args, diagnostic: Option<ConfigCommand>) -> Re
         )
     };
     // 模型与凭据由具体执行配置准入；单模型和托管目录都保留历史、配置控制器与修复入口。
-    let mut extensions = match tool_extensions::load(resolved.tool_extensions_file.as_deref()) {
+    let mut extensions = match tool_extensions::load(
+        resolved.tool_extensions_file.as_deref(),
+        &resolved.tool_presentation,
+    ) {
         Ok(extensions) => extensions,
-        Err(_) if args.service_info.is_some() => {
+        Err(cause) if args.service_info.is_some() => {
             resolved = areal_config::load_read_config(&inputs)?;
-            execution_error =
-                Some("Tool configuration is unavailable; history remains readable".into());
+            execution_error = Some(
+                if let Some(conflict) =
+                    cause.downcast_ref::<areal_engine::tools::DisabledProgrammaticPresentation>()
+                {
+                    conflict.to_string()
+                } else {
+                    "Tool configuration is unavailable; history remains readable".into()
+                },
+            );
             Default::default()
         }
         Err(cause) => return Err(cause),
@@ -721,6 +731,7 @@ async fn serve(
             let phase = match message.as_str() {
                 "Execution configuration is unavailable; history remains readable" => "history_only",
                 "Tool configuration is unavailable; history remains readable" => "tools",
+                reason if reason.starts_with("TOOL_PRESENTATION_REQUIRES_PROGRAMMATIC_TOOLS:") => "tools",
                 "Model configuration is unavailable; history remains readable" => "model",
                 "MCP configuration is unavailable; history remains readable" => "mcp",
                 "Plugin configuration is unavailable; history remains readable" => "plugins",

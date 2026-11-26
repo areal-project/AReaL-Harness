@@ -475,6 +475,8 @@ Task Mode 在 Goal 之上提供 foreground/scheduled/background 任务、TaskRun
 
 `thread/read {threadId,includeTurns:true}` 返回持久化 Turn/Item 历史；`areal/thread/inspect` 返回执行配置与工具视图；`areal/context/read {threadId,offset,limit}` 返回分页历史投影（limit 为 1–32）与指令快照，并省略不透明 provider context。该投影包含持久化的请求状态快照；旧版本未保存的提示无法恢复。它仍不是过去某次 HTTP 请求的精确重放。每次模型调用在预算预检和摘要裁剪后提交的 Engine 消息通过 `areal::trajectory` 的 `gen_ai.input.messages` 记录；查询已导出的轨迹需使用部署的遥测后端。该字段是协议适配前的逻辑消息；完整适配后的请求使用以下独立字段，不能把两者混用。
 
+`areal/thread/inspect` 的 `tools` 是当前配置的工具定义视图。`authorizedToolNames` 是按当前线程的权限和可用能力筛选的工具名列表，供客户端处理显式允许或禁用规则。呈现预设可以将某个名称的 schema 延迟到后续请求，不能据此把工具从权限范围删除。客户端不应把 `tools` 当作下一次模型或推理强度切换时的授权名单。实际发给模型的菜单还会经过原生、MCP 和程序目录的投影；可以在模型请求审计中核验。[配置指南](../guides/configuration.md#原生工具菜单)说明选择顺序与回退。
+
 ### 持久轨迹协议
 
 传输使用标准 OTLP HTTP/protobuf 的 `ExportLogsServiceRequest`，不是 Arena 私有请求。`areal.trajectory/v1` 是本项目公开的、带版本的 Agent 轨迹语义约定，`areal.*` 是自定义 OTLP 属性，不是 OpenTelemetry 标准属性。任意标准 Collector 可以接收并转发这些日志；独立接收端和其它生产者可依据本节实现轨迹解析，不需要安装 Harness 或 Arena 的包。普通日志缺少 Turn 身份或终态时，不能推断为完整 Agent 轨迹。

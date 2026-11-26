@@ -544,6 +544,7 @@ impl Engine {
         let model = factory
             .build(provider.endpoint.clone(), name.into(), credential, protocol)
             .map_err(invalid)?
+            .with_presentation_provider(provider.id.clone())
             .with_audit_directory(self.store.root().join("model-requests"))
             .with_options(model::ModelOptions {
                 responses_prompt_cache: protocol == model::ModelProtocol::Responses

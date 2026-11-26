@@ -654,6 +654,39 @@ Examples are historical candidate values, not performance recommendations. Set o
 
 Ablations can use `AREAL_HARNESS_CONTEXT_OBSERVATION_TOKENS`, `AREAL_HARNESS_MAX_COMPLETION_RETRIES`, `AREAL_HARNESS_MAX_EMPTY_COMPLETION_RETRIES`, `AREAL_HARNESS_CONTEXT_REFERENCE_TOKENS`, `AREAL_HARNESS_COMMAND_STDIN_CLOSED`, and `AREAL_HARNESS_MAX_REPEATED_TOOL_FAILURES`. Added input and recovery usage remain charged to the root budget; estimated compression is not measured savings.
 
+## Native tool menu
+
+Set `profile = "compact-3"` under `[tools.presentation]` in the startup TOML to start sessions with a compact menu. For a single isolated run, set `AREAL_HARNESS_TOOL_PROFILE=compact-3` instead. Start a new instance with `wide` to restore the original wide menu. Shared Core instances follow the usual safe restart procedure for deployment changes; a running Turn does not switch menus.
+
+| Preset | Native tools initially exposed as top-level entries |
+| --- | --- |
+| `wide` | The full menu the session would otherwise allow. Its size depends on the Runtime, permissions and configured capabilities. |
+| `compact-3` | `edit_files`, `tool_program`, and `tool_search`. |
+| `compact-6` | The three entries above plus `read_file`, `run_command`, and `image_read`. |
+| Custom name | A compact menu with the listed authorized local native tools exposed directly. Other common operations remain callable from the program catalog. |
+
+Three and six describe a base environment. Disabled tools are not included. MCP, plugins and other extensions retain their own exposure and discovery settings and may contribute additional entries. The model can call operations already in the `tool_program` catalog without searching. It uses `tool_search` to load deferred definitions. A preset cannot turn on a disabled program tool; an explicit compact preset requires `programmaticTools` to be enabled.
+
+The following example sets a scene default for one provider and model. Use the actual route values from your deployment and register only combinations you have validated:
+
+```toml
+[tools.presentation]
+scene = "file-analysis"
+
+[tools.presentation.custom]
+reader = ["edit_files", "read_file"]
+
+[[tools.presentation.defaults]]
+provider = "local"
+model = "example-model"
+protocol = "responses"
+reasoning_effort = "high"
+scene = "file-analysis"
+profile = "reader"
+```
+
+Selection order: environment override > explicit TOML `profile` > explicit presentation fields in the extensions JSON (`compactTools`, `programmaticTools`, `programmaticToolsOnly`, or `programmaticDirectTools`) > exact matching rule > original wide menu. Configuring only MCP, hooks or result views does not suppress a rule. The provider ID, model ID, protocol and reasoning effort of the executing model and the explicitly configured scene must match. An omitted rule effort only matches an omitted outbound effort. No model rules ship by default; names and task content do not infer a profile. Tool permissions, model budgets, cache keys and retries remain independent. See [programmatic tool calling](programmatic-tools.en.md) for underlying policies and discovery.
+
 ## Hooks configuration
 
 `[features]` accepts boolean `hooks` and the legacy alias `codex_hooks` (`hooks` wins when both appear). Omission enables discovery, with separate trust still required for every current definition. User `hooks=false` gates both configuration and package hooks; project switches cannot override it. Top-level `[hooks]` is delegated to the hooks parser while model/permission fields retain strict parsing. Project `.codex/config.toml` is read only for hooks, without changing the global precedence described above.

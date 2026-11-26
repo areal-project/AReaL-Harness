@@ -235,6 +235,9 @@ impl Model for SharedModel {
         state.update();
         Some(state.snapshot.clone())
     }
+    fn presentation_route(&self) -> Option<areal_config::tool_presentation::PresentationRoute<'_>> {
+        self.inner.presentation_route()
+    }
     fn provider(&self) -> &str {
         self.inner.provider()
     }
@@ -552,6 +555,9 @@ impl Model for ProgressModel {
     }
     fn name(&self) -> &str {
         self.inner.name()
+    }
+    fn presentation_route(&self) -> Option<areal_config::tool_presentation::PresentationRoute<'_>> {
+        self.inner.presentation_route()
     }
     fn provider(&self) -> &str {
         self.inner.provider()
@@ -902,6 +908,7 @@ impl Executor for NativeExecutor {
             let mut extensions = crate::tools::ToolExtensions::default();
             if let Some(source) = self.catalog.as_ref().and_then(std::sync::Weak::upgrade) {
                 extensions.policy = source.extensions.policy.clone();
+                extensions.presentation = source.extensions.presentation.clone();
                 if !source.extensions.hooks.is_empty() {
                     extensions.policy.parallel_read_calls = 1;
                 }

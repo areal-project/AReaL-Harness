@@ -36,6 +36,8 @@ Tool aliases AskUserQuestion/Bash/Read/Write/Edit/TodoWrite/Task map to ask_user
 
 `--permissions YOLO|ASK_PERMISSIONS` and `--scratch` configure local deployment; `--permission-mode` defaults to inherit, using global policy. Explicit default/acceptEdits/dontAsk/plan/bypassPermissions retain client restrictions and cannot weaken global ask/deny or Profile rules. Local launch now defaults to full-access without requiring --allow-write/--allow-network. Existing remote endpoints retain their own policy.
 
+`--effort` accepts `default` (omit outbound effort), `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`, subject to validation by the selected model. Core selects the [tool menu](../guides/configuration.en.md#native-tool-menu) for the model and effort executing the Turn. `--tools` and `--disallowedTools` filter tools within existing grants. Resuming a session cannot add a previously denied tool. Omitting a tool filter does not freeze the initial menu into an allowlist.
+
 ## Messages and termination
 
 Input is `{type:"user",uuid?,session_id?,message:{role:"user",content:[{type:"text",text:"hello"}]}}`, with 1 MiB lines and Core's 64 KiB text budget. session_id must match. stdout emits system/init, assistant, user/tool_result, optional stream_event and final result.

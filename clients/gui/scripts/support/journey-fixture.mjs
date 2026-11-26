@@ -268,3 +268,19 @@ export function sendReady(page) {
     .first()
     .waitFor({ timeout: 60_000 });
 }
+
+// 只响应当前观察到的审批。权威更新可能移除它，不能等待或点击下一张审批卡。
+export async function denyPresentRecoveryApproval(button) {
+  if (!button) return;
+  try {
+    if ((await button.isVisible()) && (await button.isEnabled())) await button.click();
+  } catch (error) {
+    if (
+      !/Element is not attached to the DOM/i.test(error.message) ||
+      (await button.evaluate((element) => element.isConnected))
+    )
+      throw error;
+  } finally {
+    await button.dispose();
+  }
+}

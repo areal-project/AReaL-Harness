@@ -673,7 +673,7 @@ impl Engine {
             if state.thread.desktop.is_none() {
                 // 为预算创建配置不能顺带开放原父任务未启用的桌面工具。
                 let mut allowed: Vec<_> = self
-                    .visible_tools(&parent, config, false, &state.thread)
+                    .authorized_tools(&parent, config, false, &state.thread)
                     .await
                     .iter()
                     .filter_map(|d| d["function"]["name"].as_str().map(str::to_owned))

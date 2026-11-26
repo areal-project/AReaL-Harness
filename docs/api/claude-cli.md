@@ -36,6 +36,8 @@ target/debug/areal -p 'Continue' --resume SESSION_ID --output-format json
 
 `--permissions YOLO|ASK_PERMISSIONS` 与 `--scratch` 配置本地部署；`--permission-mode` 默认 inherit，继承全局策略。显式 default/acceptEdits/dontAsk/plan/bypassPermissions 保留客户端限制，不能削弱全局 ask/deny 或 Profile。默认本地启动 full-access，无需 --allow-write/--allow-network；已有远端 endpoint 使用自己的策略。
 
+`--effort` 支持 `default`（不发强度）、`none`、`minimal`、`low`、`medium`、`high`、`xhigh` 和 `max`，仍由所选模型校验。新 Core 根据本轮实际的模型和强度选择[工具菜单](../guides/configuration.md#原生工具菜单)。`--tools` 和 `--disallowedTools` 在已有授权范围内过滤，恢复会话不会把原先被拒的工具加回；未指定工具过滤时不把启动菜单固化成白名单。
+
 ## 消息与终态
 
 输入 `{type:"user",uuid?,session_id?,message:{role:"user",content:[{type:"text",text:"hello"}]}}`，行上限 1 MiB，Core 文本预算 64 KiB。session_id 必须匹配。stdout 输出 system/init、assistant、user/tool_result、可选 stream_event 和最终 result。

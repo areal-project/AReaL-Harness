@@ -114,8 +114,9 @@ impl Engine {
         &self,
         cell: &Cell,
         mut definitions: Vec<Value>,
+        menu: &crate::tools::ToolMenu,
     ) -> Vec<Value> {
-        if !self.extensions.policy.compact_tools
+        if !menu.compact
             || !definitions
                 .iter()
                 .any(|d| d["function"]["name"] == "tool_search")
@@ -148,7 +149,10 @@ impl Engine {
                         .collect(),
                 })
             })
-            .partition(|tool| common_native(&tool.name));
+            .partition(|tool| {
+                common_native(&tool.name)
+                    || (menu.custom_direct && menu.direct.contains(&tool.name))
+            });
         drop(bindings);
         let mut state = cell.state.lock().await;
         let Some(active) = state.active.as_mut() else {
@@ -186,9 +190,6 @@ impl Engine {
         turn_id: &str,
         args: &Value,
     ) -> Result<Value> {
-        if !self.extensions.policy.compact_tools {
-            return Err(invalid("compact tools are disabled"));
-        }
         let query = args["query"]
             .as_str()
             .ok_or_else(|| invalid("query is required"))?;
@@ -202,6 +203,13 @@ impl Engine {
             .as_mut()
             .filter(|a| a.id == turn_id)
             .ok_or(Error::Conflict)?;
+        if !self
+            .extensions
+            .tool_menu(Some(active.model.as_ref()))
+            .compact
+        {
+            return Err(invalid("compact tools are disabled"));
+        }
         Ok(active.native_tool_exposure.search_native(query, limit))
     }
 

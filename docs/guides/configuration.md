@@ -654,6 +654,39 @@ WebSocket 求解连接携带 Core 线程 ID 作为 session-id/thread-id，以便
 
 消融可使用环境变量 `AREAL_HARNESS_CONTEXT_OBSERVATION_TOKENS`、`AREAL_HARNESS_MAX_COMPLETION_RETRIES`、`AREAL_HARNESS_MAX_EMPTY_COMPLETION_RETRIES`、`AREAL_HARNESS_CONTEXT_REFERENCE_TOKENS`、`AREAL_HARNESS_COMMAND_STDIN_CLOSED`、`AREAL_HARNESS_MAX_REPEATED_TOOL_FAILURES`。实际新增输入与恢复费用仍记入根预算，不能将估算压缩量当作实际节省。
 
+## 原生工具菜单
+
+在启动 Core 的 TOML 中设置 `[tools.presentation] profile = "compact-3"`，即可让使用该配置的会话以紧凑菜单开始。也可只为一次独立运行设置 `AREAL_HARNESS_TOOL_PROFILE=compact-3`。用 `wide` 启动新实例可以恢复原有的宽菜单；共享 Core 按部署配置的规则安全重启，正在执行的 Turn 不热切换。
+
+| 预设 | 模型起初直接看到的原生入口 |
+| --- | --- |
+| `wide` | 当前会话原本允许的完整菜单。数量取决于 Runtime、权限和已配置的能力。 |
+| `compact-3` | `edit_files`、`tool_program`、`tool_search`。 |
+| `compact-6` | 在三个入口上增加 `read_file`、`run_command`、`image_read`。 |
+| 自定义名称 | 使用紧凑菜单，并让列表中已授权的本地原生工具直达；未列入的常用工具仍可在程序目录中调用。 |
+
+三和六是基础环境的入口数。被禁用的工具不会出现。MCP、插件等仍按原配置展示或延迟发现，其入口不计在这两个数字内。模型可在 `tool_program` 直接组合程序目录中已有的操作，无需先搜索；只有延迟展示的定义才需通过 `tool_search` 加载。预设不会开启被禁用的程序工具；显式紧凑预设要求 `programmaticTools` 已启用。
+
+下面的示例给一个供应商的具体模型配置场景默认。将路由字段换成本部署的实际值，并只为已验证的组合登记规则：
+
+```toml
+[tools.presentation]
+scene = "file-analysis"
+
+[tools.presentation.custom]
+reader = ["edit_files", "read_file"]
+
+[[tools.presentation.defaults]]
+provider = "local"
+model = "example-model"
+protocol = "responses"
+reasoning_effort = "high"
+scene = "file-analysis"
+profile = "reader"
+```
+
+选择顺序是：环境变量 > TOML 显式 `profile` > 扩展 JSON 中显式指定的呈现字段（`compactTools`、`programmaticTools`、`programmaticToolsOnly` 或 `programmaticDirectTools`）> 精确匹配规则 > 原宽菜单。仅配置 MCP、hooks 或结果视图不屏蔽规则。匹配使用实际执行模型的供应商 ID、模型 ID、协议、推理强度以及部署显式填写的场景；规则省略强度只匹配出站同样省略强度的请求。没有内置模型规则，不根据模型前缀或任务内容推断。工具权限、模型预算、缓存键和重试分别配置。底层策略及延迟发现的细节见[程序化工具调用](programmatic-tools.md)。
+
 ## Hooks 配置
 
 `[features]` 接受 `hooks` 布尔开关与旧别名 `codex_hooks`（同时设置时 `hooks` 优先）；省略时启用发现，仍须独立信任每份当前定义。用户 `hooks=false` 禁止配置与包 hooks，项目开关不能覆盖它。顶层 `[hooks]` 交给插件 hooks 解析器，其他模型/权限配置仍按原严格规则解析。项目 `.codex/config.toml` 仅在 hooks 发现中读取，不改变本页的全局配置优先级。

@@ -168,6 +168,7 @@ pub async fn run(command: Command, runtime_bin: PathBuf) -> Result<()> {
                     ModelProtocolConfig::Responses => ModelProtocol::Responses,
                 },
             )?
+            .with_presentation_provider(config.model.provider.clone())
             .with_audit_directory(config.data_dir.join("model-requests"))
             .with_options(ModelOptions {
                 capabilities: config

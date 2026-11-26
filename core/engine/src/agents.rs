@@ -1571,7 +1571,7 @@ mod tests {
                     max_model_rounds: Some(3),
                     ..Default::default()
                 },
-                tool_allowlist: Some(vec!["agent_report".into()]),
+                tool_allowlist: Some(vec!["agent_report".into(), "tool_search".into()]),
                 ..Default::default()
             };
             state.thread.turns[0].configuration = Some(config.clone());
@@ -1618,7 +1618,10 @@ mod tests {
         let config = saved.turns[0].configuration.as_ref().unwrap();
         assert!(config.read_only);
         assert_eq!(config.options.max_model_rounds, Some(2));
-        assert_eq!(config.tool_allowlist, Some(vec!["agent_report".into()]));
+        // 宽菜单不展示搜索，但继承的权限不能因此丢失它；也不能把未授权的桌面入口带给子任务。
+        let mut allowed = config.tool_allowlist.clone().unwrap();
+        allowed.sort();
+        assert_eq!(allowed, ["agent_report", "tool_search"]);
         let child_cell = engine.cell(&saved.id).await.unwrap();
         let visible = engine
             .visible_tools(&child_cell, config, true, &saved)
