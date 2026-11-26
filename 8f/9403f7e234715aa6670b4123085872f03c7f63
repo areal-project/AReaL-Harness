@@ -1,0 +1,24 @@
+core/engine/src/model/terminal_integrity_tests.rs
+  s_f68a001160e642::t_033395d0bb7c27 15-16
+  s_f68a001160e642::t_346bbe6cc668a9 3-14,17-23
+core/engine/src/model/decoder.rs
+  s_f68a001160e642::t_190cdf993c01a1 119-121,123,147,291-294
+  s_f68a001160e642::t_ddb87f607f3cd9 108-112,114-118,124-126,153-154,163,192,249-251,253,276-286,288-290,295,297,308,361,380,410
+  s_f68a001160e642::t_771b0b5a1de443 113,122,127-146,148-152,287
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8f9403f7e234715aa6670b4123085872f03c7f63",
+  "prompts": {},
+  "sessions": {
+    "s_f68a001160e642": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21705-30ec-7eb1-9cae-6b24288c0779",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
