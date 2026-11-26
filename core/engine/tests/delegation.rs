@@ -1071,6 +1071,7 @@ async fn unavailable_read_only_scope_rejects_before_child_model_and_keeps_parent
 
 struct DelegationToolModel {
     unavailable: bool,
+    spawn_call_id: String,
     child_requests: AtomicUsize,
 }
 #[async_trait]
@@ -1097,12 +1098,16 @@ impl Model for DelegationToolModel {
             .collect();
         let event = match tools.len() {
             0 => ModelEvent::ToolCall(areal_engine::model::ToolCall {
-                id: "inspection-request".into(),
+                id: self.spawn_call_id.clone(),
                 name: "agent_spawn".into(),
                 arguments: json!({"prompt":"inspect-only","intent":"inspect","delivery":"report"})
                     .to_string(),
             }),
             1 => {
+                assert_eq!(
+                    tools[0].tool_call_id.as_deref(),
+                    Some(self.spawn_call_id.as_str())
+                );
                 let result: Value = serde_json::from_str(&tools[0].text_content())?;
                 for field in ["owner", "parentThreadId", "threadId", "turnId"] {
                     assert!(result.get(field).is_none(), "{result}");
@@ -1158,6 +1163,11 @@ async fn model_uses_one_execution_identity_and_rejected_spawn_is_not_reported_as
         let (runtime, peer) = runtime_with_scope(workspace.clone(), scopes).await;
         let model = Arc::new(DelegationToolModel {
             unavailable,
+            spawn_call_id: if unavailable {
+                "inspection-request".into()
+            } else {
+                "x".repeat(8 * 1024)
+            },
             child_requests: AtomicUsize::new(0),
         });
         let engine = Engine::open_with_runtime(
@@ -1201,6 +1211,21 @@ async fn model_uses_one_execution_identity_and_rejected_spawn_is_not_reported_as
                 }
             })
             .collect();
+        assert!(finished.turns[0].items.iter().any(|item| matches!(item,
+            Item::DynamicToolCall { tool, call_id, .. } if tool == "agent_spawn" && call_id == &model.spawn_call_id)));
+        let record = &finished.desktop.as_ref().unwrap().executions[0];
+        assert!(record.request_id.len() <= 128);
+        assert_ne!(record.request_id, model.spawn_call_id);
+        // 同一请求读回原执行，不会再派发子任务；公开委派接口仍使用自己的 requestId。
+        let replay = engine.delegate(serde_json::from_value(json!({
+            "requestId":record.request_id,"parentThreadId":parent.id,"input":[Input::text("inspect-only")],
+            "intent":"inspect","delivery":"report"
+        })).unwrap()).await.unwrap();
+        assert_eq!(replay["executionId"], record.execution_id);
+        assert_eq!(
+            model.child_requests.load(Ordering::SeqCst),
+            usize::from(!unavailable)
+        );
         if unavailable {
             assert_eq!(outcomes, [ToolOutcome::Failed]);
             let parent_scratch = scratch.join(format!("agent-{}", parent.id));

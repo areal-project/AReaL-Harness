@@ -254,11 +254,15 @@ impl DynamicToolHost for Writes {
             .unwrap()
             .push(request["callId"].as_str().unwrap().into());
         anyhow::ensure!(!self.unknown, "fixture connection lost after submission");
+        let mut result = json!({"written":true});
+        if let Some(marker) = request.pointer("/arguments/marker") {
+            result["marker"] = marker.clone();
+        }
         Ok(DynamicToolResponse {
             raw_mcp_result: None,
             success: true,
             content_items: vec![],
-            structured_content: Some(json!({"written":true})),
+            structured_content: Some(result),
         })
     }
 }
@@ -1168,4 +1172,170 @@ async fn unlimited_run_still_rejects_an_oversized_single_response() {
             .contains("response byte limit")
     );
     engine.shutdown().await;
+}
+
+fn opaque_calls(ids: &[String], responses: bool) -> String {
+    let args = |index| json!({"marker":format!("fixture-result-{index}")}).to_string();
+    if responses {
+        let items: Vec<_> = ids.iter().enumerate().map(|(i,id)| json!({"type":"function_call","call_id":id,"name":"write_once","arguments":args(i)})).collect();
+        return items
+            .iter()
+            .map(|item| frame(json!({"type":"response.output_item.done","item":item})))
+            .collect::<String>()
+            + &frame(
+                json!({"type":"response.completed","response":{"status":"completed","output":items,"usage":usage()}}),
+            );
+    }
+    // 两个调用先交错发送公共前缀，再按相反顺序送来区分身份的末字节。
+    let heads: Vec<_> = ids.iter().enumerate().map(|(index, id)| json!({"index":index,"id":&id[..id.len()-1],"type":"function","function":{"name":"write_once","arguments":args(index)}})).collect();
+    let tails: Vec<_> = ids
+        .iter()
+        .enumerate()
+        .rev()
+        .map(|(index, id)| json!({"index":index,"id":&id[id.len()-1..]}))
+        .collect();
+    frame(json!({"choices":[{"index":0,"delta":{"tool_calls":heads}}]}))
+        + &frame(
+            json!({"choices":[{"index":0,"delta":{"tool_calls":tails},"finish_reason":"tool_calls"}],"usage":usage()}),
+        )
+}
+
+#[tokio::test]
+async fn opaque_tool_ids_round_trip_unchanged() {
+    for responses in [false, true] {
+        for size in [256, 5_544, 64 * 1024] {
+            let prefix = "p".repeat(size - 1);
+            let ids = [format!("{prefix}A"), format!("{prefix}B")];
+            let final_body = if responses {
+                frame(json!({"type":"response.output_text.delta","delta":"verified"}))
+                    + &frame(json!({"type":"response.completed","response":{"status":"completed"}}))
+            } else {
+                finished()
+            };
+            let fixture =
+                Fixture::start(vec![opaque_calls(&ids, responses), final_body], None).await;
+            let data = tempfile::tempdir().unwrap();
+            let engine = Engine::open(
+                &data.path().join("core"),
+                Arc::new(fixture.model(&data.path().join("audit"), responses)),
+                Limits::default(),
+            )
+            .unwrap();
+            let writes = Arc::new(Writes::default());
+            let thread = thread(&engine, writes.clone()).await;
+            engine
+                .start(&thread.id, vec![Input::text("fixture")])
+                .await
+                .unwrap();
+            let turn = settled(&engine, &thread.id).await;
+            assert_eq!(
+                turn.turns[0].status,
+                TurnStatus::Completed,
+                "responses={responses}, size={size}: {:?}",
+                turn.turns[0].error
+            );
+            let mut actual = writes.ids.lock().unwrap().clone();
+            actual.sort();
+            assert!(actual == ids, "tool host invoked once per original ID");
+            {
+                let requests = fixture.requests.lock().unwrap();
+                assert_eq!(requests.len(), 2);
+                let request = &requests[1];
+                let mut calls = Vec::new();
+                let mut outputs = Vec::new();
+                if responses {
+                    for item in request["input"].as_array().unwrap() {
+                        match item["type"].as_str() {
+                            Some("function_call") => calls.push(item["call_id"].as_str().unwrap()),
+                            Some("function_call_output") => outputs.push((
+                                item["call_id"].as_str().unwrap(),
+                                item["output"].to_string(),
+                            )),
+                            _ => {}
+                        }
+                    }
+                } else {
+                    for item in request["messages"].as_array().unwrap() {
+                        if let Some(arr) = item["tool_calls"].as_array() {
+                            calls.extend(arr.iter().map(|call| call["id"].as_str().unwrap()));
+                        }
+                        if item["role"] == "tool" {
+                            outputs.push((
+                                item["tool_call_id"].as_str().unwrap(),
+                                item["content"].to_string(),
+                            ));
+                        }
+                    }
+                }
+                calls.sort_unstable();
+                outputs.sort_unstable();
+                assert!(calls == ids, "assistant call identity changed");
+                assert_eq!(outputs.len(), ids.len());
+                for (index, (id, content)) in outputs.iter().enumerate() {
+                    assert!(
+                        *id == ids[index] && content.contains(&format!("fixture-result-{index}")),
+                        "wire result mismatch: responses={responses}, size={size}, index={index}"
+                    );
+                }
+            }
+            engine.shutdown().await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn opaque_tool_ids_reject_oversize_aggregate_and_duplicates_before_dispatch() {
+    for responses in [false, true] {
+        let long = "p".repeat(5_544);
+        for (ids, buffer, expected) in [
+            (vec!["p".repeat(64 * 1024 + 1)], 4 * 1024 * 1024, "id_bytes"),
+            (vec![long.clone()], 4 * 1024, "buffer_bytes"),
+            (vec![long.clone(), long], 4 * 1024 * 1024, "duplicate"),
+        ] {
+            let data = tempfile::tempdir().unwrap();
+            let audit = data.path().join("audit");
+            let fixture = Fixture::start(vec![opaque_calls(&ids, responses)], None).await;
+            let engine = Engine::open(
+                &data.path().join("core"),
+                Arc::new(fixture.model(&audit, responses)),
+                Limits {
+                    max_tool_buffer_bytes: buffer,
+                    ..Limits::default()
+                },
+            )
+            .unwrap();
+            let writes = Arc::new(Writes::default());
+            let thread = thread(&engine, writes.clone()).await;
+            engine
+                .start(&thread.id, vec![Input::text("fixture")])
+                .await
+                .unwrap();
+            let turn = settled(&engine, &thread.id).await;
+            assert_eq!(turn.turns[0].status, TurnStatus::Failed);
+            assert!(writes.ids.lock().unwrap().is_empty());
+            assert_eq!(fixture.requests.lock().unwrap().len(), 1);
+            if expected == "duplicate" {
+                let message = if responses {
+                    "conflicting function call replay"
+                } else {
+                    "duplicate tool call ID"
+                };
+                assert!(
+                    turn.turns[0]
+                        .error
+                        .as_ref()
+                        .is_some_and(|error| error.message.contains(message))
+                );
+            } else {
+                let records = fixture.audits(&audit);
+                let err = &records[0]["toolCallError"];
+                assert_eq!(err["budget"], expected);
+                if expected == "id_bytes" {
+                    assert_eq!(err["limit"], 65_536);
+                    assert_eq!(err["observed"], 65_537);
+                }
+            }
+            engine.shutdown().await;
+        }
+    }
 }

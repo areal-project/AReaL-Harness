@@ -262,6 +262,10 @@ JSONL 的 30 天期限按文件最后修改时间计算，不逐条检查行的�
 
 开始消费响应流前的传输失败、HTTP 错误状态和非 SSE 响应也记为 `outcome=failed`，`error` 保存脱敏诊断；非 SSE 响应提示检查完整 API endpoint，不记录错误页正文或原始响应 header。取消或未完成的请求仍记为 `interrupted_or_unfinished`。
 
+Chat Completions 和 Responses 的单个工具调用 ID 上限为 64 KiB（含边界），字节数同时计入响应的工具总缓冲。Chat 的同一调用按分片累计。合法 ID 按原值与工具结果关联；超出预算时拒绝该响应的工具调用，不截断 ID。
+
+结构化 `agent_spawn` 的内部去重键由父 Thread、Turn 和完整调用 ID 派生。独立权限审查的摘要绑定完整调用 ID；发送给审查模型的操作说明省略该 ID，仍受 48 KiB 限制。
+
 工具错误审计新增 `errorCode` 与 `toolCallError`：`invalid_tool_call_index` 附固定原因、协议、字段路径、从 1 开始的 SSE 数据事件序号、index JSON 类型及已缓冲调用数量；`tool_call_budget_exceeded` 附预算类别、上限和观测值。字段只含固定标签和有界数值，诊断不复制 SSE、参数、reasoning 或非法字段值，使用同一记录的本地 `requestId` 关联。`responseShape.toolArgumentBytes` 沿用旧名称，实际累计通过校验的 id/name/arguments 字节。
 
 快照写入格式 14，可读取无派生元数据的旧格式 1–14；Fork/Side 记录必须使用格式 14 并通过会话版本与持久权限校验。旧二进制不能读取新快照，不能通过降低版本号绕过角色检查。可选 `historyArchive` 引用 `history/` 中的不可变 SHA-256 分段，包含 head、throughItemId、completedTurns、items、bytes；单分段最多 64 MiB。先同步分段，再提交引用它的快照。热快照保留近期条目和 checkpoint；完整 thread 读取还原原始 Turn/Item，并省略存储清单。`read_history` 按 item ID 分页，无需加载全部归档。GC 同时追踪热快照与冷分段引用。工具意图持久化与 UNKNOWN 恢复不变，不重放归档副作用。usage/duration 缺失表示未知，不是 0。

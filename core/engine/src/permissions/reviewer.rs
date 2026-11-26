@@ -52,6 +52,8 @@ impl Engine {
             "restrictions":restrictions(configuration.as_ref()),"policy":self.permission_config(),
             "runtime":self.runtime_capabilities()});
         let digest = format!("{:x}", Sha256::digest(serde_json::to_vec(&packet).unwrap()));
+        // 摘要已绑定原始关联 ID。审查模型判断的是用户意图和操作，无需把不透明 ID 当成输入。
+        packet.as_object_mut().unwrap().remove("callId");
         packet["digest"] = json!(digest);
         let input = serde_json::to_string(&packet).unwrap();
         self.permission_journal(cell, call_id, |execution| execution.permission_review = Some(json!({

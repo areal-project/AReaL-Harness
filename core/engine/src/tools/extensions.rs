@@ -600,7 +600,11 @@ impl Invocation<'_> {
                 if self.call.name.starts_with("agent_") {
                     let mut arguments = args.clone();
                     if self.call.name == "agent_spawn" && arguments.get("intent").is_some() {
-                        arguments["requestId"] = serde_json::json!(self.call.id);
+                        // 委派幂等键属于父会话与 Turn，不能直接复用模型的不透明关联 ID。
+                        let digest =
+                            crate::desktop::digest(&(self.thread_id, self.turn_id, &self.call.id))
+                                .map_err(invalid)?;
+                        arguments["requestId"] = json!(format!("agent-spawn:{digest}"));
                     }
                     return self
                         .engine

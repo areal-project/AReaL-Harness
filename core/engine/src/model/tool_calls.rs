@@ -2,6 +2,8 @@
 
 use super::*;
 
+/// 调用 ID 可能携带供应商的关联信息；按不透明字节串保留，单项与整条响应均有上限。
+pub(super) const MAX_TOOL_CALL_ID_BYTES: usize = 64 * 1024;
 pub const MAX_TOOL_ARGUMENT_BYTES: usize = 64 * 1024;
 
 /// 宿主传入的请求策略。零调用额度禁用工具；require_call 映射到受支持 Provider 的结构化调用要求。
@@ -144,7 +146,7 @@ impl ToolCallBudget {
             self.limits.max_calls,
         )?;
         for ((name, limit), (current, next)) in [
-            ("id_bytes", 256),
+            ("id_bytes", MAX_TOOL_CALL_ID_BYTES),
             ("name_bytes", 128),
             ("argument_bytes", MAX_TOOL_ARGUMENT_BYTES),
         ]
