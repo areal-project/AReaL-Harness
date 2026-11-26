@@ -1,0 +1,44 @@
+docs/api/core.en.md
+  s_f68a001160e642::t_8a645c6e955215 272-273
+  s_f68a001160e642::t_0a106d89a133ef 270-271
+core/engine/tests/tool_call_stream.rs
+  s_f68a001160e642::t_0a106d89a133ef 257-260,265,1176-1287,1306,1337,1339-1341
+  s_f68a001160e642::t_8a645c6e955215 1288-1305,1307-1336,1338
+docs/api/core.md
+  s_f68a001160e642::t_0a106d89a133ef 265-266
+  s_f68a001160e642::t_8a645c6e955215 267-268
+core/engine/src/tools/extensions.rs
+  s_f68a001160e642::t_acb4d10cb7944c 603,607
+  s_f68a001160e642::t_b214bc76b15d8f 604-606
+core/engine/src/permissions/reviewer.rs
+  s_f68a001160e642::t_acb4d10cb7944c 55-56
+scripts/permission-presets-smoke.mjs
+  s_f68a001160e642::t_fdae36f6a6534f 354-356,360-363,366-370,376-380,382-384,386-401,409-412,436-446,450-455,570-587
+  s_f68a001160e642::t_3addf2b8939c96 551,588-591
+  s_f68a001160e642::t_8efee91acb9ec2 42-43,123,357,365,371-375,381,385,433-435,447-449
+core/engine/tests/provider_replay.rs
+  s_f68a001160e642::t_e06386d95cf0e9 171-175,200,212,246,250
+core/engine/src/model/decoder.rs
+  s_f68a001160e642::t_0a106d89a133ef 331
+core/engine/tests/delegation.rs
+  s_f68a001160e642::t_1efdff6aa3efd9 1074,1101,1214-1224
+  s_f68a001160e642::t_b214bc76b15d8f 1107-1110,1166-1170,1225-1228
+core/engine/src/model/tool_calls.rs
+  s_f68a001160e642::t_0a106d89a133ef 5-6,149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cdada24b9a2b3e8bbbb5f4f8351b23c7dc2dfdb7",
+  "prompts": {},
+  "sessions": {
+    "s_f68a001160e642": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21705-30ec-7eb1-9cae-6b24288c0779",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
