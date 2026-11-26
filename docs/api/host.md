@@ -147,7 +147,7 @@ GUI 来源的新项目登记由 Host 生成首次 `LaunchInputs`，不等待 Nod
 
 远程设置的 `desktop.command(remoteControl)` 直接复用 Host Gateway 状态与控制回执。未启用时读取状态不创建身份或凭据；首次控制才准备身份并交接所有权。旧调用方的未决引用按原来源和回执核对，未知写入不重放，也不阻塞状态读取。配对结果返回 payload，由共享客户端生成二维码。
 
-Cloud 会话由 Rust Host 管理原来源的 `cloud-sessions.json` 绑定，并复用原生提交 journal。`desktop.core.call` 的 `cloud.session` 与 `desktop.command` 的 `cloudSession` 进入同一所有者。Shell 使用 `cloud-session:<sourceId>:<recordId>` 作为逻辑项目下的执行子项目，读取、附件和既有会话激活沿 Host 连接执行；远程授权只继承原来源和逻辑项目的 grant。凭据修订变化使旧观察与媒体失效；没有原创建受理证据的历史记录保持 UNKNOWN，不重新创建。Cloud 连接归 Host 生命周期，Node 投影退出不关闭它。
+Cloud 会话由 Rust Host 管理原来源的 `cloud-sessions.json` 绑定，并复用原生提交 journal。`desktop.core.call` 的 `cloud.session` 与 `desktop.command` 的 `cloudSession` 进入同一所有者。Shell 使用 `cloud-session:<sourceId>:<recordId>` 作为逻辑项目下的执行子项目，显式标记 `kind:"cloud"` 与 `cloud.connectionState`（`connected`/`connecting`/`disconnected`/`error`）及脱敏 `lastError`。协商 `sessionOpenAutoV1` 后，`session.open` 支持可选 `mode:"auto"` 与 `reconnect:true`（回环与远程网关均在可取消任务上非阻塞执行，并在端到端预算内结算）：复用已建立的健康 Cloud 租约只需 `observe` 权限，新建或重置租约在回环与远程网关上均要求 `submit` 权限；本地会话由 Host 原子决定实时观察或持久化历史回退；连接断开时客户端保留已读正文为 `stale`（且不投影过期队列与交互），绝不误入本地 `session.openPersisted`。远程授权只继承原来源和逻辑项目的 grant。凭据修订变化使旧观察与媒体失效；没有原创建受理证据的历史记录保持 UNKNOWN，不重新创建。Cloud 连接归 Host 生命周期，Node 投影退出不关闭它。所有回环与远程错误对象保留脱敏的 `stage`、`detail`、`diagnosticId` 与 `retryable`，并写入脱敏 Host 诊断日志，不再把 Cloud 鉴权/过期/超时/网关错误统一压成 `CORE_UNAVAILABLE`。
 
 ## 定时项目激活与准备
 

@@ -506,3 +506,120 @@ it("renders the draft Local/Cloud switcher for regular projects and switches to 
   const projectlessHtml = renderDraftWithEnvironment("local", { projectless: true });
   expect(projectlessHtml).not.toContain('data-testid="draft-environment-trigger"');
 });
+
+it("renders Cloud-specific reconnect and Cloud settings actions with structured diagnostic details when a cold Cloud session fails to connect", () => {
+  const html = renderToStaticMarkup(
+    createElement(
+      IntlProvider,
+      { locale: "zh-CN" },
+      createElement(ConversationWorkspace, {
+        session: {
+          project: {
+            id: "p1",
+            root: "/workspace",
+            projectless: false,
+            state: { connected: false, threads: {}, queues: {}, interactions: {} },
+            summaries: [
+              {
+                id: "cloud-t1",
+                name: "Cloud · 测试下",
+                cloud: { sessionId: "s1", connected: false, error: "Cloud 尚未连接" },
+              },
+            ],
+            configurations: {},
+            models: [],
+          },
+          thread: undefined,
+          threadId: "cloud-t1",
+          library: {},
+          snapshot: { projects: [], connection: { state: "ready" } },
+          readOnly: false,
+          retryRestoration: vi.fn(),
+          resourceAction: vi.fn(),
+        } as unknown as Parameters<typeof ConversationWorkspace>[0]["session"],
+        services: {
+          reads: { status: () => ({ connection: "ready", identity: {} }) },
+          capabilities: { native: true, mutations: true },
+        } as unknown as Parameters<typeof ConversationWorkspace>[0]["services"],
+        action: vi.fn(),
+        dark: false,
+        empty: false,
+        admitting: false,
+        mainPane: { current: null },
+        workspacePanels: {
+          view: { workspaceView: "chat" },
+          removeTerminalTab: vi.fn(),
+        } as unknown as Parameters<typeof ConversationWorkspace>[0]["workspacePanels"],
+        side: {
+          sideChats: { pendingCreation: () => undefined, creationError: () => undefined },
+          canStageSelection: false,
+          canCreateSide: false,
+          addSelectionToChat: vi.fn(),
+          openSideSelection: vi.fn(),
+          newSide: vi.fn(),
+          createSide: vi.fn(),
+        } as unknown as Parameters<typeof ConversationWorkspace>[0]["side"],
+        fork: { forkFromTurn: vi.fn() } as unknown as Parameters<
+          typeof ConversationWorkspace
+        >[0]["fork"],
+        preview: { onLink: vi.fn(), rememberPanelTrigger: vi.fn() } as unknown as Parameters<
+          typeof ConversationWorkspace
+        >[0]["preview"],
+        documents: { openFile: vi.fn(), requestReview: vi.fn() } as unknown as Parameters<
+          typeof ConversationWorkspace
+        >[0]["documents"],
+        panelNavigation: {
+          terminalOpen: false,
+          setTerminalOpen: vi.fn(),
+          showPanel: vi.fn(),
+        } as unknown as Parameters<typeof ConversationWorkspace>[0]["panelNavigation"],
+        composerWorkspace: {
+          worktreeSelection: undefined,
+          changeWorktreeSelection: vi.fn(),
+          draftEnvironment: "local",
+          changeDraftEnvironment: vi.fn(),
+          resetDraftEnvironment: vi.fn(),
+        } as unknown as Parameters<typeof ConversationWorkspace>[0]["composerWorkspace"],
+        annotation: { openImageAnnotation: vi.fn() } as unknown as Parameters<
+          typeof ConversationWorkspace
+        >[0]["annotation"],
+        surfaces: {
+          setWorktreeSettingsTarget: vi.fn(),
+          setSettingsTab: vi.fn(),
+          setSettingsOpen: vi.fn(),
+        } as unknown as Parameters<typeof ConversationWorkspace>[0]["surfaces"],
+        tasks: {} as Parameters<typeof ConversationWorkspace>[0]["tasks"],
+        startup: {
+          restorationFailed: true,
+          restorationError: "云端凭据验证未通过。请前往 Cloud 设置检查地址与令牌后重试。",
+          viewFailure: {
+            code: "CLOUD_AUTH_REJECTED",
+            stage: "cloud_connect",
+            diagnosticId: "deadbeef",
+            detail: "HTTP 401",
+            message: "云端凭据验证未通过，请检查 Cloud 设置中的地址与令牌。",
+          },
+          viewRefreshing: false,
+          currentRestoration: { pending: false },
+          isCloudSession: true,
+        } as unknown as Parameters<typeof ConversationWorkspace>[0]["startup"],
+        navigationCommands: {
+          newTask: vi.fn(),
+          choose: vi.fn(),
+          leaveProject: vi.fn(),
+          open: vi.fn(),
+        } as unknown as Parameters<typeof ConversationWorkspace>[0]["navigationCommands"],
+        setError: vi.fn(),
+        conversationReferences: [],
+        readTurnReview: vi.fn(),
+        pending: false,
+      }),
+    ),
+  );
+
+  expect(html).toContain("云端凭据验证未通过");
+  expect(html).toContain("HTTP 401 · #deadbeef");
+  expect(html).toContain("cloud.reconnect");
+  expect(html).toContain("cloud.openSettings");
+  expect(html).not.toContain("项目服务暂不可用");
+});

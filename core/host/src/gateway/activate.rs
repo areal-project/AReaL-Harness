@@ -19,7 +19,7 @@ impl Session {
                 .workbench
                 .cloud
                 .sessions
-                .activate(&self.host, &id)
+                .activate_authorized(&self.host, &id, &self.cloud_activation_auth())
                 .await?;
             self.authorize(Some(project), "submit")?;
             return Ok(

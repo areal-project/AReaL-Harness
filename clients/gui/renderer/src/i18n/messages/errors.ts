@@ -29,9 +29,49 @@ export const errorMessages = {
     "zh-CN": "项目暂时没有响应。你的内容已保留，请稍后重试。",
     en: "The project isn't responding right now. Your work is kept. Try again in a moment.",
   },
+  "errors.CORE_CONNECTION_TIMEOUT": {
+    "zh-CN": "连接项目耗时过长。你的内容已保留，请稍后重试。",
+    en: "Connecting to the project timed out. Your work is kept. Try again in a moment.",
+  },
+  "errors.CORE_EXPLICITLY_STOPPED": {
+    "zh-CN": "项目已手动停止。历史内容已保留，恢复项目后可继续操作。",
+    en: "This project was stopped manually. History is kept; resume the project to continue.",
+  },
   "errors.CORE_INCOMPATIBLE": {
     "zh-CN": "项目需要更新后才能继续使用。请重新打开应用完成更新。",
     en: "This project needs an update before you can continue. Reopen the app to finish updating.",
+  },
+  "errors.CLOUD_NOT_CONFIGURED": {
+    "zh-CN": "尚未配置云端地址或令牌。历史未被删除，请前往 Cloud 设置完成配置后重试。",
+    en: "Cloud address or token is not configured yet. Open Cloud settings to configure it and try again.",
+  },
+  "errors.CLOUD_AUTH_REJECTED": {
+    "zh-CN": "云端凭据验证未通过。请前往 Cloud 设置检查地址与令牌后重试。",
+    en: "Cloud credentials were rejected. Check your address and token in Cloud settings and try again.",
+  },
+  "errors.CLOUD_SANDBOX_EXPIRED": {
+    "zh-CN": "这段云端会话对应的沙箱已过期或不存在。请新建云端会话继续工作。",
+    en: "The sandbox for this Cloud session has expired or no longer exists. Start a new Cloud session to continue.",
+  },
+  "errors.CLOUD_GATEWAY_UNAVAILABLE": {
+    "zh-CN": "暂时无法连接云端服务。本地草稿已保留，请检查网络后重试。",
+    en: "Couldn't reach the Cloud service right now. Your local draft is kept; check your network and try again.",
+  },
+  "errors.CLOUD_HANDSHAKE_TIMEOUT": {
+    "zh-CN": "等待云端沙箱启动超时。本地草稿已保留，请重新连接。",
+    en: "Timed out waiting for the Cloud sandbox to start. Your local draft is kept; try reconnecting.",
+  },
+  "errors.CLOUD_DISCONNECTED": {
+    "zh-CN": "云端会话尚未连接。点击重新连接以加载远端历史。",
+    en: "This Cloud session is disconnected. Reconnect to load its remote history.",
+  },
+  "errors.CLOUD_CONNECTION_CLOSED": {
+    "zh-CN": "云端连接已断开。你的本地草稿已保留，请重新连接。",
+    en: "The Cloud connection closed. Your local draft is kept; reconnect to continue.",
+  },
+  "errors.CLOUD_UNSUPPORTED_SESSION": {
+    "zh-CN": "此旧版云端会话需要使用原客户端打开。",
+    en: "This older Cloud session needs to be opened in the original client.",
   },
   "errors.CONFLICT": {
     "zh-CN": "应用需要重新打开才能继续。请退出后重新打开应用，你的内容不会丢失。",

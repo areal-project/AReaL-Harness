@@ -2270,7 +2270,10 @@ impl ManageService {
         }
 
         let is_mutation = !is_read_operation(operation);
-        let scope = resolve_project_scope(host, source, request, is_mutation, true).await?;
+        let scope = resolve_project_scope(host, source, request, is_mutation, is_mutation).await?;
+        if !is_mutation {
+            super::session_commands::wait_running_project(host, &scope.canonical_id).await?;
+        }
 
         if is_mutation
             && !CLEANUP_OPS.contains(&operation)

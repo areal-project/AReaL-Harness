@@ -36,7 +36,7 @@ import { DismissIcon } from "../interfaceIcons.js";
 import { Messages } from "../Messages.js";
 import { ProjectlessDraft } from "../ProjectlessDraft.js";
 import { recoverySettings } from "../recoveryPresentation.js";
-import { rawText } from "../errors/errorCopy.js";
+import { diagnosticDetail } from "../errors/errorCopy.js";
 import { conversationLoadState } from "./conversationLoadState.js";
 import { type Action, type PlatformServices } from "../services.js";
 import { projectExecutionBlocked } from "../state/projectExecution.js";
@@ -169,7 +169,7 @@ function ConversationContent() {
                     <FeedbackNotice
                       tone="error"
                       message={loadState.detail || t(loadState.message)}
-                      detail={viewFailure ? rawText(viewFailure) : undefined}
+                      detail={viewFailure ? diagnosticDetail(viewFailure) : undefined}
                     />
                   ) : loadState.kind === "starting" ? (
                     <p>{t(loadState.message)}</p>
@@ -185,7 +185,7 @@ function ConversationContent() {
                     className="mt-3"
                     onClick={() => void retryRestoration()}
                   >
-                    {t("recovery.retryView")}
+                    {startup.isCloudSession ? t("cloud.reconnect") : t("recovery.retryView")}
                   </Button>
                 )}
                 {loadState.kind === "failed" && loadState.settings && settings && (
@@ -198,7 +198,7 @@ function ConversationContent() {
                       surfaces.setSettingsOpen(true);
                     }}
                   >
-                    {t("recovery.checkSettings")}
+                    {settings === "Cloud" ? t("cloud.openSettings") : t("recovery.checkSettings")}
                   </Button>
                 )}
                 {loadState.kind === "failed" && !settings && (
@@ -724,7 +724,7 @@ function DraftConversation() {
         <FeedbackNotice
           tone="error"
           message={startup.restorationError || t("startup.projectStartFailed")}
-          detail={startup.viewFailure ? rawText(startup.viewFailure) : undefined}
+          detail={startup.viewFailure ? diagnosticDetail(startup.viewFailure) : undefined}
           actions={
             <>
               <Button variant="ghost" size="sm" onClick={() => void retryRestoration()}>

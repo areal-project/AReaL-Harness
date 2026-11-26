@@ -168,10 +168,24 @@ impl Cloud {
         owner: Option<&str>,
     ) -> Result<Value> {
         let (revision, account) = self.current(host, source).await?;
-        public(&account)?;
-        let base = account["baseURL"]
-            .as_str()
-            .context("请先配置 Cloud 地址和 token")?;
+        public(&account).map_err(|_| {
+            crate::wire::staged_error(
+                "CLOUD_NOT_CONFIGURED",
+                "cloud_auth",
+                "请先配置 Cloud 地址和 token",
+                None,
+                false,
+            )
+        })?;
+        let base = account["baseURL"].as_str().ok_or_else(|| {
+            crate::wire::staged_error(
+                "CLOUD_NOT_CONFIGURED",
+                "cloud_auth",
+                "请先配置 Cloud 地址和 token",
+                None,
+                false,
+            )
+        })?;
         let base = url::Url::parse(&format!("{base}/"))?;
         let target = url::Url::parse(request["baseURL"].as_str().context("INVALID_PARAMS")?)?;
         ensure!(

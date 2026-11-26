@@ -15,6 +15,7 @@ export function conversationLoadState(
     viewRefreshing: boolean;
     currentRestoration?: { pending?: boolean };
     conversationReadState?: string;
+    isCloudSession?: boolean;
   },
   settings: boolean,
 ): ConversationLoadState {
@@ -22,6 +23,7 @@ export function conversationLoadState(
     connected: !!project?.state?.connected,
     failure: startup.restorationError,
     failed: startup.restorationFailed,
+    isCloud: startup.isCloudSession === true,
     attemptSettled:
       !!startup.currentRestoration &&
       !startup.currentRestoration.pending &&
@@ -40,12 +42,12 @@ export function conversationLoadState(
     return input.attemptSettled
       ? {
           kind: "failed",
-          message: "startup.projectStartFailed",
+          message: input.isCloud ? "cloud.disconnected" : "startup.projectStartFailed",
           detail: "",
           retry: true,
           settings: false,
         }
-      : { kind: "starting", message: "startup.loading" };
+      : { kind: "starting", message: input.isCloud ? "cloud.connecting" : "startup.loading" };
   if (
     input.attemptSettled &&
     ["fresh", "unavailable"].includes(startup.conversationReadState ?? "")
@@ -57,5 +59,5 @@ export function conversationLoadState(
       retry: true,
       settings: input.settings,
     };
-  return { kind: "reading", message: "startup.loading" };
+  return { kind: "reading", message: input.isCloud ? "cloud.connecting" : "startup.loading" };
 }

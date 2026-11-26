@@ -3,7 +3,9 @@ import type { HostClientOptions, ReadConnection, ReadTransport } from "./index.j
 
 /** 远程连接上 hello 要声明的能力；手机与远程网页用同一份界面时声明写。 */
 export function remoteCapabilities(writes?: boolean) {
-  return writes ? ["gui-read-v1", "gui-write-v1"] : ["gui-read-v1"];
+  return writes
+    ? ["gui-read-v1", "gui-write-v1", "sessionOpenAutoV1"]
+    : ["gui-read-v1", "sessionOpenAutoV1"];
 }
 
 /**
@@ -42,7 +44,9 @@ export function remoteReadConnection(
           ? {
               context: {
                 projectId: context.projectId,
-                serviceGeneration: context.serviceGeneration,
+                ...(context.serviceGeneration
+                  ? { serviceGeneration: context.serviceGeneration }
+                  : {}),
               },
             }
           : {}),
@@ -80,6 +84,7 @@ export function remoteReadConnection(
       hostGeneration: ready.hostGeneration,
       connectionId: ready.connectionId,
       gatewayGeneration,
+      sessionOpenAuto: ready.negotiatedCapabilities.includes("sessionOpenAutoV1"),
       ...(writable
         ? {
             writeMethods: (ready.methods as unknown[]).filter(

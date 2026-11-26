@@ -1689,3 +1689,422 @@ fn worktree_cancel_uses_control_lane_without_reclassifying_creation() {
         Some(RemoteMethodLane::Mutation)
     );
 }
+
+#[test]
+fn structured_read_error_preserves_cloud_stage_diagnostic_id_and_sanitizes_secrets() {
+    let err = crate::wire::staged_error(
+        "CLOUD_AUTH_REJECTED",
+        "cloud_connect",
+        "云端凭据验证未通过",
+        Some("remote gateway HTTP 401".into()),
+        false,
+    );
+    let formatted = read_error_for(&err, "session.open", Some("cloud-session:src:rec"));
+    assert_eq!(formatted["code"], "CLOUD_AUTH_REJECTED");
+    assert_eq!(formatted["stage"], "cloud_connect");
+    assert_eq!(formatted["detail"], "remote gateway HTTP 401");
+    assert_eq!(formatted["retryable"], false);
+    assert!(
+        formatted["diagnosticId"]
+            .as_str()
+            .is_some_and(|id| id.len() == 8)
+    );
+    assert_eq!(
+        crate::wire::sanitize_detail("Authorization: Bearer secret-token-123"),
+        "redacted transport error"
+    );
+    // 超过 240 字节之后的凭据同样必须在截断前被脱敏。
+    let long_secret = format!("{} Bearer late-secret-value", "a".repeat(260));
+    assert_eq!(
+        crate::wire::sanitize_detail(&long_secret),
+        "redacted transport error"
+    );
+    assert_eq!(
+        crate::wire::sanitize_detail("connect failed password=my-pass"),
+        "redacted transport error"
+    );
+    assert_eq!(
+        crate::wire::sanitize_detail("https://alice:hunter2@cloud.example.com/app?k=val123#frag"),
+        "https://[redacted]@cloud.example.com/app"
+    );
+    let bad_enum = serde_json::from_value::<areal_protocol::host::LoopbackSessionOpenParams>(
+        json!({"threadId": "t1", "view": "conversation", "mode": "secret-raw-enum"}),
+    )
+    .unwrap_err();
+    let bad_formatted = read_error_for(&bad_enum.into(), "session.open", None);
+    assert_eq!(bad_formatted["code"], "INVALID_PARAMS");
+    assert!(bad_formatted.get("detail").is_none());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn loopback_auto_open_returns_persisted_history_without_service_generation_and_does_not_block_reads()
+ {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let fixture = Fixture::start().await;
+            areal_local_service::storage::private_dir(&fixture.host.home.join("host/projects"))
+                .unwrap();
+            let client = fixture.client().await;
+            let workspace = fixture.host.home.join("auto-workspace");
+            let data = fixture.host.home.join("auto-data");
+            for path in [&workspace, &data, &data.join("blobs")] {
+                areal_local_service::storage::private_dir(path).unwrap();
+            }
+            let registration = crate::ProjectRegistration {
+                project_id: "auto-persisted".into(),
+                workspace: workspace.clone(),
+                data_dir: data.clone(),
+                source: crate::ProjectSource::Cli,
+                default_binding: false,
+            };
+            client
+                .register(&uuid::Uuid::new_v4().to_string(), registration.clone())
+                .await
+                .unwrap();
+            let directory = areal_local_service::storage::registry(
+                &fixture.host.home,
+                &Host::service_id(&registration),
+            )
+            .unwrap();
+            areal_local_service::storage::private_dir(&directory).unwrap();
+            for path in [
+                directory.join("start.lock"),
+                data.join("service.lock"),
+                data.join("owner.lock"),
+            ] {
+                areal_local_service::storage::open_private(&path, true).unwrap();
+            }
+            areal_local_service::storage::write(&data.join("service-workspace"), &workspace)
+                .unwrap();
+            let generation = uuid::Uuid::new_v4().to_string();
+            let descriptor = json!({
+                "protocolVersion": 1,
+                "serviceId": Host::service_id(&registration),
+                "generation": generation,
+                "workspace": workspace,
+                "dataDir": data,
+                "configFingerprint": "auto",
+                "owner": {
+                    "kind": "host",
+                    "hostId": fixture.host.identity.host_id,
+                    "generation": uuid::Uuid::new_v4().to_string()
+                },
+                "endpoint": "http://127.0.0.1:1",
+                "webUrl": "http://127.0.0.1:1",
+                "authFile": directory.join("auth.json"),
+                "logFile": directory.join("host.log"),
+                "hostPid": 500000000,
+                "corePid": 500000001,
+                "state": "stopped"
+            });
+            areal_local_service::storage::write(&directory.join("service.json"), &descriptor)
+                .unwrap();
+            let thread = uuid::Uuid::new_v4().to_string();
+            let record = json!({
+                "version": 17,
+                "thread": {
+                    "id": thread,
+                    "sessionId": thread,
+                    "parentThreadId": null,
+                    "preview": "fixture",
+                    "modelProvider": "fixture",
+                    "createdAt": 1,
+                    "updatedAt": 2,
+                    "status": { "type": "idle" },
+                    "cwd": workspace,
+                    "cliVersion": "fixture",
+                    "source": "cli",
+                    "ephemeral": false,
+                    "turns": []
+                }
+            });
+            areal_local_service::storage::write(&data.join(format!("{thread}.json")), &record)
+                .unwrap();
+
+            let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
+            let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "hello",
+                    "method": "hello",
+                    "params": {
+                        "protocolVersions": [1],
+                        "capabilities": ["gui-read-v1", "persistedHistoryV1", "sessionOpenAutoV1"],
+                        "ticket": ticket.ticket,
+                        "expectedGeneration": ticket.generation
+                    }
+                }),
+            )
+            .await;
+            let hello_reply = read(&mut socket).await;
+            assert!(
+                hello_reply["result"]["negotiatedCapabilities"]
+                    .as_array()
+                    .is_some_and(|caps| caps.iter().any(|cap| cap == "sessionOpenAutoV1"))
+            );
+
+            // 无需客户端传入 serviceGeneration，Host 原子返回已保存历史。
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "auto-open",
+                    "method": "session.open",
+                    "context": { "projectId": "auto-persisted" },
+                    "params": { "threadId": thread, "view": "conversation", "mode": "auto" }
+                }),
+            )
+            .await;
+            // 同连接紧跟 host.status，确认非阻塞会话打开不会卡死同连接其他读请求。
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "status-concurrent",
+                    "method": "host.status",
+                    "params": {}
+                }),
+            )
+            .await;
+            let first = read(&mut socket).await;
+            let second = read(&mut socket).await;
+            let open_reply = if first["id"] == "auto-open" {
+                &first
+            } else {
+                &second
+            };
+            let status_reply = if first["id"] == "status-concurrent" {
+                &first
+            } else {
+                &second
+            };
+            assert_eq!(open_reply["result"]["access"]["kind"], "persisted");
+            assert_eq!(open_reply["result"]["projectId"], "auto-persisted");
+            assert!(status_reply["result"]["hostId"].is_string());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn loopback_pending_cloud_open_does_not_block_status_and_cancels_upstream_during_initialize()
+{
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let fixture = Fixture::start().await;
+            let client = fixture.client().await;
+            let workspace = fixture.host.home.join("cloud-barrier-ws");
+            let profile = fixture.host.home.join("cloud-barrier-profile");
+            let core_home = fixture.host.home.join("cloud-barrier-data");
+            for path in [
+                fixture.host.home.join("host/projects"),
+                workspace.clone(),
+                profile.clone(),
+                core_home.clone(),
+            ] {
+                areal_local_service::storage::private_dir(&path).unwrap();
+            }
+            let migration_source = crate::migration::Source {
+                profile: profile.clone(),
+                core_home,
+                // 过渡：到 v0.2.0 删（沿用既有 migration::Source 字段）
+                legacy_service_home: fixture.host.home.join("cloud-barrier-old"),
+            };
+            fixture
+                .host
+                .migration
+                .attach(migration_source.clone(), "fixture", None)
+                .unwrap();
+            let imported = fixture
+                .host
+                .migration
+                .import(
+                    serde_json::from_value(json!({
+                        "requestId": uuid::Uuid::new_v4().to_string(),
+                        "expectedGeneration": fixture.host.identity.generation,
+                        "source": migration_source,
+                    }))
+                    .unwrap(),
+                    "fixture",
+                    &[],
+                    &fixture.host.journal,
+                )
+                .unwrap();
+            assert_eq!(imported["kind"], "ready");
+            let source = fixture
+                .host
+                .migration
+                .navigation_source_id(&profile)
+                .unwrap()
+                .unwrap();
+            std::fs::write(fixture.host.bin.join("areal"), "").unwrap();
+            let options = super::super::workbench_route::frontend_options(
+                &fixture.host,
+                &source,
+                json!({
+                    "binary": fixture.host.bin.join("areal"),
+                    "home": fixture.host.home.join("cloud-barrier-data"),
+                    "guiProfile": profile,
+                    "hostHome": fixture.host.home,
+                    "userHome": fixture.host.home,
+                }),
+                None,
+            )
+            .unwrap();
+            fixture
+                .host
+                .schedules
+                .connections
+                .frontend_subscribe(&fixture.host, "cloud-barrier-ui", &source, options, None)
+                .unwrap();
+            let alias = super::super::worktree_catalog::add_project(
+                &fixture.host,
+                &source,
+                json!({"root": workspace}),
+            )
+            .await
+            .unwrap()["projectId"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+
+            // 模拟远端 Cloud WS：收到 initialize 后故意挂起不回复，验证 Host 不阻塞 host.status 且取消时立刻关闭上游连接。
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            fixture
+                .host
+                .gateway
+                .workbench
+                .cloud
+                .settings(
+                    &fixture.host,
+                    &source,
+                    &json!({"operation":"save","baseURL":format!("ws://{addr}/app-server/"),"token":"barrier-token"}),
+                )
+                .await
+                .unwrap();
+            let init_received = Rc::new(tokio::sync::Notify::new());
+            let upstream_closed = Rc::new(tokio::sync::Notify::new());
+            let init_srv = init_received.clone();
+            let closed_srv = upstream_closed.clone();
+            let server_task = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+                while let Some(frame) = ws.next().await {
+                    match frame {
+                        Ok(Message::Text(raw)) => {
+                            let req: Value = serde_json::from_str(&raw).unwrap();
+                            if req["method"] == "initialize" {
+                                init_srv.notify_one();
+                            }
+                        }
+                        Ok(Message::Close(_)) | Err(_) => break,
+                        _ => {}
+                    }
+                }
+                closed_srv.notify_one();
+            });
+
+            let record_id = uuid::Uuid::new_v4().to_string();
+            let virtual_id = format!("cloud-session:{source}:{record_id}");
+            let source_home =
+                super::super::library_store::source_home(&fixture.host, &source).unwrap();
+            areal_local_service::storage::write(
+                &source_home.join("cloud-sessions.json"),
+                &json!([{
+                    "id": record_id,
+                    "projectId": alias,
+                    "title": "Cloud · Barrier",
+                    "createdAt": 1700000000,
+                    "updatedAt": 1700000001,
+                    "nativeAdmission": true,
+                    "binding": {
+                        "baseURL": format!("ws://{addr}/app-server/{record_id}/"),
+                        "workspace": record_id,
+                        "createId": record_id,
+                        "threadRequestId": record_id,
+                        "threadId": "barrier-thread",
+                        "cwd": "/home/workspace"
+                    }
+                }]),
+            )
+            .unwrap();
+
+            let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
+            let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "hello",
+                    "method": "hello",
+                    "params": {
+                        "protocolVersions": [1],
+                        "capabilities": ["gui-read-v1", "persistedHistoryV1", "sessionOpenAutoV1"],
+                        "ticket": ticket.ticket,
+                        "expectedGeneration": ticket.generation
+                    }
+                }),
+            )
+            .await;
+            assert!(read(&mut socket).await.get("result").is_some());
+
+            // 发起会卡在 initialize 阶段的 Cloud session.open(mode: "auto")。
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "blocked-cloud-open",
+                    "method": "session.open",
+                    "context": { "projectId": virtual_id },
+                    "params": { "threadId": "barrier-thread", "view": "conversation", "mode": "auto" }
+                }),
+            )
+            .await;
+            tokio::time::timeout(Duration::from_secs(5), init_received.notified())
+                .await
+                .expect("upstream Cloud WS must receive initialize");
+
+            // 屏障明确卡住 session.open 时，同连接 host.status 必须立即先返回！
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "status-while-blocked",
+                    "method": "host.status",
+                    "params": {}
+                }),
+            )
+            .await;
+            let status_reply = tokio::time::timeout(Duration::from_secs(3), read(&mut socket))
+                .await
+                .expect("host.status must not block behind pending Cloud session.open");
+            assert_eq!(status_reply["id"], "status-while-blocked");
+            assert!(status_reply["result"]["hostId"].is_string());
+
+            // 发起新的会话打开取消挂起中的 blocked-cloud-open：旧请求应立刻返回 RESYNC_REQUIRED，
+            // 且 InitGuard 必须立即关闭上游 WS 连接（防止遗留无主驱动与 Ping 循环）。
+            write(
+                &mut socket,
+                json!({
+                    "version": 1,
+                    "id": "supersede-open",
+                    "method": "session.open",
+                    "context": { "projectId": "missing-project" },
+                    "params": { "threadId": "other", "view": "conversation", "mode": "auto" }
+                }),
+            )
+            .await;
+            let cancelled = tokio::time::timeout(Duration::from_secs(3), read(&mut socket))
+                .await
+                .expect("superseded open must return RESYNC_REQUIRED");
+            assert_eq!(cancelled["id"], "blocked-cloud-open");
+            assert_eq!(cancelled["error"]["code"], "RESYNC_REQUIRED");
+            tokio::time::timeout(Duration::from_secs(3), upstream_closed.notified())
+                .await
+                .expect("cancelling during initialize must close upstream WS and stop driver");
+            server_task.await.unwrap();
+        })
+        .await;
+}

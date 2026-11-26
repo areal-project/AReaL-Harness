@@ -261,6 +261,7 @@ struct Slot {
     imported_credentials: BTreeSet<String>,
     live_ensure: Option<LiveEnsure>,
     live_idle_stop: Option<LiveIdleStop>,
+    probe_failures: u8,
 }
 struct Host {
     clients: RefCell<BTreeMap<String, Option<u32>>>,
@@ -300,6 +301,7 @@ impl Slot {
             imported_credentials: BTreeSet::new(),
             live_ensure: None,
             live_idle_stop: None,
+            probe_failures: 0,
         }
     }
 }
@@ -1357,6 +1359,7 @@ impl Host {
             if let Ok(Ok(service)) = observed {
                 let mut slots = self.slots.borrow_mut();
                 let slot = slots.get_mut(id).unwrap();
+                slot.probe_failures = 0;
                 slot.state = match service.state {
                     State::Ready
                         if service.owner.as_ref() == Some(&self.owner())
@@ -1379,26 +1382,38 @@ impl Host {
                 } else {
                     "probe_error"
                 };
-                let connection_allows_observation = observed.is_err()
-                    && self
-                        .schedules
-                        .connections
-                        .observation_can_keep_identity(self, id);
+                let connection_observation = if observed.is_err() {
+                    self.schedules.connections.observation_state(self, id)
+                } else {
+                    schedule_connection::ConnectionObservation::Closed
+                };
                 let mut slots = self.slots.borrow_mut();
                 let slot = slots.get_mut(id).unwrap();
+                slot.probe_failures = slot.probe_failures.saturating_add(1);
                 let supervised = slot.writer.is_some()
                     && slot
                         .service
                         .as_ref()
                         .is_some_and(|service| service.owner.as_ref() == Some(&self.owner()));
-                // 超时不能撤销仍有权威身份的连接；连接已关闭时也不能沿缓存继续声明 ready。
-                if slot.state == "ready"
-                    && !(connection_allows_observation && supervised && !slot.uncertain_start)
-                {
+                // 已有存活实时连接时保留 ready；尚未建连前给予有限次瞬态超时宽限（< 3 次）；原连接已关闭则立即撤销 ready。
+                let transient_timeout_protected = observed.is_err()
+                    && supervised
+                    && !slot.uncertain_start
+                    && match connection_observation {
+                        schedule_connection::ConnectionObservation::Live => true,
+                        schedule_connection::ConnectionObservation::NeverConnected => {
+                            slot.probe_failures < 3
+                        }
+                        schedule_connection::ConnectionObservation::Closed => false,
+                    };
+                if slot.state == "ready" && !transient_timeout_protected {
                     slot.state = "unavailable".into();
                 }
                 if slot.service.is_some() {
-                    eprintln!("Host service observation incomplete: project={id} reason={reason}");
+                    eprintln!(
+                        "Host service observation incomplete: project={id} reason={reason} consecutive={}",
+                        slot.probe_failures
+                    );
                 }
             }
         }
@@ -2036,6 +2051,48 @@ impl Host {
         let finished = wait_watch_true(&live.done, deadline).await;
         let admitted = live.admitted.get() || self.receipt(&live.request_id)?.is_some();
         Ok(Some((live.request_id, finished, admitted)))
+    }
+    /// 等待已在运行或正在启动的项目建立共享连接；绝不为只读查询唤醒已停止或正在空闲回收的项目。
+    pub(super) async fn wait_running_project(
+        self: &Rc<Self>,
+        id: &str,
+        deadline: tokio::time::Instant,
+    ) -> Result<bool> {
+        if self.schedules.suppressed(id) {
+            return Ok(false);
+        }
+        if self.schedules.connections.shared_identity(self, id).is_ok() {
+            return Ok(true);
+        }
+        let stopped_or_stopping = || {
+            self.slots.borrow().get(id).is_none_or(|slot| {
+                slot.live_idle_stop.is_some()
+                    || matches!(slot.state.as_str(), "stopping" | "stopped")
+            })
+        };
+        if stopped_or_stopping() {
+            return Ok(false);
+        }
+        if let Some((_, finished, _)) = self.wait_live_ensure_if_any(id, deadline).await?
+            && (!finished || self.schedules.suppressed(id) || stopped_or_stopping())
+        {
+            return Ok(false);
+        }
+        let Some(generation) = self.ready_generation(id) else {
+            return Ok(false);
+        };
+        if self
+            .schedules
+            .connections
+            .ready_until(self, id, &generation, deadline)
+            .await
+            .is_ok()
+            && self.ready_generation(id).as_deref() == Some(generation.as_str())
+            && !stopped_or_stopping()
+        {
+            return Ok(true);
+        }
+        Ok(false)
     }
     /// 规范普通唤醒入口：合并同项目在途启动、等待已有代际共享连接、并在安全边界内衔接 `ifIdle` 休眠。
     /// 显式恢复调度与崩溃遗留的 UNKNOWN 回执仍严格按原回执语义处理，绝不重放未知启动。

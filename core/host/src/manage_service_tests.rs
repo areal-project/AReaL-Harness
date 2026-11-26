@@ -939,3 +939,52 @@ async fn native_resource_inspection_uses_current_core_and_redacts_process_argume
         assert_eq!(stopped[0]["observation"],"unavailable");
     }).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn manage_read_does_not_wake_stopped_or_idle_stopping_project() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let temp = tempfile::tempdir().unwrap();
+            let base = temp.path().canonicalize().unwrap();
+            let (host, source, alias, _workspace) = test_host(&base);
+
+            // 1. 已空闲停止的项目：背景 manage.read（skills / pluginMcp）不得触发 project.ensure 唤醒。
+            for op in ["skills", "pluginMcp"] {
+                let err = backend_read(
+                    &host,
+                    "local",
+                    &json!({"method":"manage.read","params":{"sourceId":source,"projectId":alias,"operation":op}}),
+                )
+                .await
+                .unwrap_err();
+                assert_eq!(err.to_string(), "RESOURCE_UNAVAILABLE", "stopped project read {op}");
+            }
+            assert_eq!(host.slots.borrow()["project"].state, "stopped");
+
+            // 2. 正在执行 ifIdle 空闲回收的项目：manage.read 必须立即拒绝，不得等待 live_idle_stop 后重启。
+            let (tx, _rx) = tokio::sync::watch::channel(false);
+            {
+                let mut slots = host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                slot.state = "stopping".into();
+                slot.live_idle_stop = Some(crate::server::LiveIdleStop {
+                    request_id: "idle-stop-req".into(),
+                    service_generation: "gen-1".into(),
+                    done: std::rc::Rc::new(tx),
+                });
+            }
+            let read_result = tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                backend_read(
+                    &host,
+                    "local",
+                    &json!({"method":"manage.read","params":{"sourceId":source,"projectId":alias,"operation":"skills"}}),
+                ),
+            )
+            .await
+            .expect("manage.read must not block on live_idle_stop");
+            assert_eq!(read_result.unwrap_err().to_string(), "RESOURCE_UNAVAILABLE");
+            assert_eq!(host.slots.borrow()["project"].state, "stopping");
+        })
+        .await;
+}

@@ -19,6 +19,8 @@ export class RemoteConnection {
     this.isCurrent = isCurrent;
     this.onClose = onClose;
     this.pending = new Map();
+    /** @type {Map<string, { projectId: string; serviceGeneration?: string } | undefined>} */
+    this.timedOutOpens = new Map();
     this.sequence = 0;
     this.closed = false;
     socket.onclose = () => {
@@ -105,10 +107,24 @@ export class RemoteConnection {
         );
       const id = String(++this.sequence);
       const isWrite = Boolean(envelope.commandId);
-      const timeoutMs = isWrite ? 30000 : 15000;
+      const isSessionOpen = envelope.method === "session.open";
+      const isCloudProject =
+        typeof envelope.context?.projectId === "string" &&
+        envelope.context.projectId.startsWith("cloud-session:");
+      const isCloudOpen =
+        (isSessionOpen && (envelope.params?.mode === "auto" || isCloudProject)) ||
+        (envelope.method === "project.activate" && isCloudProject);
+      // 与 Host 端到端预算对齐（Cloud 135s < 150s，本地 25s < 35s），超时不再关闭整条远程连接。
+      const timeoutMs = isCloudOpen ? 150000 : isSessionOpen ? 35000 : isWrite ? 30000 : 15000;
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        if (envelope.method === "session.open") this.socket.close();
+        if (isSessionOpen) {
+          if (this.timedOutOpens.size >= 32) {
+            const oldest = this.timedOutOpens.keys().next().value;
+            if (oldest !== undefined) this.timedOutOpens.delete(oldest);
+          }
+          this.timedOutOpens.set(id, envelope.context);
+        }
         const error = Object.assign(new Error("读取超时，请刷新或核对原命令"), {
           code: "REQUEST_TIMEOUT",
           ...(isWrite ? { submissionUnknown: true } : {}),
@@ -142,7 +158,26 @@ export class RemoteConnection {
           continue;
         }
         const handler = this.pending.get(message.id);
-        if (!handler) continue;
+        if (!handler) {
+          if (this.timedOutOpens.has(message.id)) {
+            const context = this.timedOutOpens.get(message.id);
+            this.timedOutOpens.delete(message.id);
+            const subscriptionId = message.result?.subscriptionId;
+            if (typeof subscriptionId === "string" && subscriptionId && context?.projectId) {
+              void this.request({
+                method: "subscription.close",
+                params: { subscriptionId },
+                context: {
+                  projectId: context.projectId,
+                  ...(typeof message.result?.serviceGeneration === "string"
+                    ? { serviceGeneration: message.result.serviceGeneration }
+                    : {}),
+                },
+              }).catch(() => {});
+            }
+          }
+          continue;
+        }
         this.pending.delete(message.id);
         clearTimeout(handler.timer);
         if (message.error) {

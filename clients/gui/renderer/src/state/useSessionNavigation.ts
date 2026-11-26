@@ -36,6 +36,8 @@ function isProjectCoreUnavailable(failure: unknown) {
   const error = failure as RecoveryFailure | null;
   return (
     error?.code === "CORE_UNAVAILABLE" ||
+    error?.code === "CORE_CONNECTION_TIMEOUT" ||
+    error?.code === "RESYNC_REQUIRED" ||
     error?.code === "scheduleHostUnavailable" ||
     error?.message === "Project Core unavailable" // raw-error-ok: 旧读客户端在本地目录缺代次时返回此错误
   );
@@ -308,15 +310,47 @@ export function useSessionNavigation(
             const targetSession = owner.threadId
               ? { projectId: owner.projectId, threadId: owner.threadId }
               : null;
+            const isCloudSession = Boolean(
+              target?.state?.threads?.[owner.threadId ?? ""]?.cloud ??
+              target?.summaries?.find((summary: { id: string }) => summary.id === owner.threadId)
+                ?.cloud,
+            );
+            const connection = services.reads.status();
+            const supportsAutoOpen =
+              connection.connection === "ready" && connection.identity.sessionOpenAuto === true;
+            if (isCloudSession && targetSession && supportsAutoOpen) {
+              // Cloud 会话在支持 sessionOpenAutoV1 的 Host 上由 session.open(mode: "auto") 原子完成连接恢复与远端观察。
+              await services.reads.selectSession({
+                ...targetSession,
+                mode: "auto",
+                ...(options.forceConnect ? { reconnect: true } : {}),
+              });
+              // Cloud 原子打开期间目录可能先推入新的 connectionGeneration：按同一 Host、连接、项目与会话核对并结算恢复。
+              const selected = selectedRestoration.current;
+              const cloudCurrent =
+                restorationAttempt.current === attempt &&
+                selected.projectId === owner.projectId &&
+                selected.threadId === owner.threadId &&
+                selected.hostGeneration === owner.hostGeneration &&
+                selected.connectionId === owner.connectionId &&
+                sameRestorationOwner({ ...owner, ...readHostOwner(services.reads) }, owner);
+              if (cloudCurrent) {
+                markRendererStartup("restore_done", { persisted: false });
+                setRestoration({ ...selected, pending: false, error: "" });
+                if (services.capabilities?.mutations !== false)
+                  void resourceAction("library", {
+                    operation: "readThread",
+                    projectId: owner.projectId,
+                    threadId: owner.threadId,
+                    read: true,
+                  }).catch(() => {});
+              }
+              return;
+            }
             let needsConnect =
-              operation === "connect" &&
-              (!target?.state?.connected || options.forceConnect) &&
-              !target?.state?.threads?.[owner.threadId ?? ""]?.cloud &&
-              !target?.summaries?.find((summary: { id: string }) => summary.id === owner.threadId)
-                ?.cloud;
+              operation === "connect" && (!target?.state?.connected || options.forceConnect);
             let opened = false;
             let liveReadFailure: unknown;
-            const connection = services.reads.status();
             const canReadPersisted =
               !!targetSession &&
               connection.connection === "ready" &&
@@ -324,7 +358,11 @@ export function useSessionNavigation(
             const reads = services.reads;
             const tryLiveRead = async () => {
               try {
-                await reads.selectSession(targetSession);
+                await reads.selectSession(
+                  supportsAutoOpen && targetSession && !options.forceConnect
+                    ? { ...targetSession, mode: "auto" }
+                    : targetSession,
+                );
                 opened = true;
               } catch (error) {
                 if (!isProjectCoreUnavailable(error)) throw error;
@@ -578,6 +616,23 @@ export function useSessionNavigation(
     const previous = restorationAttempt.current;
     const owner = restorationOwner;
     const sameOwner = sameRestorationOwner(previous, owner);
+    const isCloudProject =
+      project.id.startsWith("cloud-session:") ||
+      project.hostProjectId?.startsWith("cloud-session:") === true ||
+      project.summaries?.some(
+        (summary: { id: string; cloud?: unknown }) =>
+          summary.id === owner.threadId && Boolean(summary.cloud),
+      ) === true;
+    // Cloud 原子打开进行中会伴随目录从 starting -> ready 换代；同一会话正在恢复时不再重入，避免自触发二次重连。
+    if (
+      isCloudProject &&
+      previous?.pending &&
+      previous.projectId === owner.projectId &&
+      previous.threadId === owner.threadId &&
+      previous.hostGeneration === owner.hostGeneration &&
+      previous.connectionId === owner.connectionId
+    )
+      return;
     // 同一 Host 连接内的空闲休眠不主动唤醒 Core；Host 或 socket 换代后须重新建立当前 owner 的恢复结果。
     if (
       isProjectHibernated(project) &&
@@ -609,13 +664,17 @@ export function useSessionNavigation(
   };
   const retryRestoration = async (options?: { resumeScheduling?: boolean }) => {
     if (!project) return;
-    const forceConnect = isProjectCoreUnavailable(
-      restoration?.failure ?? restorationAttempt.current?.failure,
+    const isCloudSession = Boolean(
+      project.state?.threads?.[threadId]?.cloud ??
+      project.summaries?.find((summary: { id: string }) => summary.id === threadId)?.cloud,
     );
+    const forceConnect =
+      isCloudSession ||
+      isProjectCoreUnavailable(restoration?.failure ?? restorationAttempt.current?.failure);
     const suppressed = project.scheduling?.suppressed === true;
     const resumeScheduling = options?.resumeScheduling === true;
     // 普通“重试加载对话”不得隐式解除用户手动停止；显式恢复调度须经明确动作触发。
-    const allowConnect = resumeScheduling || !suppressed;
+    const allowConnect = isCloudSession || resumeScheduling || !suppressed;
     await restoreConversation(
       restorationOwner,
       (!project.state?.connected || forceConnect) && allowConnect ? "connect" : "open",

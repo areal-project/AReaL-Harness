@@ -5,13 +5,13 @@ use areal_local_service::storage;
 use serde_json::{Value, json};
 use std::{
     cell::RefCell,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     path::Path,
     rc::{Rc, Weak},
 };
 use tokio::sync::Mutex;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(super) struct Scope {
     pub project: String,
     pub lease: String,
@@ -21,6 +21,20 @@ pub(super) struct Scope {
 pub(super) struct CloudSessions {
     gates: RefCell<BTreeMap<String, Weak<Mutex<()>>>>,
     live: RefCell<BTreeMap<String, Scope>>,
+    connecting: RefCell<BTreeSet<String>>,
+    last_errors: RefCell<BTreeMap<String, Value>>,
+}
+struct ConnectingGuard<'a> {
+    sessions: &'a CloudSessions,
+    host: &'a Host,
+    project: String,
+}
+impl Drop for ConnectingGuard<'_> {
+    fn drop(&mut self) {
+        if self.sessions.connecting.borrow_mut().remove(&self.project) {
+            self.host.changed();
+        }
+    }
 }
 fn required<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
     value[key]
@@ -64,6 +78,110 @@ fn core_result(response: Value) -> Result<Value> {
     }
     response.get("result").cloned().context("INVALID_RESPONSE")
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum CloudReconnect {
+    Reuse,
+    Force,
+    IfLease(String),
+}
+
+/// 每次 Cloud 会话打开时的实时主体授权依据：在拿到每会话 gate 后立刻重验，
+/// 避免排队等待门锁期间授权已被撤销却仍执行连接或拆连副作用。
+#[derive(Clone)]
+pub(super) enum CloudActivationAuth {
+    DesktopLocal,
+    BrowserDevice {
+        device_id: String,
+    },
+    RemotePeer {
+        peer: String,
+        grant_revision: Value,
+        transport: String,
+        kind: super::gateway_owner::TransportKind,
+    },
+    #[cfg(test)]
+    Static(bool),
+}
+
+impl CloudActivationAuth {
+    fn check(&self, host: &Host, alias: &str, require_submit: bool) -> Result<()> {
+        match self {
+            Self::DesktopLocal => Ok(()),
+            Self::BrowserDevice { device_id } => {
+                ensure!(host.loopback.current(Some(device_id.as_str())), "FORBIDDEN");
+                if require_submit {
+                    ensure!(
+                        host.loopback.browser_permits(device_id, "submit"),
+                        crate::wire::staged_error(
+                            "FORBIDDEN",
+                            "cloud_connect",
+                            "当前只读权限无法连接或重置云端会话，请使用具备提交权限的设备连接。",
+                            None,
+                            false,
+                        )
+                    );
+                }
+                Ok(())
+            }
+            Self::RemotePeer {
+                peer,
+                grant_revision,
+                transport,
+                kind,
+            } => {
+                let config = host.remote.snapshot(&host.migration)?;
+                ensure!(
+                    super::gateway_owner::transport_key(&config["config"], *kind) == *transport,
+                    "RESYNC_REQUIRED"
+                );
+                let Some(grant) = super::gateway_owner::grant(&config["config"], peer) else {
+                    return Err(crate::wire::staged_error(
+                        "FORBIDDEN",
+                        "cloud_connect",
+                        "设备授权已变更，请重新连接。",
+                        None,
+                        false,
+                    ));
+                };
+                ensure!(grant["revision"] == *grant_revision, "GRANT_CHANGED");
+                ensure!(
+                    super::gateway_owner::grant_allows_project(&grant, alias),
+                    "FORBIDDEN"
+                );
+                if require_submit {
+                    let has_submit = grant["capabilities"]
+                        .as_array()
+                        .is_some_and(|caps| caps.iter().any(|cap| cap == "submit"));
+                    ensure!(
+                        has_submit,
+                        crate::wire::staged_error(
+                            "FORBIDDEN",
+                            "cloud_connect",
+                            "当前只读权限无法连接或重置云端会话，请使用具备提交权限的设备连接。",
+                            None,
+                            false,
+                        )
+                    );
+                }
+                Ok(())
+            }
+            #[cfg(test)]
+            Self::Static(allowed) => {
+                if require_submit && !*allowed {
+                    return Err(crate::wire::staged_error(
+                        "FORBIDDEN",
+                        "cloud_connect",
+                        "当前只读权限无法连接或重置云端会话，请使用具备提交权限的设备连接。",
+                        None,
+                        false,
+                    ));
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 impl CloudSessions {
     fn gate(&self, id: &str) -> Rc<Mutex<()>> {
         let mut gates = self.gates.borrow_mut();
@@ -132,12 +250,15 @@ impl CloudSessions {
     }
 
     pub(super) fn scope(&self, host: &Host, id: &str) -> Result<Scope> {
-        let scope = self
-            .live
-            .borrow()
-            .get(id)
-            .cloned()
-            .context("Cloud 连接尚未恢复")?;
+        let scope = self.live.borrow().get(id).cloned().ok_or_else(|| {
+            crate::wire::staged_error(
+                "CLOUD_DISCONNECTED",
+                "cloud_connect",
+                "云端会话尚未连接，请重新连接。",
+                None,
+                true,
+            )
+        })?;
         ensure!(
             host.schedules
                 .connections
@@ -147,8 +268,63 @@ impl CloudSessions {
         );
         Ok(scope)
     }
+    pub(super) fn record_failure_for(
+        &self,
+        host: &Host,
+        id: &str,
+        expected_lease: Option<&str>,
+        error: &anyhow::Error,
+    ) {
+        if let Some(current) = self.live.borrow().get(id) {
+            match expected_lease {
+                Some(lease) if current.lease != lease => return,
+                None => return,
+                _ => {}
+            }
+        }
+        let structured = if let Some(err) = error.downcast_ref::<crate::wire::Error>() {
+            let mut value = json!({"code": err.code, "message": err.message});
+            if let Some(stage) = err.stage {
+                value["stage"] = json!(stage);
+            }
+            if let Some(detail) = &err.detail {
+                value["detail"] = json!(detail);
+            }
+            if let Some(retryable) = err.retryable {
+                value["retryable"] = json!(retryable);
+            }
+            value
+        } else {
+            json!({
+                "code": super::gateway_owner::error_code(&error.to_string()),
+                "message": "云端会话连接失败，请稍后重试。",
+                "stage": "cloud_connect",
+                "detail": crate::wire::sanitize_detail(&error.to_string()),
+                "retryable": true,
+            })
+        };
+        self.last_errors
+            .borrow_mut()
+            .insert(id.to_owned(), structured);
+        host.changed();
+    }
+    pub(super) fn clear_failure_for(&self, host: &Host, id: &str, expected_lease: Option<&str>) {
+        if let Some(lease) = expected_lease
+            && self
+                .live
+                .borrow()
+                .get(id)
+                .is_some_and(|current| current.lease != lease)
+        {
+            return;
+        }
+        if self.last_errors.borrow_mut().remove(id).is_some() {
+            host.changed();
+        }
+    }
     pub(super) fn close_all(&self, host: &Host) {
         let scopes = std::mem::take(&mut *self.live.borrow_mut());
+        self.connecting.borrow_mut().clear();
         for scope in scopes.into_values() {
             let _ = host
                 .schedules
@@ -157,14 +333,63 @@ impl CloudSessions {
         }
         host.changed();
     }
-    pub(super) async fn activate(&self, host: &Rc<Host>, id: &str) -> Result<Scope> {
-        self.owner(host, id)?;
+    pub(super) async fn activate_authorized(
+        &self,
+        host: &Rc<Host>,
+        id: &str,
+        auth: &CloudActivationAuth,
+    ) -> Result<Scope> {
+        let (scope, _) = self
+            .ensure_connected(host, id, CloudReconnect::Reuse, auth)
+            .await?;
+        Ok(scope)
+    }
+    /// 原子确保 Cloud 会话已建立远端连接，同会话并发请求在门锁内合并；返回 `(scope, reused)`。
+    /// 在获取门锁后实时复核主体与授权：复用健康租约需 observe，新建或拆毁租约必须具备 submit 权限。
+    pub(super) async fn ensure_connected(
+        &self,
+        host: &Rc<Host>,
+        id: &str,
+        policy: CloudReconnect,
+        auth: &CloudActivationAuth,
+    ) -> Result<(Scope, bool)> {
+        let (_, _, alias) = self.owner(host, id)?;
         let (source, record) = parts(id)?;
         let gate = self.gate(id);
         let _guard = gate.lock().await;
+        // 拿到每会话门锁后再次核验主体未撤销且具备 observe 权限。
+        auth.check(host, &alias, false)?;
         let row = self.record(host, source, record)?;
         required(&row["binding"], "threadId")?;
-        self.connect(host, source, &row, false).await
+        match &policy {
+            CloudReconnect::Reuse => {
+                if let Ok(scope) = self.scope(host, id) {
+                    return Ok((scope, true));
+                }
+            }
+            CloudReconnect::IfLease(failed_lease) => {
+                if let Ok(scope) = self.scope(host, id)
+                    && scope.lease != *failed_lease
+                {
+                    // 另一并发请求已换上新的健康租约：直接复用继任者，严禁误拆新连接。
+                    return Ok((scope, false));
+                }
+            }
+            CloudReconnect::Force => {}
+        }
+        // 在任何新建连接或拆毁旧租约前，于门锁内实时复核 submit 授权。
+        auth.check(host, &alias, true)?;
+        let force_detach = !matches!(policy, CloudReconnect::Reuse);
+        match self.connect(host, source, &row, force_detach).await {
+            Ok(scope) => {
+                self.clear_failure_for(host, id, Some(&scope.lease));
+                Ok((scope, false))
+            }
+            Err(error) => {
+                self.record_failure_for(host, id, None, &error);
+                Err(error)
+            }
+        }
     }
     async fn connect(
         &self,
@@ -178,6 +403,14 @@ impl CloudSessions {
         if !reconnect && let Ok(scope) = self.scope(host, &project) {
             return Ok(scope);
         }
+        if self.connecting.borrow_mut().insert(project.clone()) {
+            host.changed();
+        }
+        let _connecting = ConnectingGuard {
+            sessions: self,
+            host: host.as_ref(),
+            project: project.clone(),
+        };
         if let Some(previous) = self.live.borrow_mut().remove(&project) {
             let _ = host.schedules.connections.workbench_detach(
                 host,
@@ -189,7 +422,13 @@ impl CloudSessions {
             !row["binding"]["sessionId"]
                 .as_str()
                 .is_some_and(|id| id.starts_with("ses_")),
-            "此旧 Cloud 会话需使用原客户端打开"
+            crate::wire::staged_error(
+                "CLOUD_UNSUPPORTED_SESSION",
+                "cloud_connect",
+                "此旧 Cloud 会话需使用原客户端打开",
+                None,
+                false,
+            )
         );
         let base = required(&row["binding"], "baseURL")?;
         let attached = host
@@ -208,7 +447,10 @@ impl CloudSessions {
             lease,
             identity,
         };
-        self.live.borrow_mut().insert(project, scope.clone());
+        self.live
+            .borrow_mut()
+            .insert(project.clone(), scope.clone());
+        self.last_errors.borrow_mut().remove(&project);
         host.changed();
         Ok(scope)
     }
@@ -287,9 +529,45 @@ impl CloudSessions {
                 let project = virtual_id(&source.source_id, id);
                 let live = self.scope(host, &project).ok();
                 let connected = live.is_some();
-                let summary = serde_json::from_value(
-                    json!({"id":thread,"name":row["title"].as_str().unwrap_or("Cloud"),"preview":row["title"].as_str().unwrap_or("Cloud"),"createdAt":row.get("createdAt"),"updatedAt":row.get("updatedAt").or_else(||row.get("createdAt")),"desktop":{"archived":false},"cloud":{"sessionId":id,"connected":connected,"error":if connected {Value::Null}else{json!("Cloud 尚未连接，请重新连接以读取远端历史")}}}),
-                )?;
+                let is_connecting = !connected && self.connecting.borrow().contains(&project);
+                let last_error = if connected {
+                    None
+                } else {
+                    self.last_errors.borrow().get(&project).cloned()
+                };
+                let connection_state = if connected {
+                    "connected"
+                } else if is_connecting {
+                    "connecting"
+                } else if last_error.is_some() {
+                    "error"
+                } else {
+                    "disconnected"
+                };
+                let error_text = if connected || is_connecting {
+                    Value::Null
+                } else if let Some(msg) =
+                    last_error.as_ref().and_then(|err| err["message"].as_str())
+                {
+                    json!(msg)
+                } else {
+                    json!("Cloud 尚未连接，请重新连接以读取远端历史")
+                };
+                let summary = serde_json::from_value(json!({
+                    "id": thread,
+                    "name": row["title"].as_str().unwrap_or("Cloud"),
+                    "preview": row["title"].as_str().unwrap_or("Cloud"),
+                    "createdAt": row.get("createdAt"),
+                    "updatedAt": row.get("updatedAt").or_else(|| row.get("createdAt")),
+                    "desktop": {"archived": false},
+                    "cloud": {
+                        "sessionId": id,
+                        "connected": connected,
+                        "connectionState": connection_state,
+                        "error": error_text,
+                        "lastError": last_error,
+                    }
+                }))?;
                 let items = vec![summary];
                 projects.push(ShellProject {
                     project_id: project,
@@ -305,7 +583,14 @@ impl CloudSessions {
                         .as_str()
                         .map(std::path::PathBuf::from)
                         .unwrap_or_else(|| format!("cloud://{id}").into()),
-                    state: if connected { "ready" } else { "unavailable" }.into(),
+                    state: if connected {
+                        "ready"
+                    } else if is_connecting {
+                        "starting"
+                    } else {
+                        "unavailable"
+                    }
+                    .into(),
                     service_generation: live.map(|scope| scope.identity.1),
                     summaries: if connected {
                         Summaries::Fresh { items }
@@ -315,6 +600,7 @@ impl CloudSessions {
                     attention: Attention::Unknown,
                     task_revision: None,
                     model_catalog_revision: None,
+                    kind: Some("cloud".into()),
                 });
             }
         }
@@ -359,7 +645,13 @@ impl CloudSessions {
                 .await?;
             ensure!(
                 settings["tokenConfigured"] == true,
-                "请先配置 Cloud 地址和 token"
+                crate::wire::staged_error(
+                    "CLOUD_NOT_CONFIGURED",
+                    "cloud_auth",
+                    "请先配置 Cloud 地址和 token",
+                    None,
+                    false,
+                )
             );
             let base = format!("{}/{id}/", required(&settings, "baseURL")?);
             let mut rows = records(&home)?;

@@ -1113,6 +1113,7 @@ test("desktop writes negotiate gui-write-v1, carry the Gateway context and never
     "gui-read-v1",
     "gui-write-v1",
     "persistedHistoryV1",
+    "sessionOpenAutoV1",
   ]);
   assert.equal(client.writable("session.send"), true);
   assert.equal(client.writable("session.create"), false);
@@ -1207,7 +1208,11 @@ test("browser clients never offer gui-write-v1", async (t) => {
   t.after(() => client.close());
   client.retry();
   await waitState(client, (state) => state.connection === "offline");
-  assert.deepEqual(hello.params.capabilities, ["gui-read-v1", "persistedHistoryV1"]);
+  assert.deepEqual(hello.params.capabilities, [
+    "gui-read-v1",
+    "persistedHistoryV1",
+    "sessionOpenAutoV1",
+  ]);
   assert.equal(client.writable("session.send"), false);
 });
 
@@ -1584,4 +1589,491 @@ test("persisted intent and live selection share the same ready Core subscription
   await client.selectSession({ ...target, persisted: true });
   assert.equal(frames.filter((frame) => frame.method === "session.open").length, 1);
   assert.equal(frames.filter((frame) => frame.method === "subscription.close").length, 0);
+});
+
+test("disconnected Cloud session opens atomically with mode auto and retains stale content without openPersisted on disconnect", async (t) => {
+  const cloudId = "cloud-session:src:rec-1";
+  let fixture;
+  fixture = await readServer(t, ({ frame, reply, sessionIdentity }) => {
+    const base = sessionIdentity("cloud-thread");
+    if (frame.method === "hello") {
+      reply({
+        version: 1,
+        hostId,
+        generation,
+        capabilities: [],
+        negotiatedCapabilities: ["gui-read-v1", "sessionOpenAutoV1"],
+        connectionId: base.connectionId,
+        gatewayGeneration: base.gatewayGeneration,
+      });
+      return true;
+    }
+    if (frame.method === "shell.subscribe") {
+      reply({
+        connectionId: base.connectionId,
+        gatewayGeneration: base.gatewayGeneration,
+        subscriptionId: "shell-sub",
+        sequence: 0,
+        snapshot: {
+          projects: [
+            {
+              ...project,
+              projectId: cloudId,
+              kind: "cloud",
+              state: "unavailable",
+              serviceGeneration: undefined,
+              summaries: {
+                state: "cached",
+                items: [
+                  {
+                    id: "cloud-thread",
+                    desktop: { archived: false },
+                    cloud: {
+                      sessionId: "rec-1",
+                      connected: false,
+                      connectionState: "disconnected",
+                      error: "Cloud 尚未连接",
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          navigation: [],
+        },
+      });
+      return true;
+    }
+    if (frame.method === "session.open") {
+      assert.equal(frame.params.mode, "auto");
+      reply({
+        connectionId: base.connectionId,
+        gatewayGeneration: base.gatewayGeneration,
+        subscriptionId: "cloud-sub",
+        sequence: 0,
+        projectId: cloudId,
+        serviceGeneration: "cloud-lease-1",
+        threadId: "cloud-thread",
+        view: "conversation",
+        snapshot: { thread: { id: "cloud-thread", turns: [] } },
+      });
+      return true;
+    }
+    return false;
+  });
+
+  await fixture.client.selectSession({ projectId: cloudId, threadId: "cloud-thread" });
+  const opened = fixture.client.readsSnapshot().session;
+  assert.equal(opened.state, "fresh");
+  assert.equal(opened.value.serviceGeneration, "cloud-lease-1");
+
+  // 模拟云端连接建立后又收到 core_close_frame 断开：正文必须保留为 stale，且绝不调用 session.openPersisted。
+  const { connectionId, gatewayGeneration } = opened.value;
+  const pushShell = (sequence, nextState, nextGen) =>
+    fixture.send({
+      event: "shell.updated",
+      connectionId,
+      gatewayGeneration,
+      subscriptionId: "shell-sub",
+      sequence,
+      delta: {
+        projects: {
+          upsert: [
+            {
+              ...project,
+              projectId: cloudId,
+              kind: "cloud",
+              state: nextState,
+              ...(nextGen ? { serviceGeneration: nextGen } : { serviceGeneration: undefined }),
+              summaries: {
+                state: nextState === "ready" ? "fresh" : "cached",
+                items: [
+                  {
+                    id: "cloud-thread",
+                    desktop: { archived: false },
+                    cloud: {
+                      sessionId: "rec-1",
+                      connected: nextState === "ready",
+                      connectionState: nextState === "ready" ? "connected" : "disconnected",
+                      error: nextState === "ready" ? null : "Cloud 尚未连接",
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          remove: [],
+        },
+        navigation: { upsert: [], remove: [] },
+      },
+    });
+  pushShell(1, "ready", "cloud-lease-1");
+  pushShell(2, "unavailable", undefined);
+  fixture.send({
+    event: "session.invalidated",
+    connectionId,
+    gatewayGeneration,
+    subscriptionId: "cloud-sub",
+    sequence: 1,
+    projectId: cloudId,
+    serviceGeneration: "cloud-lease-1",
+    threadId: "cloud-thread",
+    view: "conversation",
+    error: { code: "RESYNC_REQUIRED", message: "连接已关闭" },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+
+  assert.equal(fixture.client.readsSnapshot().session.state, "stale");
+  assert.equal(fixture.client.readsSnapshot().session.value.threadId, "cloud-thread");
+  assert.equal(fixture.client.readsSnapshot().session.failure?.code, "RESYNC_REQUIRED");
+  assert.equal(fixture.frames.filter((f) => f.method === "session.openPersisted").length, 0);
+});
+
+test("Cloud explicit reconnect is one-shot across mid-flight shell updates, sequence gap re-observes, and older Host omits mode", async (t) => {
+  const cloudId = "cloud-session:src:rec-reconnect";
+  let fixture;
+  let openCalls = 0;
+  let resolveFirstReconnect;
+  fixture = await readServer(t, ({ frame, reply, sessionIdentity }) => {
+    const base = sessionIdentity("cloud-thread");
+    if (frame.method === "hello") {
+      reply({
+        version: 1,
+        hostId,
+        generation,
+        capabilities: [],
+        negotiatedCapabilities: ["gui-read-v1", "sessionOpenAutoV1"],
+        connectionId: base.connectionId,
+        gatewayGeneration: base.gatewayGeneration,
+      });
+      return true;
+    }
+    if (frame.method === "shell.subscribe") {
+      reply({
+        connectionId: base.connectionId,
+        gatewayGeneration: base.gatewayGeneration,
+        subscriptionId: "shell-sub",
+        sequence: 0,
+        snapshot: {
+          projects: [
+            {
+              ...project,
+              projectId: cloudId,
+              kind: "cloud",
+              state: "unavailable",
+              serviceGeneration: undefined,
+              summaries: { state: "cached", items: [] },
+            },
+          ],
+          navigation: [],
+        },
+      });
+      return true;
+    }
+    if (frame.method === "session.open") {
+      openCalls += 1;
+      if (openCalls === 1) {
+        assert.equal(frame.params.mode, "auto");
+        assert.equal(frame.params.reconnect, true);
+        resolveFirstReconnect = () =>
+          reply({
+            connectionId: base.connectionId,
+            gatewayGeneration: base.gatewayGeneration,
+            subscriptionId: "cloud-sub-1",
+            sequence: 0,
+            projectId: cloudId,
+            serviceGeneration: "cloud-lease-1",
+            threadId: "cloud-thread",
+            view: "conversation",
+            snapshot: { thread: { id: "cloud-thread", turns: [] } },
+          });
+        return true;
+      }
+      assert.equal(frame.params.mode, "auto");
+      assert.equal(frame.params.reconnect, undefined);
+      reply({
+        connectionId: base.connectionId,
+        gatewayGeneration: base.gatewayGeneration,
+        subscriptionId: `cloud-sub-${openCalls}`,
+        sequence: 0,
+        projectId: cloudId,
+        serviceGeneration: "cloud-lease-1",
+        threadId: "cloud-thread",
+        view: "conversation",
+        snapshot: { thread: { id: "cloud-thread", turns: [] } },
+      });
+      return true;
+    }
+    return false;
+  });
+
+  const reconnecting = fixture.client.selectSession({
+    projectId: cloudId,
+    threadId: "cloud-thread",
+    mode: "auto",
+    reconnect: true,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(openCalls, 1);
+
+  // 重连进行中收到 starting -> ready 目录推送，以及非强制的重复 selectSession，都必须合并到同一次重连，绝不二次发 reconnect。
+  const conn = fixture.client.snapshot().identity;
+  const pushCloudShell = (sequence, state, serviceGeneration) =>
+    fixture.send({
+      event: "shell.updated",
+      connectionId: conn.connectionId,
+      gatewayGeneration: conn.gatewayGeneration,
+      subscriptionId: "shell-sub",
+      sequence,
+      delta: {
+        projects: {
+          upsert: [
+            {
+              ...project,
+              projectId: cloudId,
+              kind: "cloud",
+              state,
+              ...(serviceGeneration ? { serviceGeneration } : { serviceGeneration: undefined }),
+              summaries: { state: "fresh", items: [] },
+            },
+          ],
+          remove: [],
+        },
+        navigation: { upsert: [], remove: [] },
+      },
+    });
+  pushCloudShell(1, "starting", undefined);
+  pushCloudShell(2, "ready", "cloud-lease-1");
+  const joined = fixture.client.selectSession({
+    projectId: cloudId,
+    threadId: "cloud-thread",
+    mode: "auto",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(openCalls, 1);
+
+  resolveFirstReconnect();
+  await Promise.all([reconnecting, joined]);
+  assert.equal(fixture.client.readsSnapshot().session.state, "fresh");
+
+  // 健康的 Cloud 会话遇到序号缺口（sequence=3 != 0+1）时必须主动重新观察，不能卡死在 stale。
+  fixture.send({
+    event: "session.updated",
+    connectionId: conn.connectionId,
+    gatewayGeneration: conn.gatewayGeneration,
+    subscriptionId: "cloud-sub-1",
+    sequence: 3,
+    projectId: cloudId,
+    serviceGeneration: "cloud-lease-1",
+    threadId: "cloud-thread",
+    view: "conversation",
+    patch: [],
+  });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(openCalls, 2);
+  assert.equal(fixture.client.readsSnapshot().session.state, "fresh");
+  assert.equal(fixture.client.readsSnapshot().session.value.subscriptionId, "cloud-sub-2");
+
+  // 旧版 Host 未协商 sessionOpenAutoV1 时，客户端不得发送 mode/reconnect 字段。
+  const olderHost = await readServer(t, ({ frame, reply, sessionIdentity }) => {
+    if (frame.method === "session.open") {
+      assert.equal("mode" in frame.params, false);
+      assert.equal("reconnect" in frame.params, false);
+      reply({
+        ...sessionIdentity(frame.params.threadId),
+        subscriptionId: "older-sub",
+        sequence: 0,
+        snapshot: nativeObservation(frame.params.threadId),
+      });
+      return true;
+    }
+    return false;
+  });
+  await olderHost.client.selectSession({
+    projectId: project.projectId,
+    threadId: "thread",
+    mode: "auto",
+  });
+  assert.equal(olderHost.client.readsSnapshot().session.state, "fresh");
+});
+
+test("local session.invalidated arriving before shell.updated reconciles stopping state without surfacing a transient error", async (t) => {
+  let shellPhase = "ready";
+  let openAttempts = 0;
+  let fixture;
+  fixture = await readServer(t, ({ frame, reply, sessionIdentity }) => {
+    const base = sessionIdentity("thread");
+    if (frame.method === "hello") {
+      reply({
+        version: 1,
+        hostId,
+        generation,
+        capabilities: [],
+        negotiatedCapabilities: ["gui-read-v1", "persistedHistoryV1"],
+        connectionId: base.connectionId,
+        gatewayGeneration: base.gatewayGeneration,
+      });
+      return true;
+    }
+    if (frame.method === "shell.subscribe") {
+      reply({
+        connectionId: base.connectionId,
+        gatewayGeneration: base.gatewayGeneration,
+        subscriptionId: `shell-${shellPhase}`,
+        sequence: 0,
+        snapshot: {
+          projects: [
+            {
+              ...project,
+              state: shellPhase,
+              serviceGeneration: shellPhase === "ready" ? "core-1" : undefined,
+            },
+          ],
+          navigation: [],
+        },
+      });
+      return true;
+    }
+    if (frame.method === "session.open") {
+      openAttempts += 1;
+      if (openAttempts === 1) {
+        reply({
+          ...base,
+          subscriptionId: "sub-live",
+          sequence: 0,
+          snapshot: nativeObservation("thread"),
+        });
+        return true;
+      }
+      // 模拟 Core 已进入 stopping，目录尚未送达，Host 返回 scheduleHostUnavailable。
+      [...fixture.listener.clients][0].send(
+        JSON.stringify({
+          version: 1,
+          id: frame.id,
+          error: { code: "scheduleHostUnavailable", message: "Core is stopping" },
+        }),
+      );
+      return true;
+    }
+    if (frame.method === "session.openPersisted") {
+      reply({
+        ...base,
+        serviceGeneration: "core-1",
+        subscriptionId: "sub-persisted",
+        sequence: 0,
+        access: { kind: "persisted", readOnly: true, snapshotId: "snap-1" },
+        snapshot: nativeObservation("thread"),
+      });
+      return true;
+    }
+    return false;
+  });
+
+  await fixture.client.selectSession({ projectId: project.projectId, threadId: "thread" });
+  const opened = fixture.client.readsSnapshot().session;
+  assert.equal(opened.state, "fresh");
+  let observedError;
+  const unsub = fixture.client.subscribeReads(() => {
+    const state = fixture.client.readsSnapshot().session;
+    if (state.state === "stale" && (state.error || state.failure)) {
+      observedError = state.error ?? state.failure?.code;
+    }
+  });
+  t.after(unsub);
+
+  // Core 已进入 stopping，但 session.invalidated 先于 shell.updated 到达。
+  shellPhase = "stopping";
+  fixture.send({
+    event: "session.invalidated",
+    connectionId: opened.value.connectionId,
+    gatewayGeneration: opened.value.gatewayGeneration,
+    subscriptionId: opened.value.subscriptionId,
+    sequence: 1,
+    projectId: project.projectId,
+    serviceGeneration: opened.value.serviceGeneration,
+    threadId: "thread",
+    view: "conversation",
+    error: { code: "RESYNC_REQUIRED", message: "resync" },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(observedError, undefined);
+  assert.equal(fixture.client.readsSnapshot().session.state, "stale");
+});
+
+test("structured Cloud read failure preserves code, stage, diagnosticId, and detail on readsSnapshot", async (t) => {
+  const cloudId = "cloud-session:src:rec-err";
+  let fixture;
+  fixture = await readServer(t, ({ frame, reply, sessionIdentity }) => {
+    const base = sessionIdentity("cloud-thread");
+    if (frame.method === "hello") {
+      reply({
+        version: 1,
+        hostId,
+        generation,
+        capabilities: [],
+        negotiatedCapabilities: ["gui-read-v1", "sessionOpenAutoV1"],
+        connectionId: base.connectionId,
+        gatewayGeneration: base.gatewayGeneration,
+      });
+      return true;
+    }
+    if (frame.method === "shell.subscribe") {
+      reply({
+        connectionId: base.connectionId,
+        gatewayGeneration: base.gatewayGeneration,
+        subscriptionId: "shell-sub",
+        sequence: 0,
+        snapshot: {
+          projects: [
+            {
+              ...project,
+              projectId: cloudId,
+              kind: "cloud",
+              state: "unavailable",
+              serviceGeneration: undefined,
+              summaries: { state: "cached", items: [] },
+            },
+          ],
+          navigation: [],
+        },
+      });
+      return true;
+    }
+    if (frame.method === "session.open") {
+      [...fixture.listener.clients][0].send(
+        JSON.stringify({
+          version: 1,
+          id: frame.id,
+          error: {
+            code: "CLOUD_AUTH_REJECTED",
+            message: "云端凭据验证未通过，请检查 Cloud 设置中的地址与令牌。",
+            stage: "cloud_connect",
+            detail: "HTTP 401",
+            diagnosticId: "a1b2c3d4",
+            retryable: false,
+          },
+        }),
+      );
+      return true;
+    }
+    return false;
+  });
+
+  await assert.rejects(
+    () => fixture.client.selectSession({ projectId: cloudId, threadId: "cloud-thread" }),
+    (error) => {
+      assert.equal(error.code, "CLOUD_AUTH_REJECTED");
+      assert.equal(error.stage, "cloud_connect");
+      assert.equal(error.diagnosticId, "a1b2c3d4");
+      assert.match(error.detail, /HTTP 401/);
+      assert.match(error.detail, /#a1b2c3d4/);
+      return true;
+    },
+  );
+  const reads = fixture.client.readsSnapshot();
+  assert.equal(reads.session.state, "unavailable");
+  assert.equal(reads.session.failure.code, "CLOUD_AUTH_REJECTED");
+  assert.equal(reads.session.failure.stage, "cloud_connect");
+  assert.equal(reads.session.failure.diagnosticId, "a1b2c3d4");
+  assert.equal(reads.session.failure.retryable, false);
 });

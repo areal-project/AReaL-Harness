@@ -17,7 +17,17 @@ export const ERROR_CODES = {
   GRANT_CHANGED: { action: "refresh", retryable: false },
   CAPABILITY_UNAVAILABLE: { action: "retry", retryable: true },
   CORE_UNAVAILABLE: { action: "retry", retryable: true },
+  CORE_CONNECTION_TIMEOUT: { action: "retry", retryable: true },
+  CORE_EXPLICITLY_STOPPED: { action: "reconnect", retryable: false },
   CORE_INCOMPATIBLE: { action: "none", retryable: false },
+  CLOUD_NOT_CONFIGURED: { action: "openSettings", retryable: false },
+  CLOUD_AUTH_REJECTED: { action: "openSettings", retryable: false },
+  CLOUD_SANDBOX_EXPIRED: { action: "none", retryable: false },
+  CLOUD_GATEWAY_UNAVAILABLE: { action: "retry", retryable: true },
+  CLOUD_HANDSHAKE_TIMEOUT: { action: "retry", retryable: true },
+  CLOUD_DISCONNECTED: { action: "reconnect", retryable: true },
+  CLOUD_CONNECTION_CLOSED: { action: "reconnect", retryable: true },
+  CLOUD_UNSUPPORTED_SESSION: { action: "none", retryable: false },
   CLOUD_IMPORT_REQUIRED: { action: "openSettings", retryable: false },
   SOURCE_CHANGED: { action: "refresh", retryable: false },
   CONFLICT: { action: "none", retryable: false },
@@ -138,6 +148,28 @@ export function rawText(cause: unknown) {
   const message = field(cause, "message") ?? field(field(cause, "error"), "message");
   if (typeof message === "string") return message;
   if (typeof cause === "string") return cause;
+}
+
+/** 面向“查看详情”的结构化诊断文本：保留错误码、阶段、脱敏详情与诊断编号。 */
+export function diagnosticDetail(cause: unknown): string | undefined {
+  const explicitDetail = field(cause, "detail") ?? field(field(cause, "error"), "detail");
+  const code = errorCode(cause);
+  const stage = field(cause, "stage") ?? field(field(cause, "error"), "stage");
+  const diagnosticId = field(cause, "diagnosticId") ?? field(field(cause, "error"), "diagnosticId");
+  const raw = rawText(cause)?.trim();
+  if (typeof explicitDetail === "string" && explicitDetail.trim()) {
+    const parts = [explicitDetail.trim()];
+    if (typeof diagnosticId === "string" && diagnosticId && !explicitDetail.includes(diagnosticId))
+      parts.push(`#${diagnosticId}`);
+    return parts.join(" · ");
+  }
+  const parts = [
+    raw,
+    code,
+    typeof stage === "string" ? stage : undefined,
+    typeof diagnosticId === "string" && diagnosticId ? `#${diagnosticId}` : undefined,
+  ].filter((part): part is string => typeof part === "string" && part.length > 0);
+  return parts.length ? [...new Set(parts)].join(" · ") : undefined;
 }
 
 /** 把任意错误变成用户能懂的一句话、一个动作和收起的详情。界面只从这里取错误文字。 */

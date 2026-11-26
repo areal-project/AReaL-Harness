@@ -192,6 +192,36 @@ async fn status_deadline_does_not_revoke_current_core_connection() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn never_connected_status_timeout_degrades_after_bounded_grace() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let service = service(&host, "ws://127.0.0.1:1/".into());
+            let registration = host.slots.borrow()["project"].registration.clone();
+            let directory =
+                storage::registry(&host.home, &Host::service_id(&registration)).unwrap();
+            storage::private_dir(&directory).unwrap();
+            let startup = storage::open_private(&directory.join("start.lock"), true).unwrap();
+            fs2::FileExt::try_lock_exclusive(&startup).unwrap();
+            let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+            {
+                let mut slots = host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                slot.state = "ready".into();
+                slot.service = Some(service);
+                slot.writer = Some(writer);
+                slot.lifetime = Some(Rc::new(lifetime));
+            }
+            // 未建连前允许前两次瞬态探测超时保留 ready，第三次连续超时撤销为 unavailable。
+            assert_eq!(host.project_status("project").await.state, "ready");
+            assert_eq!(host.project_status("project").await.state, "ready");
+            assert_eq!(host.project_status("project").await.state, "unavailable");
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn turn_completed_wakes_original_lifecycle_receipt_without_redispatch() {
     lifecycle_completion(false, false).await;
 }

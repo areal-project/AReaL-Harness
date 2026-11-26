@@ -289,7 +289,7 @@ impl Loopback {
             .and_then(|auth| auth.scopes(device_id))
             .context("FORBIDDEN")
     }
-    fn current(&self, device_id: Option<&str>) -> bool {
+    pub(super) fn current(&self, device_id: Option<&str>) -> bool {
         device_id.is_none_or(|id| {
             self.browser
                 .borrow()
@@ -532,6 +532,11 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             .capabilities
             .iter()
             .any(|capability| capability == "persistedHistoryV1");
+    let session_open_auto = negotiated
+        && hello
+            .capabilities
+            .iter()
+            .any(|capability| capability == "sessionOpenAutoV1");
     let connection_id = uuid::Uuid::new_v4().to_string();
     // 同一 WebSocket 连接上的 Query / Control / Mutation 会话共享 token_key，确保 reviewToken / cursor 可跨通道校验。
     let token_key = super::gateway_owner::LocalSession::random_token_key()?;
@@ -600,6 +605,10 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                 capabilities
                     .push(protocol::LoopbackHelloResultFieldNegotiatedCapabilitiesItem::Value3);
             }
+            if session_open_auto {
+                capabilities
+                    .push(protocol::LoopbackHelloResultFieldNegotiatedCapabilitiesItem::Value4);
+            }
             capabilities
         }),
         write_methods: None,
@@ -637,6 +646,14 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
     let mut queries = JoinSet::new();
     let mut recovery = JoinSet::new();
     let mut command: Option<AbortOnDropHandle<(super::gateway_owner::LocalSession, Value)>> = None;
+    // 会话打开（含 Cloud 冷启动与本地 Core 等待）独立挂在可取消任务上，不阻塞同连接的目录推送、查询与命令。
+    type PendingOpen = (
+        String,
+        String,
+        String,
+        AbortOnDropHandle<Result<(super::conversation_read::ConversationReader, Value)>>,
+    );
+    let mut pending_open: Option<PendingOpen> = None;
     loop {
         // 业务请求保留同连接顺序与会话状态；等待后台时仍消费读取、事件和撤销授权。
         if command.is_none()
@@ -669,6 +686,26 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                 command = None;
                 writer = Some(local);
                 ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                send(&mut socket, &response).await?;
+            }
+            opened = async { (&mut pending_open.as_mut().unwrap().3).await }, if pending_open.is_some() => {
+                let (req_id, req_method, req_project, _) = pending_open.take().unwrap();
+                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                let response = match opened.context("Host session open task failed").and_then(|res| res) {
+                    Ok((opened_reader, value)) => {
+                        // 安装前再次核验代际归属：若打开期间项目已换代或断开，丢弃陈旧基线并要求重同步。
+                        if !opened_reader.current(&host) {
+                            drop(opened_reader);
+                            json!({"version":VERSION,"id":req_id,"error":read_error_for_host(Some(&host), &anyhow::anyhow!("RESYNC_REQUIRED"), &req_method, Some(&req_project))})
+                        } else {
+                            reader = Some(opened_reader);
+                            json!({"version":VERSION,"id":req_id,"result":keys(&host,&connection_id,value)})
+                        }
+                    }
+                    Err(error) => {
+                        json!({"version":VERSION,"id":req_id,"error":read_error_for_host(Some(&host), &error, &req_method, Some(&req_project))})
+                    }
+                };
                 send(&mut socket, &response).await?;
             }
             event = bot_events.recv(), if writable => {
@@ -704,7 +741,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                 RemoteMethodLane::Mutation => (commands.len() + usize::from(command.is_some()) >= MAX_PENDING_COMMANDS, "commandQueueFull"),
                             };
                             if full {
-                                let mut error = loopback_error(&raw, &anyhow::anyhow!("CAPACITY_EXCEEDED"));
+                                let mut error = loopback_error_with_host(Some(&host), &raw, &anyhow::anyhow!("CAPACITY_EXCEEDED"));
                                 // 同一 code 可能来自命令、查询或核对队列，写明哪一队满了才能在详情里定位。
                                 error["reason"] = json!(reason);
                                 error["method"] = json!(raw["method"]);
@@ -739,7 +776,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                     };
                                     match local {
                                         Ok(mut local) => local_request(&host, &mut local, device.as_deref(), raw).await,
-                                        Err(error) => json!({"version":VERSION,"id":id,"error":loopback_error(&raw, &error)}),
+                                        Err(error) => json!({"version":VERSION,"id":id,"error":loopback_error_with_host(Some(&host), &raw, &error)}),
                                     }
                                 });
                             }
@@ -751,6 +788,93 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                         }
                         let input: ReadRequest = serde_json::from_value(raw)?;
                         ensure!(input.id.len() <= 256, "invalid request");
+                        let req_method = input.method.clone();
+                        let req_project = input.context.as_ref().map(|c| c.project_id.clone());
+                        if matches!(input.method.as_str(), "session.open" | "session.openPersisted") {
+                            let validated: Result<(
+                                ReadContext,
+                                String,
+                                super::conversation_read::OpenMode,
+                                bool,
+                            )> = (|| {
+                                ensure!(input.version == VERSION, wire::error("unsupportedVersion","Host requires version 1"));
+                                ensure!(!input.id.is_empty(), wire::error("invalidRequest","id must be nonempty"));
+                                ensure!(METHODS.contains(&input.method.as_str()) && negotiated, wire::error("methodNotFound","method is not available on this connection"));
+                                let context = input.context.context("INVALID_PARAMS")?;
+                                if input.method == "session.openPersisted" {
+                                    ensure!(persisted_history, wire::error("methodNotFound", "persisted history was not negotiated"));
+                                    let params: protocol::ConversationOpenParams = serde_json::from_value(input.params)?;
+                                    return Ok((
+                                        context,
+                                        params.thread_id,
+                                        super::conversation_read::OpenMode::Persisted,
+                                        false,
+                                    ));
+                                }
+                                let params: protocol::LoopbackSessionOpenParams = serde_json::from_value(input.params)?;
+                                // 未协商 sessionOpenAutoV1 时严格拒绝新增 mode/reconnect 字段，防止协议面漂移。
+                                if params.mode.is_some() || params.reconnect.is_some() {
+                                    ensure!(session_open_auto, "INVALID_PARAMS");
+                                }
+                                let mode = match params.mode {
+                                    Some(protocol::LoopbackSessionOpenParamsFieldMode::Value1) => {
+                                        super::conversation_read::OpenMode::Auto
+                                    }
+                                    Some(protocol::LoopbackSessionOpenParamsFieldMode::Value3) => {
+                                        ensure!(persisted_history, wire::error("methodNotFound", "persisted history was not negotiated"));
+                                        super::conversation_read::OpenMode::Persisted
+                                    }
+                                    None | Some(protocol::LoopbackSessionOpenParamsFieldMode::Value2) => {
+                                        ensure!(context.service_generation.is_some(), "INVALID_PARAMS");
+                                        super::conversation_read::OpenMode::Live
+                                    }
+                                };
+                                Ok((
+                                    context,
+                                    params.thread_id,
+                                    mode,
+                                    params.reconnect.unwrap_or(false),
+                                ))
+                            })();
+                            match validated {
+                                Ok((context, thread_id, mode, reconnect)) => {
+                                    if let Some((old_id, old_method, old_project, old_handle)) = pending_open.take() {
+                                        drop(old_handle);
+                                        let cancelled = read_error_for_host(Some(&host), &anyhow::anyhow!("RESYNC_REQUIRED"), &old_method, Some(&old_project));
+                                        send(&mut socket, &json!({"version":VERSION,"id":old_id,"error":cancelled})).await?;
+                                    }
+                                    reader = None;
+                                    let host_clone = host.clone();
+                                    let project_id = context.project_id.clone();
+                                    let expected_generation = context.service_generation.clone();
+                                    let allow_persisted = persisted_history;
+                                    let cloud_auth = match &device_id {
+                                        Some(id) => super::cloud_sessions::CloudActivationAuth::BrowserDevice {
+                                            device_id: id.clone(),
+                                        },
+                                        None => super::cloud_sessions::CloudActivationAuth::DesktopLocal,
+                                    };
+                                    let handle = AbortOnDropHandle::new(tokio::task::spawn_local(async move {
+                                        super::conversation_read::ConversationReader::open_auto(
+                                            &host_clone,
+                                            &project_id,
+                                            expected_generation.as_deref(),
+                                            &thread_id,
+                                            mode,
+                                            reconnect,
+                                            allow_persisted,
+                                            &cloud_auth,
+                                        )
+                                        .await
+                                    }));
+                                    pending_open = Some((input.id, req_method, context.project_id, handle));
+                                }
+                                Err(error) => {
+                                    send(&mut socket, &json!({"version":VERSION,"id":input.id,"error":read_error_for_host(Some(&host), &error, &req_method, req_project.as_deref())})).await?;
+                                }
+                            }
+                            continue;
+                        }
                         let result: Result<Value> = async {
                             ensure!(input.version == VERSION, wire::error("unsupportedVersion","Host requires version 1"));
                             ensure!(!input.id.is_empty(), wire::error("invalidRequest","id must be nonempty"));
@@ -768,22 +892,6 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                     let closed=shell.as_ref().is_some_and(|sub|sub.id()==params.subscription_id);
                                     if closed {shell=None;}
                                     Ok(json!({"closed":closed}))
-                                }
-                                "session.openPersisted" => {
-                                    ensure!(persisted_history, wire::error("methodNotFound", "persisted history was not negotiated"));
-                                    let context=input.context.context("INVALID_PARAMS")?;
-                                    let params: protocol::ConversationOpenParams=serde_json::from_value(input.params)?;
-                                    reader=None;
-                                    let (opened,value)=super::conversation_read::ConversationReader::open_persisted(&host,&context.project_id,context.service_generation.as_deref(),&params.thread_id).await?;
-                                    reader=Some(opened); Ok(keys(&host,&connection_id,value))
-                                }
-                                "session.open" => {
-                                    let context=input.context.context("INVALID_PARAMS")?;
-                                    let generation=context.service_generation.context("INVALID_PARAMS")?;
-                                    let params: protocol::ConversationOpenParams=serde_json::from_value(input.params)?;
-                                    reader=None;
-                                    let (opened,value)=super::conversation_read::ConversationReader::open(&host,&context.project_id,&generation,&params.thread_id).await?;
-                                    reader=Some(opened); Ok(keys(&host,&connection_id,value))
                                 }
                                 "session.watch" => {
                                     let context=input.context.context("INVALID_PARAMS")?;
@@ -825,7 +933,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                         ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
                         let response=match result {
                             Ok(value)=>json!({"version":VERSION,"id":input.id,"result":value}),
-                            Err(error)=>json!({"version":VERSION,"id":input.id,"error":read_error(&error)}),
+                            Err(error)=>json!({"version":VERSION,"id":input.id,"error":read_error_for_host(Some(&host), &error, &req_method, req_project.as_deref())}),
                         };
                         send(&mut socket,&response).await?;
                     }
@@ -969,7 +1077,7 @@ async fn local_request(
     match result {
         Ok(value) => json!({"version":VERSION,"id":raw["id"],"result":value}),
         Err(error) => {
-            json!({"version":VERSION,"id":raw["id"],"error":loopback_error(&raw, &error)})
+            json!({"version":VERSION,"id":raw["id"],"error":loopback_error_with_host(Some(host), &raw, &error)})
         }
     }
 }
@@ -1006,7 +1114,28 @@ fn keys(host: &Host, connection: &str, mut value: Value) -> Value {
     value["gatewayGeneration"] = json!(host.identity.generation);
     value
 }
+fn verified_loopback_project(host: &Host, supplied: &str) -> bool {
+    host.slots.borrow().contains_key(supplied)
+        || (super::cloud_sessions::CloudSessions::is_virtual(supplied)
+            && host
+                .gateway
+                .workbench
+                .cloud
+                .sessions
+                .owner(host, supplied)
+                .is_ok())
+}
+
+fn known_loopback_method(method: &str) -> bool {
+    METHODS.contains(&method) || WRITE_METHODS.contains(&method) || method == "read"
+}
+
+#[cfg(test)]
 fn loopback_error(request: &Value, error: &anyhow::Error) -> Value {
+    loopback_error_with_host(None, request, error)
+}
+
+fn loopback_error_with_host(host: Option<&Host>, request: &Value, error: &anyhow::Error) -> Value {
     if let Some(mut result) = super::task_catalog::task_rejection_response(error) {
         result["submissionUnknown"] = json!(false);
         if let Some(command) = request.get("commandId") {
@@ -1015,15 +1144,52 @@ fn loopback_error(request: &Value, error: &anyhow::Error) -> Value {
         return result;
     }
     let message = error.to_string();
-    let code = error
-        .downcast_ref::<wire::Error>()
+    let wire_err = error.downcast_ref::<wire::Error>();
+    let code = wire_err
         .map(|error| error.code)
         .unwrap_or_else(|| super::gateway_owner::error_code(&message));
-    let mut value = json!({"code":code,"message":"Host command failed"});
-    // Host 自己写的错误说明可以给界面看；其余原因可能带内部细节，只给代码。
-    if let Some(error) = error.downcast_ref::<wire::Error>() {
+    let diag_id = wire::diagnostic_id();
+    let mut value = json!({"code":code,"message":"Host command failed","diagnosticId":diag_id});
+    // Host 自己写的错误说明可以给界面看；其余原因可能带内部细节，只给代码与脱敏摘要。
+    if let Some(error) = wire_err {
         value["message"] = json!(error.message);
+        if let Some(stage) = error.stage {
+            value["stage"] = json!(stage);
+        }
+        if let Some(detail) = &error.detail {
+            value["detail"] = json!(detail);
+        }
+        if let Some(retryable) = error.retryable {
+            value["retryable"] = json!(retryable);
+        }
     }
+    let log_cause = if error.downcast_ref::<serde_json::Error>().is_some() {
+        "invalid_json_params".to_owned()
+    } else if let Some(err) = wire_err {
+        err.detail
+            .as_deref()
+            .map(wire::sanitize_detail)
+            .unwrap_or_else(|| err.code.to_owned())
+    } else if matches!(
+        code,
+        "INVALID_PARAMS" | "FORBIDDEN" | "RESYNC_REQUIRED" | "RESOURCE_UNAVAILABLE"
+    ) {
+        code.to_owned()
+    } else {
+        wire::sanitize_detail(&message)
+    };
+    let log_method = request["method"]
+        .as_str()
+        .filter(|name| known_loopback_method(name))
+        .unwrap_or("<unknown>");
+    let log_project = request["context"]["projectId"]
+        .as_str()
+        .filter(|supplied| host.is_some_and(|h| verified_loopback_project(h, supplied)))
+        .unwrap_or("-");
+    eprintln!(
+        "Host command failed: diagnosticId={diag_id} method={log_method} project={log_project} code={code} stage={} cause={log_cause}",
+        value["stage"].as_str().unwrap_or("-"),
+    );
     if matches!(
         request["method"].as_str(),
         Some(
@@ -1056,21 +1222,88 @@ fn loopback_error(request: &Value, error: &anyhow::Error) -> Value {
 }
 
 fn read_error(error: &anyhow::Error) -> Value {
-    let code = error
-        .downcast_ref::<wire::Error>()
+    read_error_for_host(None, error, "read", None)
+}
+
+#[cfg(test)]
+fn read_error_for(error: &anyhow::Error, method: &str, project: Option<&str>) -> Value {
+    read_error_for_host(None, error, method, project)
+}
+
+fn read_error_for_host(
+    host: Option<&Host>,
+    error: &anyhow::Error,
+    method: &str,
+    project: Option<&str>,
+) -> Value {
+    let message = error.to_string();
+    let wire_err = error.downcast_ref::<wire::Error>();
+    let code = wire_err
         .map(|error| error.code)
-        .unwrap_or_else(|| match error.to_string().as_str() {
+        .unwrap_or_else(|| match message.as_str() {
             _ if error.downcast_ref::<serde_json::Error>().is_some() => "INVALID_PARAMS",
             "INVALID_PARAMS" => "INVALID_PARAMS",
             "FORBIDDEN" => "FORBIDDEN",
             "RESYNC_REQUIRED" => "RESYNC_REQUIRED",
             "RESOURCE_UNAVAILABLE" => "RESOURCE_UNAVAILABLE",
+            "CORE_INCOMPATIBLE" => "CORE_INCOMPATIBLE",
+            "CORE_CONNECTION_TIMEOUT" => "CORE_CONNECTION_TIMEOUT",
+            "CORE_EXPLICITLY_STOPPED" => "CORE_EXPLICITLY_STOPPED",
+            "CLOUD_NOT_CONFIGURED" => "CLOUD_NOT_CONFIGURED",
+            "CLOUD_AUTH_REJECTED" => "CLOUD_AUTH_REJECTED",
+            "CLOUD_SANDBOX_EXPIRED" => "CLOUD_SANDBOX_EXPIRED",
+            "CLOUD_GATEWAY_UNAVAILABLE" => "CLOUD_GATEWAY_UNAVAILABLE",
+            "CLOUD_HANDSHAKE_TIMEOUT" => "CLOUD_HANDSHAKE_TIMEOUT",
+            "CLOUD_DISCONNECTED" => "CLOUD_DISCONNECTED",
+            "CLOUD_CONNECTION_CLOSED" => "CLOUD_CONNECTION_CLOSED",
+            "CLOUD_UNSUPPORTED_SESSION" => "CLOUD_UNSUPPORTED_SESSION",
             _ => "CORE_UNAVAILABLE",
         });
-    let mut value = json!({"code":code,"message":"Host read request failed"});
+    let diag_id = wire::diagnostic_id();
+    let mut value =
+        json!({"code":code,"message":"Host read request failed","diagnosticId":diag_id});
+    if let Some(error) = wire_err {
+        value["message"] = json!(error.message);
+        if let Some(stage) = error.stage {
+            value["stage"] = json!(stage);
+        }
+        if let Some(detail) = &error.detail {
+            value["detail"] = json!(detail);
+        }
+        if let Some(retryable) = error.retryable {
+            value["retryable"] = json!(retryable);
+        }
+    }
     if let Some(native) = error.downcast_ref::<super::schedule_connection::RpcFailure>() {
         value["coreError"] = native.0.clone();
     }
+    let log_cause = if error.downcast_ref::<serde_json::Error>().is_some() {
+        "invalid_json_params".to_owned()
+    } else if let Some(err) = wire_err {
+        err.detail
+            .as_deref()
+            .map(wire::sanitize_detail)
+            .unwrap_or_else(|| err.code.to_owned())
+    } else if matches!(
+        code,
+        "INVALID_PARAMS" | "FORBIDDEN" | "RESYNC_REQUIRED" | "RESOURCE_UNAVAILABLE"
+    ) {
+        code.to_owned()
+    } else {
+        wire::sanitize_detail(&message)
+    };
+    let log_method = if known_loopback_method(method) {
+        method
+    } else {
+        "<unknown>"
+    };
+    let log_project = project
+        .filter(|supplied| host.is_some_and(|h| verified_loopback_project(h, supplied)))
+        .unwrap_or("-");
+    eprintln!(
+        "Host read failed: diagnosticId={diag_id} method={log_method} project={log_project} code={code} stage={} cause={log_cause}",
+        value["stage"].as_str().unwrap_or("-"),
+    );
     value
 }
 async fn notify(socket: &mut Socket, event: Value) -> Result<()> {

@@ -16,6 +16,9 @@ pub struct Request {
 pub struct Error {
     pub code: &'static str,
     pub message: String,
+    pub stage: Option<&'static str>,
+    pub detail: Option<String>,
+    pub retryable: Option<bool>,
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -27,8 +30,101 @@ pub fn error(code: &'static str, message: impl Into<String>) -> anyhow::Error {
     Error {
         code,
         message: message.into(),
+        stage: None,
+        detail: None,
+        retryable: None,
     }
     .into()
+}
+pub fn staged_error(
+    code: &'static str,
+    stage: &'static str,
+    message: impl Into<String>,
+    detail: Option<String>,
+    retryable: bool,
+) -> anyhow::Error {
+    Error {
+        code,
+        message: message.into(),
+        stage: Some(stage),
+        detail: detail.map(|text| sanitize_detail(&text)),
+        retryable: Some(retryable),
+    }
+    .into()
+}
+/// 脱敏并截断错误细节：先检查私密关键词，再移除 URL userinfo / 查询参数 / 片段与控制字符，
+/// 确保不会把凭据、令牌或原始用户输入写进日志或协议错误。
+pub fn sanitize_detail(raw: &str) -> String {
+    let lowered = raw.to_ascii_lowercase();
+    for needle in [
+        "bearer ",
+        "authorization",
+        "token",
+        "api_key",
+        "apikey",
+        "x-api-key",
+        "password",
+        "passwd",
+        "secret",
+        "cookie",
+        "credential",
+        "private_key",
+    ] {
+        if lowered.contains(needle) {
+            return "redacted transport error".into();
+        }
+    }
+    let scrubbed = scrub_urls(raw);
+    let mut cleaned = String::with_capacity(scrubbed.len().min(240));
+    let mut prev_space = false;
+    for ch in scrubbed.chars() {
+        let ch = if ch.is_control() { ' ' } else { ch };
+        if ch == ' ' {
+            if prev_space {
+                continue;
+            }
+            prev_space = true;
+        } else {
+            prev_space = false;
+        }
+        cleaned.push(ch);
+        if cleaned.len() >= 240 {
+            break;
+        }
+    }
+    cleaned.trim().to_owned()
+}
+fn scrub_urls(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for (idx, word) in raw.split_whitespace().enumerate() {
+        if idx > 0 {
+            out.push(' ');
+        }
+        if let Some(scheme_pos) = word.find("://") {
+            let prefix = &word[..scheme_pos + 3];
+            let rest = &word[scheme_pos + 3..];
+            // 剥离查询参数与片段，避免任意 query 值进入诊断信息。
+            let without_query = rest.split(['?', '#']).next().unwrap_or("");
+            // 剥离 authority 中的 userinfo（user:pass@host）。
+            let authority_end = without_query.find('/').unwrap_or(without_query.len());
+            let authority = &without_query[..authority_end];
+            let path = &without_query[authority_end..];
+            out.push_str(prefix);
+            if let Some((_, host)) = authority.rsplit_once('@') {
+                out.push_str("[redacted]@");
+                out.push_str(host);
+            } else {
+                out.push_str(authority);
+            }
+            out.push_str(path);
+        } else {
+            out.push_str(word);
+        }
+    }
+    out
+}
+pub fn diagnostic_id() -> String {
+    uuid::Uuid::new_v4().simple().to_string()[..8].to_owned()
 }
 pub fn request_id(id: &str) -> Result<()> {
     uuid::Uuid::parse_str(id).map_err(|_| error("invalidRequest", "requestId must be a UUID"))?;

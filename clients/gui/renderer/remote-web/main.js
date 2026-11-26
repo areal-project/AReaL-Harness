@@ -527,7 +527,7 @@ async function connectHost(automatic = false) {
       room: target.room,
       hello: {
         displayName: browserDeviceName(navigator.userAgent, navigator.maxTouchPoints),
-        ...(sharedUi ? { capabilities: ["gui-read-v1", "gui-write-v1"] } : {}),
+        ...(sharedUi ? { capabilities: ["gui-read-v1", "gui-write-v1", "sessionOpenAutoV1"] } : {}),
         ...(target.invite ? { inviteSecret: target.invite } : {}),
       },
       isCurrent: () => activeSocket === socket && current(),
