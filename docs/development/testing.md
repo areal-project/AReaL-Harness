@@ -161,6 +161,8 @@ Linux 移动浏览器 job 安装依赖前，将托管 runner 的 Ubuntu mirror l
 
 `test:connection-recovery` 复用现有 journey manifest、真实 Host/Core、源码 Electron owner、生产网页 Renderer 和本地模型。它逐项输出六个业务事实：正常加载不误报失败、空闲后 socket 换代自动恢复、草稿与选择保留、继续提交有权威及可见终态、显式停止不被自动恢复、UNKNOWN 原提交不重放。空闲步骤调用生产 `ifIdle` 停止路径，不代表已验证 15 分钟计时器；本试点也不证明安装包、真实供应商、Host 进程换代或手机验收。退出时仅由夹具代答原生确认选择，保留选择记录，不能算作真实系统弹窗交互验收。空闲状态按可编辑/可发送及权威状态验收；激活的 `pending` 只有在后续同连接目录与 Host 一致就绪后才能结算。
 
+恢复夹具只对当前审批按钮执行真实点击；按钮消失后继续核对原 Turn，不点击替代控件。退出前先关闭其浏览器 Context。清理仍须有原代际的停止回执及进程退出证据；若失败，另记回收意图与停止回执是否匹配。
+
 ```sh
 python3 scripts/ci-preflight.py --base <base> --item smoke:test:connection-recovery --with-dependencies
 python3 scripts/verification-evidence.py <run>/report.json

@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import {
   coreBin,
   createScene,
+  denyPresentRecoveryApproval,
   gui,
   playwright,
   sendReady,
@@ -62,7 +63,7 @@ const report = {
   scope:
     "Source Electron owner, real Host/Core and Chromium Renderer; local model; no installed-package or physical-device claim",
 };
-let scene, model, desktop, env, browser, page, host, originalHost;
+let scene, model, desktop, env, browser, context, page, host, originalHost;
 let originalHostCapturedDuringCleanup = false;
 let stage = "prerequisites";
 let explorationPlan;
@@ -380,7 +381,8 @@ async function settleTurn(threadId, text, priorTurnIds = []) {
           .first()
           .getByRole("button", { name: /拒绝/ })
           .first();
-        if ((await deny.isVisible()) && (await deny.isEnabled())) await deny.click();
+        const [current] = await deny.elementHandles();
+        await denyPresentRecoveryApproval(current);
       }
       return (
         turn?.status === "completed" && {
@@ -778,7 +780,7 @@ try {
     ...(chromiumPath ? { executablePath: chromiumPath } : { channel: "chrome" }),
     args: process.getuid?.() === 0 ? ["--no-sandbox"] : [],
   });
-  const context = await browser.newContext({
+  context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     locale: "zh-CN",
   });
@@ -1328,6 +1330,10 @@ try {
     if (page && !page.isClosed())
       await page.evaluate(() => globalThis.connectionJourneyBarrier?.restore());
   });
+  // 先关闭夹具创建的 Context，让页面和拦截的 WebSocket 正常关闭，再退出浏览器进程。
+  await cleanup("browser-context", async () => {
+    await context?.close();
+  });
   await cleanup("browser", async () => {
     await browser?.close();
   });
@@ -1404,6 +1410,43 @@ try {
     await cleanup("process-exit", () =>
       assertApplicationStopped(coreBin, env, { pid, hostPid: originalHost?.pid }),
     );
+  const cleanupEvidence = ["cleanup.json", "cleanup-dialog.json"];
+  if (
+    originalHost &&
+    cleanupErrors.some(({ step }) => ["host-settlement", "process-exit"].includes(step))
+  )
+    await cleanup("host-state-evidence", async () => {
+      const record = async (path) =>
+        readFile(path, "utf8")
+          .then(JSON.parse)
+          .catch((error) => {
+            if (error.code === "ENOENT") return null;
+            throw error;
+          });
+      const home = join(env.AREAL_HARNESS_SERVICE_HOME, "host");
+      const [release, stop, reference, current] = await Promise.all([
+        record(join(home, "release.json")),
+        record(join(home, "stop.json")),
+        record(join(out, "host-stop-reference.json")),
+        readFixtureHost(env),
+      ]);
+      // 回收意图不是完成回执。仅记录原代际的状态与 ID 对应关系，不复制 Host 私有记录。
+      await persist("cleanup-host-state.json", {
+        originalHostRegistered:
+          current?.hostId === originalHost.hostId &&
+          current?.generation === originalHost.generation,
+        armedOriginalRelease: release?.generation === originalHost.generation,
+        releaseMatchesReference: Boolean(
+          reference && release?.stopRequestId === reference.requestId,
+        ),
+        originalStopState:
+          stop?.hostId === originalHost.hostId && stop?.generation === originalHost.generation
+            ? stop.state
+            : null,
+        stopMatchesReference: Boolean(reference && stop?.requestId === reference.requestId),
+      });
+      cleanupEvidence.push("cleanup-host-state.json");
+    });
   if (scene && env)
     await cleanup("synthetic-keychain", () =>
       cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scene.scratch),
@@ -1417,7 +1460,7 @@ try {
     });
   report.cleanup = {
     status: cleanupErrors.length ? "failed" : "passed",
-    evidence: ["cleanup.json", "cleanup-dialog.json"],
+    evidence: cleanupEvidence,
     errors: cleanupErrors,
     originalHostCapturedDuringCleanup,
     ...(cleanupErrors.length && scene ? { retainedFixture: scene.scratch } : {}),
