@@ -4,7 +4,7 @@ use areal_engine::tools::DynamicToolHost;
 use areal_protocol::DynamicToolResponse;
 use std::sync::{
     Mutex as StdMutex,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use tokio::sync::oneshot;
 
@@ -18,6 +18,7 @@ static CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
 pub(super) struct ToolHost {
     id: String,
     identity: String,
+    callback_item_id: AtomicBool,
     next: AtomicU64,
     tx: mpsc::Sender<Outbound>,
     stop: CancellationToken,
@@ -43,11 +44,15 @@ impl ToolHost {
                 CONNECTION_ID.fetch_add(1, Ordering::Relaxed)
             ),
             identity,
+            callback_item_id: AtomicBool::new(false),
             next: AtomicU64::new(1),
             tx,
             stop,
             pending: StdMutex::new(HashMap::new()),
         })
+    }
+    pub fn enable_callback_item_id(&self) {
+        self.callback_item_id.store(true, Ordering::Relaxed);
     }
     pub fn respond(&self, response: Value) {
         let Some(id) = response["id"].as_str() else {
@@ -156,10 +161,17 @@ impl ToolHost {
     async fn request(
         &self,
         method: &str,
-        params: Value,
+        mut params: Value,
         cancel: CancellationToken,
     ) -> anyhow::Result<Value> {
         anyhow::ensure!(!self.is_closed(), "dynamic tool client disconnected");
+        // 旧版回调的 schema 拒绝额外字段；只向此连接明确接受的客户端发出账本身份。
+        if matches!(method, "item/tool/call" | "areal/browser/prepare")
+            && !self.callback_item_id.load(Ordering::Relaxed)
+            && let Some(fields) = params.as_object_mut()
+        {
+            fields.remove("itemId");
+        }
         let id = format!(
             "areal-tool/{}/{}",
             self.id,

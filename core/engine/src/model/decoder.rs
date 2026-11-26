@@ -328,7 +328,7 @@ impl ChatDecoder {
                 for call in self.calls.values() {
                     anyhow::ensure!(
                         !call.id.is_empty()
-                            && call.id.len() <= 256
+                            && call.id.len() <= tool_calls::MAX_TOOL_CALL_ID_BYTES
                             && call.id.is_ascii()
                             && ids.insert(&call.id),
                         "invalid or duplicate tool call ID"

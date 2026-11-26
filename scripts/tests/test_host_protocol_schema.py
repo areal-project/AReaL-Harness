@@ -223,7 +223,18 @@ validate('#/$defs/WorkbenchPrivateCoreMediaParams', {...coreMedia,length:65537},
 const blobUpload = {sourceId:'fixture',projectId:'project',lease:canonicalUuid,threadId:'thread',operation:'upload',mime:'image/png',base64:'AA=='};
 validate('#/$defs/WorkbenchPrivateCoreBlobParams', blobUpload);
 validate('#/$defs/WorkbenchPrivateCoreBlobParams', {...blobUpload,callId:'call'}, false);
-validate('#/$defs/WorkbenchPrivateCoreBlobParams', {...blobUpload,callId:'call',hostGeneration:'generation'});
+const blobSchema = '#/$defs/WorkbenchPrivateCoreBlobParams';
+const callBlob = {...blobUpload, hostGeneration:'generation', callId:'a'.repeat(512)};
+validate(blobSchema, callBlob);
+validate(blobSchema, {...callBlob,callId:callBlob.callId+'b'}, false);
+const scopedBlob = {...blobUpload,hostGeneration:'generation',turnId:'turn',itemId:'item'};
+validate(blobSchema, scopedBlob);
+for (const fields of [{callId:'x'}, {itemId:'x'.repeat(513)}, {itemId:''}, {itemId:7}, {itemId:null}, {turnId:''}, {hostGeneration:null}, {unknown:'value'}])
+  validate(blobSchema, {...scopedBlob,...fields}, false);
+for (const field of ['itemId','turnId','hostGeneration']) {
+  const invalid = {...scopedBlob}; delete invalid[field]; validate(blobSchema, invalid, false);
+}
+validate(blobSchema, {...callBlob,callId:'x'.repeat(65536)}, false);
 validate('#/$defs/WorkbenchPrivateWorkbenchUtilityParams', {operation:'feedbackSubmit',document:'a'.repeat(1048577)});
 validate('#/$defs/WorkbenchPrivateWorkbenchUtilityParams', {operation:'modelsWrite',document:'a'.repeat(1048577)}, false);
 

@@ -1,6 +1,21 @@
 use super::*;
 use areal_protocol::desktop::Question;
 
+const CHANNEL_PAGE_BYTES: usize = 128 * 1024;
+
+fn message_bytes(message: &ChannelMessage) -> Result<usize> {
+    Ok(serde_json::to_vec(message).map_err(invalid)?.len())
+}
+
+fn require_readable_message(message: &ChannelMessage) -> Result<()> {
+    if message_bytes(message)? > CHANNEL_PAGE_BYTES {
+        return Err(invalid(
+            "Channel message exceeds response capacity; shorten the question or answers",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_questions(questions: &[Question]) -> Result<()> {
     let mut ids = HashSet::new();
     if serde_json::to_vec(questions).map_err(invalid)?.len() > 32768
@@ -33,8 +48,9 @@ fn push(task: &mut Task, mut message: ChannelMessage) -> Result<()> {
     {
         return Err(Error::Exhausted("task channel capacity reached".into()));
     }
-    task.channel_sequence += 1;
-    message.sequence = task.channel_sequence;
+    message.sequence = task.channel_sequence + 1;
+    require_readable_message(&message)?;
+    task.channel_sequence = message.sequence;
     task.messages.push(message);
     Ok(())
 }
@@ -117,7 +133,11 @@ impl Engine {
             .ok_or(Error::Conflict)?
             .id
             .clone();
-        let message_id = format!("{turn_id}/{call_id}");
+        // 通道和待办目录使用独立身份；供应商原 ID 仍由工具账本、模型请求完整配对。
+        let message_id = format!(
+            "question:{}",
+            desktop::digest(&(&task.id, &run_id, &cell.id, &turn_id, call_id))?
+        );
         let snapshot = self.task_modes.state.lock().await.clone();
         let existed = snapshot.message_exists(&task.id, &message_id)?;
         let mut state = self.task_modes.state.lock().await;
@@ -341,8 +361,8 @@ impl Engine {
         let mut rows = Vec::new();
         let mut bytes = 0;
         for message in messages {
-            let size = serde_json::to_vec(&message).map_err(invalid)?.len();
-            if rows.len() == limit || bytes + size > 131072 {
+            let size = message_bytes(&message)?;
+            if rows.len() == limit || bytes + size > CHANNEL_PAGE_BYTES {
                 if rows.is_empty() {
                     return Err(Error::Exhausted(
                         "Channel message exceeds response capacity".into(),
@@ -414,6 +434,8 @@ impl Engine {
             question.sequence = task.channel_sequence;
             question.status = "answered".into();
             question.answers = Some(request.answers.clone());
+            // 同一回复同时修改问题原行、追加回答行；两者均须在提交前验证实际 JSON 字节。
+            require_readable_message(question)?;
             let message_id = id();
             push(task, ChannelMessage {id:message_id.clone(),sequence:0,run_id:request.run_id.clone(),author:owner.clone(),
                 kind:"reply".into(),status:"published".into(),created_at:now(),expires_at:None,questions:vec![],required:false,

@@ -105,7 +105,24 @@ impl Model for Fixture {
                 n,
             )
         };
-        let event = if self.ask {
+        let event = if goal["goal"]["objective"] == "ask opaque question" {
+            let id = "x".repeat(64 * 1024);
+            match n {
+                0 => ModelEvent::ToolCall(ToolCall {
+                    id,
+                    name: "ask_user_question".into(),
+                    arguments: json!({"mode":"async","required":true,
+                        "questions":(0..8).map(|i| json!({"id":i.to_string(),"title":"question","allowFreeText":true})).collect::<Vec<_>>()
+                    }).to_string(),
+                }),
+                1 => {
+                    assert!(m.iter().any(|v| v.role == "tool" && v.tool_call_id.as_ref() == Some(&id)));
+                    tool("task_wait", json!({}), n)
+                }
+                2 => complete(),
+                _ => ModelEvent::TextDelta("confirmed".into()),
+            }
+        } else if self.ask {
             if n == 0 {
                 tool(
                     "ask_user_question",
@@ -206,6 +223,69 @@ async fn until(engine: &Engine, id: &str, status: RunStatus) -> Task {
         json!(task),
         json!(thread)
     )
+}
+
+#[tokio::test]
+async fn opaque_question_keeps_its_model_id_and_rejects_unreadable_answers_before_commit() {
+    let (_dir, engine, _) = open(true, false);
+    let mut task = create(TaskMode::Background, None);
+    task.objective = "ask opaque question".into();
+    let accepted = engine.task_create("owner".into(), task).await.unwrap();
+    let id = accepted["id"].as_str().unwrap();
+    let pending = until(&engine, id, RunStatus::WaitingForInput).await;
+    let read = ChannelRead {
+        task_id: id.into(),
+        after_sequence: None,
+        limit: Some(8),
+    };
+    let before = engine.channel_read(read.clone()).await.unwrap();
+    let question = &pending.messages[0];
+    assert!(question.id.len() < 128);
+    let mut reply = ChannelReply {
+        request_id: "answer".into(),
+        task_id: id.into(),
+        run_id: question.run_id.clone(),
+        question_id: question.id.clone(),
+        answers: question
+            .questions
+            .iter()
+            .map(|q| (q.id.clone(), "\u{1}".repeat(4096)))
+            .collect(),
+    };
+    assert!(
+        engine
+            .channel_reply("owner".into(), reply.clone())
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("response capacity")
+    );
+    assert_eq!(engine.channel_read(read.clone()).await.unwrap(), before);
+    reply
+        .answers
+        .values_mut()
+        .for_each(|s| *s = "x".repeat(4096));
+    let accepted = engine
+        .channel_reply("owner".into(), reply.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        engine
+            .channel_reply("owner".into(), reply.clone())
+            .await
+            .unwrap(),
+        accepted
+    );
+    let page = engine.channel_read(read).await.unwrap();
+    let answered = page["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["id"] == question.id)
+        .unwrap();
+    assert_eq!(answered["status"], "answered");
+    assert_eq!(answered["answers"], json!(reply.answers));
+    engine.shutdown().await;
 }
 
 #[tokio::test]

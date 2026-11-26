@@ -12,6 +12,8 @@ import type { CorePreview } from "./preview.cjs";
 import type { DiscoveryRequest, HostRequest } from "./preview-native/model.js";
 
 type Fields = Record<string, unknown>;
+const shortBlobId = (v: unknown): v is string =>
+  typeof v === "string" && v.length > 0 && Buffer.byteLength(v) <= 512;
 const record = (value: unknown): value is Fields =>
   !!value && typeof value === "object" && !Array.isArray(value);
 const samePage = (a: Fields, b: Fields) =>
@@ -53,6 +55,8 @@ export class NativeBrowserTools {
       !["threadId", "turnId", "callId", "hostGeneration"].every(
         (key) => typeof params[key] === "string" && !!params[key],
       ) ||
+      (params.itemId !== undefined &&
+        (typeof params.itemId !== "string" || !params.itemId || params.itemId.length > 128)) ||
       (params.browserApproval !== undefined && !record(params.browserApproval))
     )
       throw new Error("Unsupported native browser callback");
@@ -70,6 +74,7 @@ export class NativeBrowserTools {
       threadId: String(params.threadId),
       turnId: String(params.turnId),
       callId: String(params.callId),
+      ...(typeof params.itemId === "string" ? { itemId: params.itemId } : {}),
       requestId: String(frame.coreRequestId),
       phase,
       operation: "describe",
@@ -183,7 +188,16 @@ export class NativeBrowserTools {
           : input.operation === "capture"
             ? 3 * 1024 * 1024
             : 512 * 1024;
-      if (Buffer.byteLength(JSON.stringify(result)) > maximum)
+      // prepare 只返回 plan。封套若再次回显同一个 ID，仅计一次；真实计划和其余数据仍受原限额。
+      const measured =
+        phase === "prepare" &&
+        identity.itemId &&
+        record(result.plan) &&
+        result.callId === identity.callId &&
+        result.plan.callId === identity.callId
+          ? { ...result, callId: identity.itemId }
+          : result;
+      if (Buffer.byteLength(JSON.stringify(measured)) > maximum)
         throw new Error("Native browser result exceeds its budget");
       if (
         !current() ||
@@ -253,6 +267,16 @@ export class NativeBrowserTools {
           pageCurrent,
         );
         const { imageBase64: _, ...metadata } = result;
+        // 原始调用 ID 已在账本和模型工具配对中。只收窄可信截图元信息中的重复字段，
+        // 不动页面数据、其他业务字段或 Core 对混合媒体结果的 16 KiB 上限。
+        if (
+          typeof params.itemId === "string" &&
+          !shortBlobId(params.callId) &&
+          metadata.callId === params.callId
+        ) {
+          delete metadata.callId;
+          metadata.itemId = params.itemId;
+        }
         return {
           success: true,
           contentItems: [
@@ -360,13 +384,20 @@ export class NativeBrowserTools {
     const bytes = Buffer.from(base64, "base64");
     if (!bytes.length || bytes.length > 8 * 1024 * 1024 || bytes.toString("base64") !== base64)
       throw new Error("Invalid native browser image encoding");
+    const owner =
+      params.itemId !== undefined && shortBlobId(params.itemId) && shortBlobId(params.turnId)
+        ? { turnId: params.turnId, itemId: params.itemId }
+        : params.itemId === undefined && shortBlobId(params.callId)
+          ? { callId: params.callId }
+          : null;
+    if (!owner) throw new Error("Invalid native browser image owner");
     const result = await this.options.call("core.blob", {
       sourceId: frame.sourceId,
       projectId: frame.projectId,
       lease: frame.lease,
       operation: "upload",
       threadId: params.threadId,
-      callId: params.callId,
+      ...owner,
       hostGeneration: params.hostGeneration,
       mime,
       base64,

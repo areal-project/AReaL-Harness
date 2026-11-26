@@ -86,6 +86,8 @@ Cancelling a Task removes future dispatches and terminates unfinished Runs. Runs
 
 ChannelMessage contains `id, sequence, runId, author, kind, status, createdAt, expiresAt, questions, required, inReplyTo, answers, text`. kind is question/reply/workerReport/report. Question status is pending/answered/expired/cancelled; other messages are published. questionId references the question message id. answers maps each question ID to one nonempty string of at most 4096 bytes, covering exactly all questions; closed-choice answers must match an offered option.
 
+Reply with the exact `questionId` returned by the Channel. New questions use a bounded internal ID; the model retains its original tool call ID, and existing questions keep their IDs. Before committing a reply, Core checks that the updated question and the new reply each serialize to at most 128 KiB of JSON. An oversized reply returns an invalid-argument error and leaves the question pending. The caller can shorten the answers and retry with the same `requestId`.
+
 A question must belong to the specified Task/Run, remain pending and not have expired. New replies are rejected for cancelled Tasks, completed/failed/budget-limited Goals or replaced Goals. Valid replies may be accepted during pause without resuming execution. Successful retries with the same requestId still return their receipt. Errors use Core codes: `-32602` invalid arguments, `-32009` state/revision conflict, `-32003` permission denied, `-32004` not found, `-32001` capacity exhausted; storage failures use the actual returned Core error.
 
 ## Bounded directory and owner updates

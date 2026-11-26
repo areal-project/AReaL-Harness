@@ -168,10 +168,11 @@ async fn persisted_runtime_write_survives_disconnect_and_reopen_without_replay()
     )
     .await
     .unwrap();
-    let mut replay = HttpReplay::start(include_str!(
-        "fixtures/provider-replay/persisted-write.json"
-    ))
-    .await;
+    // 原始调用 ID 必须跨 Runtime 写入、断流、落盘与重开保持一致，不能重新执行已确认的写入。
+    let provider_id = format!("call_opaque_{}", "a".repeat(8192));
+    let fixture = include_str!("fixtures/provider-replay/persisted-write.json")
+        .replace("write-once", &provider_id);
+    let mut replay = HttpReplay::start(&fixture).await;
     let config = || RuntimeConfig {
         client: runtime.clone(),
         workspace: workspace_path.clone(),
@@ -196,7 +197,7 @@ async fn persisted_runtime_write_survives_disconnect_and_reopen_without_replay()
             .as_array()
             .unwrap()
             .iter()
-            .any(|m| m["role"] == "tool" && m["tool_call_id"] == "write-once")
+            .any(|m| m["role"] == "tool" && m["tool_call_id"] == provider_id)
     );
     // 下一轮请求已携带工具结果；再独立检查持久记录，不能用网络里程碑冒充落盘。
     let saved: serde_json::Value = serde_json::from_slice(
@@ -208,7 +209,7 @@ async fn persisted_runtime_write_survives_disconnect_and_reopen_without_replay()
             .as_array()
             .unwrap()
             .iter()
-            .any(|i| i["callId"] == "write-once" && i["success"] == true)
+            .any(|i| i["callId"] == provider_id && i["success"] == true)
     );
     assert_eq!(
         std::fs::read_to_string(workspace_path.join("proof.txt")).unwrap(),
@@ -242,11 +243,11 @@ async fn persisted_runtime_write_survives_disconnect_and_reopen_without_replay()
             .as_array()
             .unwrap()
             .iter()
-            .any(|m| m["role"] == "tool" && m["tool_call_id"] == "write-once")
+            .any(|m| m["role"] == "tool" && m["tool_call_id"] == provider_id)
     );
     let done = wait(&reopened, &thread.id).await;
     assert_eq!(done.turns.last().unwrap().status, TurnStatus::Completed);
-    assert_eq!(done.turns.iter().flat_map(|t| &t.items).filter(|i| matches!(i, Item::DynamicToolCall { call_id, success: Some(true), .. } if call_id == "write-once")).count(), 1);
+    assert_eq!(done.turns.iter().flat_map(|t| &t.items).filter(|i| matches!(i, Item::DynamicToolCall { call_id, success: Some(true), .. } if call_id == &provider_id)).count(), 1);
     assert_eq!(
         std::fs::read_to_string(workspace_path.join("proof.txt")).unwrap(),
         "sentinel after completed write"

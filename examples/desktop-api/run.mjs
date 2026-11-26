@@ -554,7 +554,9 @@ try {
         const url = new URL("/areal/blobs", context.endpoint.replace("ws:", "http:"));
         url.search = new URLSearchParams({
           threadId: params.threadId,
-          callId: params.callId,
+          ...(params.itemId
+            ? { turnId: params.turnId, itemId: params.itemId }
+            : { callId: params.callId }),
           hostGeneration: params.hostGeneration,
         });
         const uploaded = await fetch(url, {

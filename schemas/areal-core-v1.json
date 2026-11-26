@@ -1,5 +1,17 @@
 {
   "apiVersion": "areal.core.v1",
+  "clientNotifications": {
+    "initialized": {
+      "additionalProperties": false,
+      "properties": {
+        "toolCallbackItemId": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    }
+  },
   "effectiveConfig": {
     "$defs": {
       "AgentProfile": {
@@ -135638,6 +135650,9 @@
         "platformOs": {
           "type": "string"
         },
+        "toolCallbackItemId": {
+          "type": "boolean"
+        },
         "userAgent": {
           "type": "string"
         }
@@ -158445,6 +158460,11 @@
         "hostGeneration": {
           "type": "string"
         },
+        "itemId": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
         "threadId": {
           "type": "string"
         },
@@ -158554,6 +158574,11 @@
           "type": "string"
         },
         "hostGeneration": {
+          "type": "string"
+        },
+        "itemId": {
+          "maxLength": 128,
+          "minLength": 1,
           "type": "string"
         },
         "threadId": {

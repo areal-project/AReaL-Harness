@@ -37,7 +37,7 @@ GUI 默认开启，可在“预测下一条提示词”设置中关闭。关闭�
 
 ## 传输与会话
 
-每个 WebSocket 文本消息承载一条请求、响应或通知。Core 入站消息和帧上限为 4 MiB，出站完整 JSON 消息上限为 64 MiB，按编码后的 UTF-8 字节计量。`areal/capabilities` 的 `limits.frameBytes` 和 `limits.responseBytes` 分别报告这两个上限。请求 `{id,method,params}`，id 为字符串或整数，params 为对象；可省略 jsonrpc，响应 result/error 二选一，不支持批处理。先请求 initialize，再发送 initialized 通知。
+每个 WebSocket 文本消息承载一条请求、响应或通知。Core 入站消息和帧上限为 4 MiB，出站完整 JSON 消息上限为 64 MiB，按编码后的 UTF-8 字节计量。`areal/capabilities` 的 `limits.frameBytes` 和 `limits.responseBytes` 分别报告这两个上限。请求 `{id,method,params}`，id 为字符串或整数，params 为对象；可省略 jsonrpc，响应 result/error 二选一，不支持批处理。先请求 initialize，再发送 initialized 通知。若响应带有 `toolCallbackItemId:true`，接受账本项身份的客户端在首次 `initialized.params` 中回显该字段。仅此连接的工具调用与浏览器准备回调会附带 `itemId`；省略时保留原回调格式，重复通知不改变协商结果。
 
 响应超限时，Core 返回相同 RPC ID 的 `-32001` 错误，data 为 `{reason:"RESPONSE_TOO_LARGE",limitBytes:67108864,retryable:false,delivery:"resultUnavailable"}`，连接继续可用。`thread/resume` 或 `areal/thread/observe` 的基线超限时，同一订阅停止转发，已排队的后续事件也不送达。该错误只表示结果无法送达，不表示命令未执行；变更请求沿用原 requestId 查询回执，不自动重放。通知或服务端请求超限时，Core 以关闭码 1009 和固定原因 `RESPONSE_TOO_LARGE` 断连，不丢弃消息后继续提供不完整投影。单次发送仍有 5 秒期限。
 
@@ -262,6 +262,10 @@ JSONL 的 30 天期限按文件最后修改时间计算，不逐条检查行的�
 
 开始消费响应流前的传输失败、HTTP 错误状态和非 SSE 响应也记为 `outcome=failed`，`error` 保存脱敏诊断；非 SSE 响应提示检查完整 API endpoint，不记录错误页正文或原始响应 header。取消或未完成的请求仍记为 `interrupted_or_unfinished`。
 
+Chat Completions 和 Responses 的单个工具调用 ID 上限为 64 KiB（含边界），字节数同时计入响应的工具总缓冲。Chat 的同一调用按分片累计。合法 ID 按原值与工具结果关联；超出预算时拒绝该响应的工具调用，不截断 ID。
+
+结构化 `agent_spawn` 的内部去重键由父 Thread、Turn 和完整调用 ID 派生。独立权限审查的摘要绑定完整调用 ID 和操作，包括已绑定宿主准备的浏览器计划。审查模型的输入省略已核实的协议关联字段：计划可以回显原调用 ID，批量子步骤还可以绑定本次操作的账本项 ID。工具参数、页面数据原样保留，仍计入 48 KiB 上限。计划中的关联 ID 不一致时，独立审查失败，不派发操作。
+
 工具错误审计新增 `errorCode` 与 `toolCallError`：`invalid_tool_call_index` 附固定原因、协议、字段路径、从 1 开始的 SSE 数据事件序号、index JSON 类型及已缓冲调用数量；`tool_call_budget_exceeded` 附预算类别、上限和观测值。字段只含固定标签和有界数值，诊断不复制 SSE、参数、reasoning 或非法字段值，使用同一记录的本地 `requestId` 关联。`responseShape.toolArgumentBytes` 沿用旧名称，实际累计通过校验的 id/name/arguments 字节。
 
 快照写入格式 14，可读取无派生元数据的旧格式 1–14；Fork/Side 记录必须使用格式 14 并通过会话版本与持久权限校验。旧二进制不能读取新快照，不能通过降低版本号绕过角色检查。可选 `historyArchive` 引用 `history/` 中的不可变 SHA-256 分段，包含 head、throughItemId、completedTurns、items、bytes；单分段最多 64 MiB。先同步分段，再提交引用它的快照。热快照保留近期条目和 checkpoint；完整 thread 读取还原原始 Turn/Item，并省略存储清单。`read_history` 按 item ID 分页，无需加载全部归档。GC 同时追踪热快照与冷分段引用。工具意图持久化与 UNKNOWN 恢复不变，不重放归档副作用。usage/duration 缺失表示未知，不是 0。
@@ -274,7 +278,7 @@ JSONL 的 30 天期限按文件最后修改时间计算，不逐条检查行的�
 `thread/start` 和 `areal/thread/start` 的 `dynamicTools` 是初始的 `{name,description,inputSchema,outputSchema?}[]`。Core 持久化定义；工具宿主可在两轮对话之间更新它们。Core 保存调用意图后向绑定连接请求：
 
 ```json
-{"id":"REQUEST_ID","method":"item/tool/call","params":{"threadId":"THREAD_ID","turnId":"TURN_ID","callId":"CALL_ID","tool":"lookup","arguments":{"key":"answer"}}}
+{"id":"REQUEST_ID","method":"item/tool/call","params":{"threadId":"THREAD_ID","turnId":"TURN_ID","itemId":"ITEM_ID","callId":"CALL_ID","tool":"lookup","arguments":{"key":"answer"}}}
 ```
 
 客户端原样回传请求 id：

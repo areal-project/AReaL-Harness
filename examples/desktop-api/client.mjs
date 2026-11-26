@@ -112,8 +112,11 @@ export async function connect(endpoint, authFile, onTool) {
       pending.set(id, { method, resolve, reject, timer });
       socket.send(JSON.stringify({ id, method, params }));
     });
-  await call("initialize", { clientInfo: { name: "desktop-api-example", version: "1" } });
-  socket.send(JSON.stringify({ method: "initialized", params: {} }));
+  const init = await call("initialize", {
+    clientInfo: { name: "desktop-api-example", version: "1" },
+  });
+  const ready = onTool && init.toolCallbackItemId === true ? { toolCallbackItemId: true } : {};
+  socket.send(JSON.stringify({ method: "initialized", params: ready }));
   return {
     call,
     events,

@@ -1,3 +1,4 @@
+pub mod blob;
 pub mod context;
 pub mod delegation;
 pub mod goals;

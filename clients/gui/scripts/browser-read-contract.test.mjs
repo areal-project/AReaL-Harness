@@ -400,6 +400,77 @@ test("native browser capture binds logical preview to original execution Core me
   assert.doesNotMatch(JSON.stringify(result), /aW1hZ2U=/);
 });
 
+test("native capture uses the Core item for long IDs and never falls back to a long raw ID", async () => {
+  for (const tail of ["A", "B"]) {
+    const f = nativeBrowserFixture();
+    f.frame.params.callId = "?+#/%&=".padEnd(65535, "x") + tail;
+    f.frame.params.itemId = "item-" + tail;
+    const capture = f.preview.execute;
+    f.preview.execute = async (request) => ({
+      ...(await capture(request)),
+      callId: request.callId,
+      pageId: request.pageId,
+      caption: { callId: "page-data" },
+    });
+    const result = await f.tools.callback(f.frame, new AbortController().signal);
+    assert.equal(result.success, true);
+    const owner = f.calls[1].params;
+    assert.equal(owner.itemId, f.frame.params.itemId);
+    assert.equal(owner.turnId, f.frame.params.turnId);
+    assert.equal(owner.hostGeneration, f.frame.params.hostGeneration);
+    assert.equal("callId" in owner, false);
+    const metadata = JSON.parse(result.contentItems[0].text);
+    assert.equal("callId" in metadata, false);
+    assert.equal(metadata.itemId, owner.itemId);
+    assert.equal(metadata.caption.callId, "page-data");
+    assert.equal(metadata.pageId, f.permit.pageId);
+    assert.equal(result.contentItems[1].type, "arealMedia");
+  }
+  const f = nativeBrowserFixture();
+  f.frame.params.callId = "x".repeat(513);
+  const result = await f.tools.callback(f.frame, new AbortController().signal);
+  assert.equal(result.success, false);
+  assert.equal(
+    f.calls.some((e) => e.method === "core.blob"),
+    false,
+  );
+});
+
+test("capture keeps short IDs and a command screenshot preserves the command's own data", async () => {
+  const capture = nativeBrowserFixture();
+  capture.frame.params.itemId = "item-short";
+  capture.preview.execute = async (request) => ({
+    mimeType: "image/png",
+    imageBase64: "aW1hZ2U=",
+    callId: request.callId,
+  });
+  const captured = await capture.tools.callback(capture.frame, new AbortController().signal);
+  assert.equal(JSON.parse(captured.contentItems[0].text).callId, "call");
+
+  const f = nativeBrowserFixture();
+  f.frame.params.callId = "p".repeat(65536);
+  f.frame.params.itemId = "item-command";
+  f.frame.params.arguments = {
+    operation: "command",
+    parameters: { pageId: f.permit.pageId, command: { method: "screenshot" } },
+  };
+  f.preview.execute = async (request) => ({
+    callId: request.callId,
+    commandResult: {
+      ok: true,
+      value: { callId: "from-page" },
+      image: { mimeType: "image/png", base64: "aW1hZ2U=" },
+    },
+  });
+  const command = await f.tools.callback(f.frame, new AbortController().signal);
+  assert.equal(command.success, true);
+  assert.equal(command.contentItems[1].type, "arealMedia");
+  assert.equal(JSON.parse(command.contentItems[0].text).value.callId, "from-page");
+  assert.equal(command.structuredContent.value.callId, "from-page");
+  assert.equal(f.calls[0].params.itemId, "item-command");
+  assert.equal("callId" in f.calls[0].params, false);
+});
+
 test("native browser approved navigation accepts its new origin but revoked execution remains UNKNOWN", async () => {
   for (const revoke of [false, true]) {
     const f = nativeBrowserFixture();
@@ -474,6 +545,53 @@ test("native browser preparation returns the native plan and execute requires Co
   const rejected = await f.tools.callback(f.frame, new AbortController().signal);
   assert.equal(rejected.structuredContent.code, "approval_required");
   assert.equal(f.calls.length, 0);
+});
+
+test("eight browser steps bind the ledger item without copying the provider ID into each plan", async () => {
+  const { ApprovedBatches } = require("../app/src/core/preview-native/batches.cjs");
+  const f = nativeBrowserFixture();
+  const { pageId, controlEpoch } = f.permit;
+  const callId = "\u0001".repeat(65_536);
+  const snapshotId = "00000000-0000-4000-8000-000000000002";
+  const c = { getURL: () => "https://before.example/" };
+  const page = {
+    id: pageId,
+    view: { webContents: c },
+    plans: new Map(),
+    controlEpoch,
+    lastObservation: snapshotId,
+  };
+  const batches = new ApprovedBatches(
+    { ...f.permit, actionPage: () => ({ page, c }), workspaceOutstanding: () => page.plans.size },
+    () => assert.fail("preparing a batch must not dispatch it"),
+    async (step) => ({ plan: { operation: step.operation, callId: step.callId } }),
+  );
+  Object.assign(f.frame.params, {
+    callId,
+    itemId: "tool-item-1",
+    arguments: {
+      operation: "runBatch",
+      parameters: {
+        pageId,
+        snapshotId,
+        steps: Array(8).fill({ operation: "wait", timeoutMs: 50 }),
+      },
+    },
+  });
+  f.frame.method = "areal/browser/prepare";
+  f.preview.prepare = (request) => batches.prepareBatch(request);
+  const signal = new AbortController().signal;
+  const plan = await f.tools.callback(f.frame, signal);
+  assert.ok(plan.callId === callId);
+  assert.equal(plan.steps.length, 8);
+  assert.ok(plan.steps.every((step) => step.callId === "tool-item-1"));
+  assert.ok(Buffer.byteLength(JSON.stringify(plan)) <= 512 * 1024);
+  // 正文即使位于宿主计划内也必须计入预算。
+  f.preview.prepare = async () => ({ callId, plan: { ...plan, target: "x".repeat(512 * 1024) } });
+  assert.deepEqual(await f.tools.callback(f.frame, signal), {
+    error: "plan_stale",
+    dispatch: "not_sent",
+  });
 });
 
 test("native executor distinguishes refused input from dispatched UNKNOWN", async () => {

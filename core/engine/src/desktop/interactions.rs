@@ -305,8 +305,24 @@ impl Engine {
         arguments: &Value,
         cancel: &CancellationToken,
     ) -> areal_runtime_protocol::Result<()> {
+        self.approval_with_browser_plan(cell, call_id, tool, arguments, None, cancel)
+            .await
+    }
+
+    pub(crate) async fn approval_with_browser_plan(
+        self: &Arc<Self>,
+        cell: &Arc<Cell>,
+        call_id: &str,
+        tool: &str,
+        arguments: &Value,
+        browser_plan: Option<(&Value, &str)>,
+        cancel: &CancellationToken,
+    ) -> areal_runtime_protocol::Result<()> {
         use areal_runtime_protocol::{Error as RuntimeError, ErrorCode};
-        let mut effective = arguments.clone();
+        let mut effective = match browser_plan {
+            Some((plan, _)) => json!({"arguments":arguments,"plan":plan}),
+            None => arguments.clone(),
+        };
         let backend = {
             cell.bindings
                 .read()
@@ -426,7 +442,14 @@ impl Engine {
                 && !plugin_prompt
             {
                 match self
-                    .review_permission(cell, call_id, tool, arguments, cancel)
+                    .review_permission(
+                        cell,
+                        call_id,
+                        tool,
+                        arguments,
+                        browser_plan.map(|(_, item_id)| item_id),
+                        cancel,
+                    )
                     .await?
                 {
                     crate::permissions::ReviewDecision::Allow => true,

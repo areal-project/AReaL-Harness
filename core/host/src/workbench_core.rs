@@ -1032,8 +1032,7 @@ impl Connections {
                     thread,
                     params["mime"].as_str().context("INVALID_PARAMS")?,
                     bytes,
-                    params["callId"].as_str(),
-                    params["hostGeneration"].as_str(),
+                    super::super::conversation_media::blob_owner(params)?,
                 )
                 .await?;
                 ensure!(session.shared_current(host), unavailable());

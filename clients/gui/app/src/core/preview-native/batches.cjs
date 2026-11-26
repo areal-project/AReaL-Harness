@@ -41,14 +41,16 @@ class ApprovedBatches {
    * @returns {import('./model.js').ActionRequest}
    */
   batchStep(request, step) {
+    // 子步骤复用已准入的账本项，避免在每份子计划中复制供应商标识。
+    const identity = { ...request, callId: request.itemId ?? request.callId };
     return step.operation === "act"
       ? {
-          ...request,
+          ...identity,
           operation: "act",
           parameters: { pageId: request.pageId, snapshotId: step.snapshotId, action: step.action },
         }
       : {
-          ...request,
+          ...identity,
           operation: "wait",
           parameters: {
             pageId: request.pageId,

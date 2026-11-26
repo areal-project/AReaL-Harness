@@ -39,6 +39,8 @@ let capacityFirstStarted;
 let capacitySecondStarted = false;
 let capacityGate;
 let releaseCapacity;
+// 标记只在模型夹具生成响应时展开，不能把模型 ID 误放进用户意图或工具参数。
+const opaqueCallId = (bytes, suffix) => "x".repeat(bytes - suffix.length) + suffix;
 function event(response, delta, finish = null) {
   response.write(
     `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`,
@@ -118,7 +120,7 @@ const fixture = createServer(async (request, response) => {
       event(response, {
         tool_calls: batch.map((entry, index) => ({
           index,
-          id: `call_${results.length + index}`,
+          id: entry.opaqueId ? opaqueCallId(...entry.opaqueId) : `call_${results.length + index}`,
           type: "function",
           function: {
             name: entry.name,
@@ -349,17 +351,54 @@ try {
   await mkdir(join(root, "reviewed"));
   const reviewed = join(root, "reviewed/output.txt");
   const reviewStart = reviews.length;
+  const operation = command(`printf reviewed >> '${reviewed}'`, {
+    permissionRequest: additional(reviewed),
+  });
+  const opaqueIds = ["a", "b"].map((suffix) => [64 * 1024, suffix]);
   await complete(
     autoId,
-    await turn(autoId, [
-      command(`printf reviewed > '${reviewed}'`, { permissionRequest: additional(reviewed) }),
-    ]),
+    await turn(
+      autoId,
+      opaqueIds.map((opaqueId) => ({ ...operation, opaqueId })),
+    ),
   );
-  assert.equal(await readFile(reviewed, "utf8"), "reviewed");
-  assert.equal(
-    reviews.length,
-    reviewStart + 1,
-    "automatic approval uses a separate reviewer request",
+  assert.equal(await readFile(reviewed, "utf8"), "reviewedreviewed");
+  const packets = reviews
+    .slice(reviewStart)
+    .map((body) =>
+      JSON.parse(body.messages.findLast((message) => message.role === "user").content),
+    );
+  assert.equal(packets.length, 2, "each operation still requires its own approval review");
+  const [{ digest: firstDigest, ...first }, { digest: secondDigest, ...second }] = packets;
+  assert.deepEqual(first, second, "same Turn, intent, arguments, restrictions and runtime");
+  assert.ok(!Object.hasOwn(first, "callId"));
+  assert.deepEqual(first.arguments.argv, operation.args.argv);
+  assert.notEqual(
+    firstDigest,
+    secondDigest,
+    "the verdict binds the complete, distinct provider ID",
+  );
+  const ids = opaqueIds.map((parts) => opaqueCallId(...parts));
+  const latest = (
+    await rpc.call("thread/read", { threadId: autoId, includeTurns: true })
+  ).thread.turns.at(-1);
+  const approved = latest.items.filter((item) => item.type === "dynamicToolCall");
+  assert.deepEqual(
+    approved.map((call) => call.callId),
+    ids,
+  );
+  assert.deepEqual(
+    approved.map((call) => call.execution.permissionReview.digest),
+    [firstDigest, secondDigest],
+  );
+  const resumed = requests.findLast((request) =>
+    request.messages.some((message) => message.tool_call_id === ids[1]),
+  );
+  assert.deepEqual(
+    resumed.messages
+      .filter((message) => message.role === "tool")
+      .map((message) => message.tool_call_id),
+    ids,
   );
   reviewDecision = "deny";
   await mkdir(join(root, "review-denied"));
@@ -367,7 +406,10 @@ try {
   await complete(
     autoId,
     await turn(autoId, [
-      command(`printf forbidden > '${denied}'`, { permissionRequest: additional(denied) }),
+      {
+        ...command(`printf forbidden > '${denied}'`, { permissionRequest: additional(denied) }),
+        opaqueId: [64 * 1024, "c"],
+      },
     ]),
   );
   assert.equal(await exists(denied), false, "reviewer denial cannot execute the operation");
@@ -388,6 +430,29 @@ try {
   await complete(autoId, turnId);
   checks.push({ separateReviewer: true, denialBlocked: true, malformedReviewManualFallback: true });
   reviewDecision = "allow";
+  const boundedId = await thread("autoReview");
+  const beforeOversize = reviews.length;
+  turnId = await turn(boundedId, [{ ...operation, userContext: "x".repeat(49 * 1024) }]);
+  const oversizeFallback = (
+    await rpc.waitEvent(
+      "areal/interaction/requested",
+      (params) => params.interaction.threadId === boundedId && params.interaction.turnId === turnId,
+    )
+  ).interaction;
+  assert.equal(
+    reviews.length,
+    beforeOversize,
+    "oversized intent still exceeds the original reviewer budget",
+  );
+  await answer(oversizeFallback, "deny");
+  await complete(boundedId, turnId);
+  assert.equal(await readFile(reviewed, "utf8"), "reviewedreviewed");
+  checks.push({
+    opaqueIdBytes: 64 * 1024,
+    originalIdsRoundTripped: true,
+    distinctReviewDigests: true,
+    reviewInputBudgetPreserved: true,
+  });
   const cancelId = await thread("autoReview");
   await mkdir(join(root, "cancelled-review"));
   const cancelledOutput = join(root, "cancelled-review/output.txt");
@@ -483,6 +548,7 @@ try {
       command("printf parent > parent.txt"),
       {
         name: "agent_spawn",
+        opaqueId: [4096, "s"],
         args: { prompt: JSON.stringify(childCalls), intent: "inspect", delivery: "report" },
       },
       { name: "agent_wait", args: { executionId: "previousExecution", timeoutMs: 10000 } },
@@ -501,6 +567,28 @@ try {
     "a child retains its own private scratch inside the inherited authority boundary",
   );
   checks.push({ restrictedChildPrivateScratch: true });
+  const waitPrevious = {
+    name: "agent_wait",
+    args: { executionId: "previousExecution", timeoutMs: 10000 },
+  };
+  await complete(
+    parentId,
+    await turn(
+      parentId,
+      ["s", "t"].flatMap((suffix) => [
+        {
+          name: "agent_spawn",
+          opaqueId: [4096, suffix],
+          args: { prompt: "[]", intent: "inspect", delivery: "report" },
+        },
+        waitPrevious,
+      ]),
+    ),
+  );
+  const nextChildren = (await rpc.call("areal/execution/list", { parentThreadId: parentId })).data;
+  assert.equal(new Set(nextChildren.map((entry) => entry.executionId)).size, 3);
+  assert.ok(nextChildren.every((entry) => entry.status === "completed"));
+  checks.push({ reusedSpawnIdAcrossTurnsIsDistinct: true, samePrefixSpawnsAreDistinct: true });
 
   // 新增模型用途也必须遵守同一请求容量；退避不挡健康请求，在途流仍占名额。
   await stop();

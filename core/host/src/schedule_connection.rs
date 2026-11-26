@@ -1503,9 +1503,13 @@ async fn connect_authorized(
         )
         .await?;
     *session.capabilities.borrow_mut() = initialized["capabilities"].clone();
+    let mut ready = json!({"method":"initialized"});
+    if initialized["toolCallbackItemId"] == true {
+        ready["params"] = json!({"toolCallbackItemId":true});
+    }
     session
         .outgoing
-        .send(json!({"method":"initialized"}))
+        .send(ready)
         .await
         .map_err(|_| unavailable())?;
     init_guard.0 = None;

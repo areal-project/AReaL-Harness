@@ -501,6 +501,10 @@ fn desktop_schema() -> Value {
     let mut output = json!({"apiVersion":API_VERSION,"requests":methods,"thread":schemars::schema_for!(areal_protocol::Thread),"turn":schemars::schema_for!(areal_protocol::Turn),"profile":schemars::schema_for!(AgentProfile),"interaction":schemars::schema_for!(Interaction),"queue":schemars::schema_for!(Queue),"process":schemars::schema_for!(ManagedProcess),"provider":schemars::schema_for!(Provider),"workflow":schemars::schema_for!(areal_engine::desktop::Workflow),"effectiveConfig":schemars::schema_for!(EffectiveConfig),"media":schemars::schema_for!(areal_protocol::MediaRef)});
     let (responses, notifications) = schema::projections();
     output["responses"] = responses;
+    output["responses"]["initialize"]["properties"]["toolCallbackItemId"] =
+        json!({"type":"boolean"});
+    output["clientNotifications"] =
+        json!({"initialized":object(json!({"toolCallbackItemId":{"type":"boolean"}}),vec![])});
     output["notifications"] = notifications;
     schema::plugins::codex_management(&mut output);
     let requests = output["requests"].as_object().unwrap();
@@ -516,8 +520,8 @@ fn desktop_schema() -> Value {
             "advertised notification lacks schema: {method}"
         );
     }
-    let browser_request = object(
-        json!({"threadId":string,"turnId":string,"callId":string,"tool":string,"arguments":{},"hostGeneration":string}),
+    let tool_request = object(
+        json!({"threadId":string,"turnId":string,"itemId":{"type":"string","minLength":1,"maxLength":128},"callId":string,"tool":string,"arguments":{},"hostGeneration":string}),
         vec![
             "threadId",
             "turnId",
@@ -527,8 +531,8 @@ fn desktop_schema() -> Value {
             "hostGeneration",
         ],
     );
-    output["serverRequests"] = json!({"item/tool/call":browser_request,
-        "areal/browser/prepare":object(json!({"threadId":string,"turnId":string,"callId":string,"tool":string,"arguments":{},"hostGeneration":string}),vec!["threadId","turnId","callId","tool","arguments","hostGeneration"])});
+    output["serverRequests"] =
+        json!({"item/tool/call":tool_request,"areal/browser/prepare":tool_request});
     output["serverRequests"]["item/tool/call"]["properties"]["browserApproval"] = json!({"type":"object","properties":{"plan":{"type":"object"}},"required":["plan"],"additionalProperties":false});
     output["serverRequests"]["areal/task/prepare"] = json!({"oneOf":[
         object(json!({"taskId":string,"runId":string,"threadId":string,"scheduledAt":integer,"intent":{"enum":["start","resume"]}}), vec!["taskId", "runId", "threadId", "scheduledAt", "intent"]),
@@ -546,7 +550,12 @@ fn desktop_schema() -> Value {
     for (name, value) in output.as_object_mut().unwrap() {
         match name.as_str() {
             "apiVersion" => {}
-            "requests" | "responses" | "notifications" | "serverRequests" | "serverResponses" => {
+            "requests"
+            | "responses"
+            | "notifications"
+            | "clientNotifications"
+            | "serverRequests"
+            | "serverResponses" => {
                 for schema in value.as_object_mut().unwrap().values_mut() {
                     schema::standalone::normalize(schema);
                 }

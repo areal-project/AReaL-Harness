@@ -247,27 +247,67 @@ impl Engine {
         self: &Arc<Self>,
         thread_id: String,
         identity: String,
-        call: Option<(String, String)>,
+        call: Option<areal_protocol::blob::ToolBlobOwner>,
         mime: String,
         bytes: Vec<u8>,
     ) -> Result<MediaRef> {
         let mime = validate_media(&mime, &bytes)?.mime.to_owned();
-        self.mutate(move|engine|async move{
-            if !engine.accepting_work(){return Err(Error::Closed);}
-            let cell=engine.cell(&thread_id).await?;
-            let mut state=cell.state.lock().await;
-            engine.ensure_hook_session_open(&cell, &state.thread)?;
-            if let Some((call_id,generation))=&call {
-                let host=cell.bindings.read().await.host.clone().ok_or(Error::Conflict)?;
-                if host.identity()!=identity || host.id()!=generation || host.is_closed() || state.active.as_ref().is_none_or(|a|a.cancel.is_cancelled()) || !state.thread.turns.last().is_some_and(|turn|turn.items.iter().any(|item|matches!(item,Item::DynamicToolCall{call_id:id,execution,..} if id==call_id && execution.backend.as_deref()==Some("client") && execution.outcome==areal_protocol::ToolOutcome::Running))) { return Err(Error::Conflict); }
+        self.mutate(move |engine| async move {
+            if !engine.accepting_work() {
+                return Err(Error::Closed);
             }
-            let mut candidate=state.thread.clone();let data=candidate.desktop.get_or_insert_with(Default::default);
-            if data.uploads.len()>=128 || data.uploads.iter().map(|m|m.size_bytes).sum::<u64>()+bytes.len() as u64>64*1024*1024 { return Err(Error::Exhausted("thread upload quota reached".into())); }
-            let media=engine.store.save_blob(mime,bytes).await.map_err(invalid)?;
-            if !data.uploads.iter().any(|old|old.uri==media.uri) { data.uploads.push(media.clone()); }
-            engine.persist(&candidate).await?;state.thread=candidate;
+            let cell = engine.cell(&thread_id).await?;
+            let mut state = cell.state.lock().await;
+            engine.ensure_hook_session_open(&cell, &state.thread)?;
+            if let Some(owner) = &call {
+                let host = cell
+                    .bindings
+                    .read()
+                    .await
+                    .host
+                    .clone()
+                    .ok_or(Error::Conflict)?;
+                let active = state
+                    .active
+                    .as_ref()
+                    .filter(|a| !a.cancel.is_cancelled())
+                    .ok_or(Error::Conflict)?;
+                let turn = state
+                    .thread
+                    .turns
+                    .last()
+                    .filter(|t| t.id == active.id)
+                    .ok_or(Error::Conflict)?;
+                if host.identity() != identity
+                    || host.id() != owner.generation()
+                    || host.is_closed()
+                    || !turn.items.iter().any(|item| {
+                        matches!(item, Item::DynamicToolCall { id, call_id, execution, .. }
+                        if execution.backend.as_deref() == Some("client")
+                            && execution.outcome == areal_protocol::ToolOutcome::Running
+                            && owner.matches(&turn.id, id, call_id))
+                    })
+                {
+                    return Err(Error::Conflict);
+                }
+            }
+            let mut candidate = state.thread.clone();
+            let data = candidate.desktop.get_or_insert_with(Default::default);
+            if data.uploads.len() >= 128
+                || data.uploads.iter().map(|m| m.size_bytes).sum::<u64>() + bytes.len() as u64
+                    > 64 * 1024 * 1024
+            {
+                return Err(Error::Exhausted("thread upload quota reached".into()));
+            }
+            let media = engine.store.save_blob(mime, bytes).await.map_err(invalid)?;
+            if !data.uploads.iter().any(|old| old.uri == media.uri) {
+                data.uploads.push(media.clone());
+            }
+            engine.persist(&candidate).await?;
+            state.thread = candidate;
             Ok(media)
-        }).await
+        })
+        .await
     }
     pub async fn thread_blob(&self, thread_id: &str, blob: &str) -> Result<Vec<u8>> {
         let thread = self.read(thread_id, true).await?;

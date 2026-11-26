@@ -18,6 +18,53 @@ struct Response {
     digest: String,
 }
 
+fn review_input(
+    mut packet: Value,
+    call_id: &str,
+    prepared_item_id: Option<&str>,
+) -> rt::Result<(String, String)> {
+    let digest = format!("{:x}", Sha256::digest(serde_json::to_vec(&packet).unwrap()));
+    packet.as_object_mut().unwrap().remove("callId");
+    // 只有来自 prepare 的计划及其批量子计划会回显关联 ID。参数、页面数据与审计原件原样保留。
+    if let Some(item_id) = prepared_item_id {
+        let plan = &mut packet["arguments"]["plan"];
+        omit_plan_call_id(plan, call_id, None)?;
+        if plan["operation"] == "runBatch"
+            && let Some(steps) = plan.get_mut("steps").and_then(Value::as_array_mut)
+        {
+            for step in steps {
+                if matches!(step["operation"].as_str(), Some("act" | "wait")) {
+                    omit_plan_call_id(step, call_id, Some(item_id))?;
+                }
+            }
+        }
+    }
+    packet["digest"] = json!(digest);
+    Ok((digest, serde_json::to_string(&packet).unwrap()))
+}
+
+fn omit_plan_call_id(
+    plan: &mut Value,
+    call_id: &str,
+    step_item_id: Option<&str>,
+) -> rt::Result<()> {
+    if let Some(fields) = plan.as_object_mut()
+        && let Some(echo) = fields.get("callId")
+    {
+        if !echo
+            .as_str()
+            .is_some_and(|id| id == call_id || Some(id) == step_item_id)
+        {
+            return Err(rt::Error::new(
+                rt::ErrorCode::InvalidArgument,
+                "browser plan call ID mismatch",
+            ));
+        }
+        fields.remove("callId");
+    }
+    Ok(())
+}
+
 impl Engine {
     pub(crate) async fn review_permission(
         self: &Arc<Self>,
@@ -25,6 +72,7 @@ impl Engine {
         call_id: &str,
         tool: &str,
         arguments: &Value,
+        prepared_item_id: Option<&str>,
         cancel: &CancellationToken,
     ) -> rt::Result<ReviewDecision> {
         let (model, generation, intent, configuration, turn_id) = {
@@ -47,13 +95,11 @@ impl Engine {
                 active.id.clone(),
             )
         };
-        let mut packet = json!({"threadId":cell.id,"turnId":turn_id,"callId":call_id,
+        let packet = json!({"threadId":cell.id,"turnId":turn_id,"callId":call_id,
             "userIntent":intent,"tool":tool,"arguments":arguments,
             "restrictions":restrictions(configuration.as_ref()),"policy":self.permission_config(),
             "runtime":self.runtime_capabilities()});
-        let digest = format!("{:x}", Sha256::digest(serde_json::to_vec(&packet).unwrap()));
-        packet["digest"] = json!(digest);
-        let input = serde_json::to_string(&packet).unwrap();
+        let (digest, input) = review_input(packet, call_id, prepared_item_id)?;
         self.permission_journal(cell, call_id, |execution| execution.permission_review = Some(json!({
             "reviewer":model.name(),"purpose":"permissionReview","decision":"pending","digest":digest,
         }))).await?;
@@ -166,5 +212,43 @@ impl Engine {
             "reviewer":model.name(),"purpose":"permissionReview","decision":response.decision,"reason":response.reason,"digest":response.digest,
         }))).await?;
         Ok(response.decision)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prepared_browser_review_binds_full_ids_and_preserves_operation_data() {
+        let call_id = "/".repeat(65_535) + "A";
+        let semantic = json!({"callId":"field entered on the page","kind":"fill"});
+        let packet = json!({"callId":call_id,"arguments":{
+            "arguments":{"operation":"runBatch","parameters":semantic},
+            "plan":{"callId":call_id,"operation":"runBatch","fingerprint":"prepared",
+                "steps":[{"operation":"act","callId":call_id,"action":semantic},
+                         {"operation":"wait","callId":"this-item","condition":"ready"}]}}});
+        let expected = format!("{:x}", Sha256::digest(serde_json::to_vec(&packet).unwrap()));
+        let (digest, input) = review_input(packet.clone(), &call_id, Some("this-item")).unwrap();
+        assert_eq!(digest, expected);
+        assert!(input.len() < 4096);
+        let projected: Value = serde_json::from_str(&input).unwrap();
+        assert_eq!(projected["arguments"]["arguments"]["parameters"], semantic);
+        assert_eq!(
+            projected.pointer("/arguments/plan/steps/0/action"),
+            Some(&semantic)
+        );
+        assert_eq!(projected["arguments"]["plan"]["fingerprint"], "prepared");
+        assert_eq!(projected["digest"], expected);
+
+        // 业务参数可以长得与宿主计划完全一样；没有真实 prepare 时不改变其语义或预算。
+        let (_, ordinary) = review_input(packet.clone(), &call_id, None).unwrap();
+        let ordinary: Value = serde_json::from_str(&ordinary).unwrap();
+        assert_eq!(ordinary["arguments"], packet["arguments"]);
+
+        let mut mismatch = packet;
+        mismatch["arguments"]["plan"]["steps"][1]["callId"] = json!("/".repeat(65_535) + "B");
+        let error = review_input(mismatch, &call_id, Some("this-item")).unwrap_err();
+        assert_eq!(error.code, rt::ErrorCode::InvalidArgument);
     }
 }
