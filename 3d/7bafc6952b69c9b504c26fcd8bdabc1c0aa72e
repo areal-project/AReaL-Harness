@@ -1,0 +1,28 @@
+clients/gui/scripts/connection-recovery-smoke.mjs
+  s_9b36f1138b8feb::t_131d0867914f50 1413,1418-1419,1426-1427,1432-1434,1438,1446-1449,1463
+  s_9b36f1138b8feb::t_19c37a31c89bc9 1414-1417,1420-1425,1428-1431,1435-1437,1439-1445
+  s_9b36f1138b8feb::t_77e2050f6a4da9 12,66,384-385,783,1333-1335
+  s_9b36f1138b8feb::t_62a0f4f57148c8 1336
+docs/development/testing.en.md
+  s_9b36f1138b8feb::t_19c37a31c89bc9 166-167
+docs/development/testing.md
+  s_9b36f1138b8feb::t_19c37a31c89bc9 164-165
+clients/gui/scripts/support/journey-fixture.mjs
+  s_9b36f1138b8feb::t_db1c37eb93da9a 271-286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3d7bafc6952b69c9b504c26fcd8bdabc1c0aa72e",
+  "prompts": {},
+  "sessions": {
+    "s_9b36f1138b8feb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a20b9c-6040-7a01-bd2e-30eb8ddd1094",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
