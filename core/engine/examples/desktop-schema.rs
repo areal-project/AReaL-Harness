@@ -516,8 +516,8 @@ fn desktop_schema() -> Value {
             "advertised notification lacks schema: {method}"
         );
     }
-    let browser_request = object(
-        json!({"threadId":string,"turnId":string,"callId":string,"tool":string,"arguments":{},"hostGeneration":string}),
+    let tool_request = object(
+        json!({"threadId":string,"turnId":string,"itemId":{"type":"string","minLength":1,"maxLength":128},"callId":string,"tool":string,"arguments":{},"hostGeneration":string}),
         vec![
             "threadId",
             "turnId",
@@ -527,8 +527,8 @@ fn desktop_schema() -> Value {
             "hostGeneration",
         ],
     );
-    output["serverRequests"] = json!({"item/tool/call":browser_request,
-        "areal/browser/prepare":object(json!({"threadId":string,"turnId":string,"callId":string,"tool":string,"arguments":{},"hostGeneration":string}),vec!["threadId","turnId","callId","tool","arguments","hostGeneration"])});
+    output["serverRequests"] =
+        json!({"item/tool/call":tool_request,"areal/browser/prepare":tool_request});
     output["serverRequests"]["item/tool/call"]["properties"]["browserApproval"] = json!({"type":"object","properties":{"plan":{"type":"object"}},"required":["plan"],"additionalProperties":false});
     output["serverRequests"]["areal/task/prepare"] = json!({"oneOf":[
         object(json!({"taskId":string,"runId":string,"threadId":string,"scheduledAt":integer,"intent":{"enum":["start","resume"]}}), vec!["taskId", "runId", "threadId", "scheduledAt", "intent"]),

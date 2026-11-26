@@ -618,6 +618,8 @@ impl Connections {
                             "mime",
                             "base64",
                             "callId",
+                            "itemId",
+                            "turnId",
                             "hostGeneration",
                         ],
                     )?;

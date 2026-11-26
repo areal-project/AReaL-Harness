@@ -158445,6 +158445,11 @@
         "hostGeneration": {
           "type": "string"
         },
+        "itemId": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
         "threadId": {
           "type": "string"
         },
@@ -158554,6 +158559,11 @@
           "type": "string"
         },
         "hostGeneration": {
+          "type": "string"
+        },
+        "itemId": {
+          "maxLength": 128,
+          "minLength": 1,
           "type": "string"
         },
         "threadId": {

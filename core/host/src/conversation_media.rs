@@ -255,22 +255,66 @@ pub(crate) async fn upload(
     mime: &str,
     bytes: Vec<u8>,
 ) -> Result<Value> {
-    upload_owned(service, thread_id, mime, bytes, None, None).await
+    upload_owned(service, thread_id, mime, bytes, None).await
+}
+
+/// 工具上传的字段必须成组；类型错误、缺字段或超长旧请求都不能落入普通附件路径。
+pub(crate) fn blob_owner(params: &Value) -> Result<Option<areal_protocol::blob::ToolBlobOwner>> {
+    use areal_protocol::blob::ToolBlobOwner;
+    let id = |v: &Value| -> Result<String> {
+        Ok(v.as_str()
+            .filter(|s| !s.is_empty() && s.len() <= 512)
+            .context("INVALID_PARAMS")?
+            .to_owned())
+    };
+    match (
+        params.get("callId"),
+        params.get("turnId"),
+        params.get("itemId"),
+        params.get("hostGeneration"),
+    ) {
+        (None, None, None, None) => Ok(None),
+        (Some(call), None, None, Some(generation)) => Ok(Some(ToolBlobOwner::ByCallId {
+            call_id: id(call)?,
+            generation: id(generation)?,
+        })),
+        (None, Some(turn), Some(item), Some(generation)) => Ok(Some(ToolBlobOwner::ByItem {
+            turn_id: id(turn)?,
+            item_id: id(item)?,
+            generation: id(generation)?,
+        })),
+        _ => anyhow::bail!("INVALID_PARAMS"),
+    }
 }
 pub(crate) async fn upload_owned(
     service: &Service,
     thread_id: &str,
     mime: &str,
     bytes: Vec<u8>,
-    call: Option<&str>,
-    generation: Option<&str>,
+    owner: Option<areal_protocol::blob::ToolBlobOwner>,
 ) -> Result<Value> {
-    ensure!(call.is_some() == generation.is_some(), "INVALID_PARAMS");
+    use areal_protocol::blob::ToolBlobOwner;
     let (mut url, token) = core_blob_url(service, "/areal/blobs", thread_id)?;
-    if let (Some(call), Some(generation)) = (call, generation) {
-        url.query_pairs_mut()
-            .append_pair("callId", call)
-            .append_pair("hostGeneration", generation);
+    match owner {
+        Some(ToolBlobOwner::ByCallId {
+            call_id,
+            generation,
+        }) => {
+            url.query_pairs_mut()
+                .append_pair("callId", &call_id)
+                .append_pair("hostGeneration", &generation);
+        }
+        Some(ToolBlobOwner::ByItem {
+            turn_id,
+            item_id,
+            generation,
+        }) => {
+            url.query_pairs_mut()
+                .append_pair("turnId", &turn_id)
+                .append_pair("itemId", &item_id)
+                .append_pair("hostGeneration", &generation);
+        }
+        None => {}
     }
     upload_to(url, token, mime, bytes).await
 }
@@ -712,7 +756,9 @@ pub(crate) async fn remote_blob(
     ensure!(
         params["operation"] == "upload"
             && params.get("callId").is_none()
-            && params.get("hostGeneration").is_none(),
+            && params.get("hostGeneration").is_none()
+            && params.get("turnId").is_none()
+            && params.get("itemId").is_none(),
         "FORBIDDEN"
     );
     let encoded = params["base64"]
@@ -793,6 +839,72 @@ mod tests {
         socket.write_all(bytes).await.unwrap();
     }
     #[tokio::test]
+    async fn tool_uploads_send_only_the_bound_item_or_explicit_short_call() {
+        let root = tempfile::tempdir().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let service = service(root.path(), listener.local_addr().unwrap());
+        let bytes = png();
+        for (params, query) in [
+            (
+                json!({"turnId":"turn","itemId":"item-a","hostGeneration":"active"}),
+                "turnId=turn&itemId=item-a&hostGeneration=active",
+            ),
+            (
+                json!({"turnId":"turn","itemId":"item-b","hostGeneration":"active"}),
+                "turnId=turn&itemId=item-b&hostGeneration=active",
+            ),
+            (
+                json!({"callId":"short","hostGeneration":"active"}),
+                "callId=short&hostGeneration=active",
+            ),
+        ] {
+            let upload = upload_owned(
+                &service,
+                "selected",
+                "image/png",
+                bytes.clone(),
+                blob_owner(&params).unwrap(),
+            );
+            let read = async {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut header = Vec::new();
+                while !header.ends_with(b"\r\n\r\n") {
+                    let mut byte = [0];
+                    socket.read_exact(&mut byte).await.unwrap();
+                    header.push(byte[0]);
+                    assert!(header.len() < 4096);
+                }
+                let header = String::from_utf8(header).unwrap();
+                assert_eq!(
+                    header.lines().next(),
+                    Some(format!("POST /areal/blobs?threadId=selected&{query} HTTP/1.1").as_str())
+                );
+                assert!(
+                    header
+                        .to_ascii_lowercase()
+                        .contains("content-type: image/png\r\n")
+                );
+                let mut body = vec![0; bytes.len()];
+                socket.read_exact(&mut body).await.unwrap();
+                assert_eq!(body, bytes);
+                let reply = json!({"uri":format!("areal://blob/{:x}",Sha256::digest(&body)), "sizeBytes":body.len(), "mimeType":"image/png"});
+                respond(&mut socket, reply.to_string().as_bytes()).await;
+            };
+            let (media, _) = tokio::join!(upload, read);
+            assert_eq!(media.unwrap()["sizeBytes"], bytes.len());
+        }
+        assert!(blob_owner(&json!({})).unwrap().is_none());
+        for invalid in [
+            json!({"turnId":"turn","itemId":null,"hostGeneration":"active"}),
+            json!({"turnId":"turn","itemId":"item"}),
+            json!({"turnId":"turn","callId":"short","hostGeneration":"active"}),
+            json!({"callId":"short","turnId":"turn","itemId":"item","hostGeneration":"active"}),
+            json!({"callId":"x".repeat(513),"hostGeneration":"active"}),
+        ] {
+            assert!(blob_owner(&invalid).is_err());
+        }
+    }
+    #[tokio::test]
     async fn upload_reports_core_content_rejection_as_unsupported_attachment() {
         for (core, expected) in [
             (-32602, "ATTACHMENT_UNSUPPORTED"),
@@ -806,7 +918,6 @@ mod tests {
                 "selected",
                 "application/typescript",
                 vec![0xff, 0xfe],
-                None,
                 None,
             );
             let server = async {

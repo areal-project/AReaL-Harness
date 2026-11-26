@@ -269,7 +269,7 @@ Transport failures, HTTP error statuses and non-SSE responses before stream cons
 
 Chat Completions and Responses accept tool call IDs up to and including 64 KiB each. Their bytes also count toward the total tool buffer for the response. Chat counts fragments of the same call cumulatively. Valid IDs are preserved when pairing tool results; a budget violation rejects the response's calls without truncating the ID.
 
-Structured `agent_spawn` derives its internal deduplication key from the parent thread, turn and full call ID. The independent permission review digest binds the full call ID and operation, including any browser plan prepared by the bound host. The reviewer input omits the protocol call ID and matching copies in that plan or its batch steps. Tool arguments and page data are preserved and still count toward the 48 KiB limit. A conflicting plan ID fails review before dispatch.
+Structured `agent_spawn` derives its internal deduplication key from the parent thread, turn and full call ID. The independent permission review digest binds the full call ID and operation, including any browser plan prepared by the bound host. The reviewer input omits verified correlation fields: the plan can echo the original call ID, and batch steps can instead bind the ledger item ID for that same operation. Tool arguments and page data are preserved and still count toward the 48 KiB limit. A conflicting plan ID fails review before dispatch.
 
 Tool error audits add `errorCode` and `toolCallError`: `invalid_tool_call_index` includes a fixed reason, protocol, field path, one-based SSE data-event number, index JSON type and buffered call count; `tool_call_budget_exceeded` includes budget kind, limit and observed value. Fields contain only fixed labels and bounded numbers, never copied SSE, arguments, reasoning or invalid field values; the same record supplies the local `requestId`. The existing `responseShape.toolArgumentBytes` name counts validated ID/name/argument bytes together.
 
@@ -283,7 +283,7 @@ Snapshots are written in format 14. Old formats 1–14 without derivation metada
 `thread/start` and `areal/thread/start` accept an initial `dynamicTools` list of `{name,description,inputSchema,outputSchema?}[]`. Core persists the definitions; the tool host can update them between turns. After recording call intent, Core sends the request to the bound connection:
 
 ```json
-{"id":"REQUEST_ID","method":"item/tool/call","params":{"threadId":"THREAD_ID","turnId":"TURN_ID","callId":"CALL_ID","tool":"lookup","arguments":{"key":"answer"}}}
+{"id":"REQUEST_ID","method":"item/tool/call","params":{"threadId":"THREAD_ID","turnId":"TURN_ID","itemId":"ITEM_ID","callId":"CALL_ID","tool":"lookup","arguments":{"key":"answer"}}}
 ```
 
 The client echoes the request id:

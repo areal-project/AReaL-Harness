@@ -240,7 +240,7 @@ impl Invocation<'_> {
                 .host
                 .as_ref()
                 .ok_or_else(|| invalid("browser host unavailable"))?;
-            let prepared = host.prepare_browser(json!({"threadId":self.thread_id,"turnId":self.turn_id,
+            let prepared = host.prepare_browser(json!({"threadId":self.thread_id,"turnId":self.turn_id,"itemId":self.item_id,
                 "callId":self.call.id,"tool":"browser_v1","arguments":arguments,"hostGeneration":host.id()}),
                 self.cancel.clone()).await.map_err(invalid)?
                 .ok_or_else(|| invalid("browser prepare capability unavailable"))?;
@@ -301,7 +301,7 @@ impl Invocation<'_> {
                 &self.call.id,
                 &self.call.name,
                 &arguments,
-                browser_plan.as_ref(),
+                browser_plan.as_ref().map(|plan| (plan, self.item_id)),
                 self.cancel,
             )
             .await?;
@@ -949,7 +949,7 @@ impl Invocation<'_> {
                     .host
                     .as_ref()
                     .ok_or_else(|| unknown("dynamic tool client is unavailable"))?;
-                let mut request = json!({"threadId":self.thread_id,"turnId":self.turn_id,"callId":self.call.id,"tool":self.call.name,"arguments":args,"hostGeneration":host.id()});
+                let mut request = json!({"threadId":self.thread_id,"turnId":self.turn_id,"itemId":self.item_id,"callId":self.call.id,"tool":self.call.name,"arguments":args,"hostGeneration":host.id()});
                 if let Some(plan) = approval_plan {
                     request["browserApproval"] = json!({"plan":plan});
                 }

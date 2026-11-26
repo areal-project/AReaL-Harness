@@ -37,6 +37,7 @@ export interface HostIdentity {
   threadId: string;
   turnId: string;
   callId: string;
+  itemId?: string;
   requestId: string | number;
   pageId: string;
   browserHostId: string;
@@ -93,6 +94,7 @@ export type DiscoveryRequest = Pick<
   | "threadId"
   | "turnId"
   | "callId"
+  | "itemId"
   | "requestId"
   | "phase"
   | "browserApproval"

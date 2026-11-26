@@ -47688,6 +47688,71 @@
             "hostGeneration"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "sourceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "projectId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "lease": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "threadId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "operation": {
+              "type": "string",
+              "const": "upload"
+            },
+            "mime": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "base64": {
+              "type": "string",
+              "maxLength": 22369624
+            },
+            "hostGeneration": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "turnId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "itemId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          "required": [
+            "sourceId",
+            "projectId",
+            "lease",
+            "threadId",
+            "operation",
+            "mime",
+            "base64",
+            "itemId",
+            "hostGeneration",
+            "turnId"
+          ],
+          "additionalProperties": false
         }
       ]
     },

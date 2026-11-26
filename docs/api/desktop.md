@@ -279,7 +279,7 @@ Desktop 首先按相同 generation 查询状态并尝试重连。仅在 `status 
 
 `permissions/read {threadId}` 返回 configuration（mode/allow/ask/deny）、source、sandbox、workspace、session/project 授权条目和 projectFile。`permissions/forget {threadId,project}` 清除会话或项目记忆；目标 Thread 必须空闲。项目批准需要不限定 Thread 的 manage 身份。记忆与规则优先级见[权限配置](../guides/configuration.md#permissions)。旧快照缺少 permissionGrants 时按空数组读取；thread/start/resume 增加 permissionMode 字段，底层 full-access 投影为 dangerFullAccess。
 
-POST `/areal/blobs?threadId=...` 上传原始字节，Content-Type 与签名一致；工具上传另带 callId/hostGeneration 并需 tools 权限。单文件 16 MiB，Thread 上传登记 128 项/64 MiB；不设全局 Blob 累计配额。支持 PNG/JPEG/GIF/WebP、WAV/MP3、PDF、UTF-8 文本。GET 需要认证、threadId 和引用归属；摘要不是令牌。
+POST `/areal/blobs?threadId=...` 上传原始字节，Content-Type 与签名一致。普通上传需 interact 权限。工具截图上传需 tools 权限，并带上 Core 回调中的 `turnId`、`itemId` 和 `hostGeneration`。Core 核对当前认证宿主及其代际、活动 Turn 和仍在执行的客户端工具条目；供应商调用 ID 不进入 URL 或 HTTP 头。旧客户端仍可成对提供 `callId` 和 `hostGeneration`；两种形式不能混用。Host 只在旧回调无 `itemId` 且原 ID 不超过 512 字节时使用 `callId` 形式；直接 HTTP 的旧形式按原值精确匹配，仍受请求行长度约束。新形式的三个归属字段各为 1–512 字节。单文件 16 MiB，Thread 上传登记 128 项/64 MiB；不设全局 Blob 累计配额。支持 PNG/JPEG/GIF/WebP、WAV/MP3、PDF、UTF-8 文本。GET 需要认证、threadId 和引用归属；摘要不是令牌。
 
 文本及源码上传使用严格 UTF-8，拒绝 NUL、二进制控制字符与已知容器签名。空 MIME 或 `application/octet-stream` 先识别已支持的媒体签名，再校验文本；常见文本、JSON、YAML、CSV、Markdown 与源码 MIME 规范为 `text/plain`。空文件继续被拒绝。权威 `Input::File` 保留文件名、Blob URI 和原始字节；Core 用上传登记的 MIME 与字节投影为带文件名的文本，不能信任调用方的 `mime_type`。Chat Completions 与 Responses 共用该投影。新提交、steer、排队和队列编辑按投影后的正文及标签共同执行 1 MiB 文本预算与模型能力校验，超过则明确拒绝，不截断。历史回放与 fork 使用相同文本投影和有效输入能力，既有 Blob 仍保留 16 MiB 上限，历史上下文由原有模型预算管理。已受理请求的收据先于新校验返回。
 

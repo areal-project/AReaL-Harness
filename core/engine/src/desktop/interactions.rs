@@ -315,12 +315,12 @@ impl Engine {
         call_id: &str,
         tool: &str,
         arguments: &Value,
-        browser_plan: Option<&Value>,
+        browser_plan: Option<(&Value, &str)>,
         cancel: &CancellationToken,
     ) -> areal_runtime_protocol::Result<()> {
         use areal_runtime_protocol::{Error as RuntimeError, ErrorCode};
         let mut effective = match browser_plan {
-            Some(plan) => json!({"arguments":arguments,"plan":plan}),
+            Some((plan, _)) => json!({"arguments":arguments,"plan":plan}),
             None => arguments.clone(),
         };
         let backend = {
@@ -447,7 +447,7 @@ impl Engine {
                         call_id,
                         tool,
                         arguments,
-                        browser_plan.is_some(),
+                        browser_plan.map(|(_, item_id)| item_id),
                         cancel,
                     )
                     .await?

@@ -106,6 +106,8 @@ async fn service_identity(
 struct BlobQuery {
     thread_id: Option<String>,
     call_id: Option<String>,
+    item_id: Option<String>,
+    turn_id: Option<String>,
     host_generation: Option<String>,
 }
 async fn read_blob(
@@ -117,6 +119,9 @@ async fn read_blob(
 ) -> Response {
     if from_browser(&headers) {
         return StatusCode::FORBIDDEN.into_response();
+    }
+    if query.item_id.is_some() || query.turn_id.is_some() {
+        return StatusCode::BAD_REQUEST.into_response();
     }
     let bytes = if let Some(authentication) = authentication {
         let Some(principal) = authentication.authenticate_bearer(&headers) else {
@@ -162,9 +167,28 @@ async fn upload_blob(
     let Some(thread_id) = query.thread_id else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    let call = match (query.call_id, query.host_generation) {
-        (Some(call), Some(generation)) => Some((call, generation)),
-        (None, None) => None,
+    use areal_protocol::blob::ToolBlobOwner;
+    let short = |v: &str| !v.is_empty() && v.len() <= 512;
+    let call = match (
+        query.call_id,
+        query.turn_id,
+        query.item_id,
+        query.host_generation,
+    ) {
+        (Some(call_id), None, None, Some(generation)) => Some(ToolBlobOwner::ByCallId {
+            call_id,
+            generation,
+        }),
+        (None, Some(turn_id), Some(item_id), Some(generation))
+            if short(&turn_id) && short(&item_id) && short(&generation) =>
+        {
+            Some(ToolBlobOwner::ByItem {
+                turn_id,
+                item_id,
+                generation,
+            })
+        }
+        (None, None, None, None) => None,
         _ => return StatusCode::BAD_REQUEST.into_response(),
     };
     if !principal.sees(&thread_id)
