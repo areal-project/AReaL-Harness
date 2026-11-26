@@ -1,0 +1,25 @@
+clients/gui/scripts/connection-recovery-smoke.mjs
+  s_9b36f1138b8feb::t_5da147c500cd41 871-873,876-880,885-889,895
+  s_9b36f1138b8feb::t_84fd3eafe2a6c8 890-891,896
+  s_9b36f1138b8feb::t_c2ba999f71280e 867-870,874-875,881-884,892-894,897-903
+docs/development/testing.md
+  s_9b36f1138b8feb::t_c2ba999f71280e 164
+docs/development/testing.en.md
+  s_9b36f1138b8feb::t_c2ba999f71280e 166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e3a1458b65ac21bed758573bb595ee27f3edf375",
+  "prompts": {},
+  "sessions": {
+    "s_9b36f1138b8feb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a20b9c-6040-7a01-bd2e-30eb8ddd1094",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
