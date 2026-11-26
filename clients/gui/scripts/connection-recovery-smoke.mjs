@@ -25,7 +25,6 @@ import {
   makeFixtureDirectoriesWritable,
   readFixtureHost,
   settleFixtureHostAfterQuit,
-  stopFixtureHost,
 } from "./application-cleanup.mjs";
 
 const execute = promisify(execFile);
@@ -131,6 +130,17 @@ async function projectStatus(projectId) {
   const project = status.projects.find((item) => item.registration.projectId === projectId);
   assert.ok(project, "Original project remains registered");
   return snapshotProject(project);
+}
+async function scheduleContext(desktopPage, projectId) {
+  const result = await fixtureWorkbench(desktopPage, "manage.read", {
+    operation: "taskScheduleContext",
+    projectId,
+    timeZone: "UTC",
+  }).catch((error) => {
+    if (!String(error.message).includes("scheduleHostUnavailable")) throw error;
+    return null;
+  });
+  return Number.isFinite(result?.coreNow) && { coreNow: result.coreNow };
 }
 function traceSocket(socket) {
   const server = socket.connectToServer();
@@ -893,17 +903,7 @@ try {
     .innerText();
   if (explorationMode) {
     const scheduleReady = await until(
-      async () => {
-        const result = await fixtureWorkbench(desktopPage, "manage.read", {
-          operation: "taskScheduleContext",
-          projectId: uiProjectId,
-          timeZone: "UTC",
-        }).catch((error) => {
-          if (!String(error.message).includes("scheduleHostUnavailable")) throw error;
-          return null;
-        });
-        return Number.isFinite(result?.coreNow) && { coreNow: result.coreNow };
-      },
+      () => scheduleContext(desktopPage, uiProjectId),
       "the original owner scheduling connection is ready before exploration",
       30000,
       undefined,
@@ -920,17 +920,47 @@ try {
     const draft = "连接恢复后继续这条草稿";
     await page.getByTestId("chat-input").first().fill(draft);
     await sendReady(page);
+    const originalConnection = currentPair().identity;
     const beforeIdle = await until(async () => {
       const state = await projectStatus(projectId);
-      const initialActivation = wire.find(
+      if (state.state !== "ready" || !state.serviceGeneration) return false;
+      // Host 可以先报告 Core 就绪；尚未结算的原唤醒能接管 ifIdle 停止并再次启动项目。
+      const request = wire.findLast(
         (entry) =>
           entry.method === "project.activate" &&
-          entry.projectId === projectId &&
-          entry.activation?.state === "ready" &&
-          entry.activation.serviceGeneration === state.serviceGeneration,
+          entry.connectionId === originalConnection.connectionId &&
+          entry.projectId === projectId,
       );
-      return state.state === "ready" && state.serviceGeneration && initialActivation && state;
-    }, "Idle-recovery prerequisite: the UI-triggered activation must reach authoritative Host ready with a Core generation before reclamation");
+      const reply = request?.activation;
+      if (request?.errorCode)
+        throw new Error(`Original project activation failed: ${request.errorCode}`);
+      if (!reply) return false;
+      assert.equal(reply.projectId, projectId);
+      if (reply.state === "ready") {
+        assert.equal(reply.serviceGeneration, state.serviceGeneration);
+      } else {
+        assert.equal(reply.state, "pending");
+        if (!reply.activationId) return false;
+        const { operation } = await host.operation(reply.activationId);
+        assert.notEqual(operation?.state, "blocked", "Original project activation was blocked");
+        if (operation?.state !== "completed") return false;
+        assert.equal(operation.method, "project.ensure");
+        assert.equal(operation.requestId, reply.activationId);
+        assert.equal(operation.projectId, projectId);
+        assert.equal(operation.result?.service?.generation, state.serviceGeneration);
+        if (!(await scheduleContext(desktopPage, uiProjectId))) return false;
+        const confirmed = await projectStatus(projectId);
+        if (confirmed.state !== "ready" || confirmed.serviceGeneration !== state.serviceGeneration)
+          return false;
+      }
+      return {
+        ...state,
+        connectionId: request.connectionId,
+        requestId: request.id,
+        activation: reply,
+      };
+    }, "The original browser activation settles on the ready Core generation before idle reclamation");
+    await persist("idle-activation-prerequisite.json", beforeIdle);
     const idleRequestId = randomUUID();
     const idle = await host.stopProject(
       idleRequestId,
@@ -1302,7 +1332,6 @@ try {
     await browser?.close();
   });
   host?.close();
-  let sameHost = false;
   if (env)
     await cleanup("host-identity", async () => {
       const current = await readFixtureHost(env);
@@ -1321,11 +1350,7 @@ try {
         "Cleanup cannot target a replacement generation",
       );
       assert.equal(current.pid, originalHost.pid, "Cleanup cannot target a replacement process");
-      sameHost = true;
     });
-  // GUI 尚活时完成原停止回执，避免退出中的 idle release 与新 cancel 相互覆盖。
-  if (sameHost)
-    await cleanup("host-stop", () => stopFixtureHost(coreBin, env.AREAL_HARNESS_SERVICE_HOME, out));
   const pid = desktop?.process()?.pid;
   const cleanupDialog = { prompted: false, fixtureAnswersNativeConfirmation: true };
   const { nativeMessages } = require("@areal/workbench/node/native-i18n");
@@ -1346,7 +1371,7 @@ try {
   if (desktop)
     await cleanup("electron", () =>
       closeRecordedSmokeApplication(desktop, 20000, async () => {
-        // Host 已按原回执停止，退出检查会进入“后台状态未知”的原生三选项；只代替此系统确认，不修改应用状态。
+        // 只回答产品的原生退出确认；仍由 GUI 完成退出和后台交接。
         await desktop.evaluate(({ dialog }, prompts) => {
           dialog.showMessageBox = async (...args) => {
             const options = args.at(-1);
@@ -1367,9 +1392,14 @@ try {
     );
   await persist("cleanup-dialog.json", cleanupDialog);
   if (originalHost)
-    await cleanup("host-settlement", () =>
-      settleFixtureHostAfterQuit(coreBin, env, out, { host: originalHost, pid }),
-    );
+    await cleanup("host-settlement", async () => {
+      // 活跃 GUI 会按需唤醒 Host；先退出，再结算同一代 Host 的停止回执。
+      const receipt = await settleFixtureHostAfterQuit(coreBin, env, out, {
+        host: originalHost,
+        pid,
+      });
+      assert.equal(receipt?.state, "completed", "Original fixture Host stop is confirmed");
+    });
   if (env)
     await cleanup("process-exit", () =>
       assertApplicationStopped(coreBin, env, { pid, hostPid: originalHost?.pid }),

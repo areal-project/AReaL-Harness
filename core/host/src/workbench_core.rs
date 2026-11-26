@@ -125,6 +125,7 @@ const WORKBENCH_METHODS: &[&str] = &[
     "areal/thread/prediction",
     "areal/thread/start",
     "areal/thread/tools/attach",
+    "areal/thread/tools/set",
     "areal/tool/acknowledge",
     "areal/turn/enqueue",
     "areal/turn/start",

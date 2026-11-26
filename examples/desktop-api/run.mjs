@@ -16,6 +16,7 @@ const available = [
   "game-lite-profile",
   "profile-workflow",
   "native-tool-host",
+  "dynamic-tools-switch",
   "mcp-management",
   "adaptive-agents",
   "browser-vision",
@@ -55,6 +56,7 @@ const exampleIds = {
   "game-lite-profile": "EX-02",
   "profile-workflow": "EX-18",
   "native-tool-host": "EX-03",
+  "dynamic-tools-switch": "DYNAMIC-TOOLS",
   "mcp-management": "EX-14",
   "adaptive-agents": "EX-12",
   "browser-vision": "EX-04",
@@ -454,6 +456,88 @@ try {
           (o) => o.kind === "process.start" && o.outcome === "succeeded",
         ),
       );
+    } else if (name === "dynamic-tools-switch") {
+      const definition = (name) => ({
+        name,
+        description: `Fixture lookup: ${name}`,
+        inputSchema: {
+          type: "object",
+          properties: { key: { type: "string" } },
+          required: ["key"],
+          additionalProperties: false,
+        },
+      });
+      const a = definition("fixture_lookup_a"),
+        b = definition("fixture_lookup_b");
+      const calls = [];
+      let installed = a.name;
+      const onTool = (p) => {
+        calls.push([p.threadId, p.turnId, p.tool]);
+        assert.equal(p.tool, installed);
+        assert.deepEqual(p.arguments, { key: "seven" });
+        return {
+          success: true,
+          contentItems: [{ type: "inputText", text: `host receipt for ${p.tool}` }],
+        };
+      };
+      let host = await client(onTool);
+      const { threadId } = await startThread(host, null, {
+        dynamicTools: [a],
+        options: { automaticSessionName: false },
+      });
+      const { thread: initial } = await c.call("areal/thread/observe", { threadId });
+      assert.deepEqual(initial.dynamicTools, [a]);
+      const run = async (prompt) => {
+        const { turn } = await host.call("turn/start", {
+          threadId,
+          input: [{ type: "text", text: prompt }],
+        });
+        const completed = await done(host, { threadId, turnId: turn.id });
+        assert(
+          completed.items.some((i) => i.type === "agentMessage" && i.text === `finished ${prompt}`),
+        );
+        return turn.id;
+      };
+      const set = async (revision, tools) => {
+        const receipt = await host.call("areal/thread/tools/set", {
+          threadId,
+          expectedToolsetRevision: revision,
+          dynamicTools: tools,
+        });
+        assert.deepEqual(receipt, { threadId, toolsetRevision: revision + 1 });
+        const observed = await c.waitEvent(
+          "areal/thread/tools/attached",
+          (p) => p.threadId === threadId && p.toolsetRevision === receipt.toolsetRevision,
+        );
+        assert.deepEqual(observed.dynamicTools, tools);
+        installed = tools[0]?.name;
+      };
+      const first = await run(a.name);
+      await set(initial.toolsetRevision ?? 0, [b]);
+      const second = await run(b.name);
+      await host.close();
+      host = await client(onTool);
+      const { thread: resumed } = await host.call("thread/resume", { threadId });
+      assert.equal(resumed.toolsetRevision, 1);
+      assert.deepEqual(resumed.dynamicTools, [b]);
+      await set(resumed.toolsetRevision, []);
+      await run("fixture_lookup_clear");
+      assert.deepEqual(calls, [
+        [threadId, first, a.name],
+        [threadId, second, b.name],
+      ]);
+      const { thread } = await c.call("thread/read", { threadId, includeTurns: true });
+      assert.equal(thread.toolsetRevision, 2);
+      assert.deepEqual(thread.dynamicTools ?? [], []);
+      assert.deepEqual(
+        thread.turns.map((t) =>
+          t.items
+            .filter((i) => i.type === "dynamicToolCall")
+            .map((i) => [i.tool, i.execution.outcome]),
+        ),
+        [[[a.name, "succeeded"]], [[b.name, "succeeded"]], []],
+      );
+      await host.close();
     } else if (name === "mcp-management") {
       const target = await startThread(c, "mcp");
       await done(c, target);

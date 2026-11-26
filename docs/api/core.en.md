@@ -56,6 +56,7 @@ This limit bounds JSON encoding output. Earlier full-history hydration and JSON 
 | `thread/list` | `{cursor?,limit?}`; 1–100, default 30 |
 | `thread/read` | `{threadId,includeTurns?}` |
 | `thread/resume` | `{threadId,mode?:"bounded",maxBytes?}` |
+| `areal/thread/tools/set` | `{threadId,expectedToolsetRevision,dynamicTools}`; the bound tool host replaces the full list on an idle ordinary Thread |
 | `turn/start` | `{threadId,input}` |
 | `turn/steer` | `{threadId,expectedTurnId,input}` |
 | `areal/thread/prediction` | `{threadId,sourceTurnId,operation:"request"|"cancel"}` |
@@ -275,7 +276,7 @@ Snapshots are written in format 14. Old formats 1–14 without derivation metada
 <a id="dynamic-tools"></a>
 ## Dynamic tool callbacks
 
-thread/start.dynamicTools accepts `{name,description,inputSchema,outputSchema?}[]`, persisted and immutable for the Thread lifetime. After recording intent, Core requests the registering connection:
+`thread/start` and `areal/thread/start` accept an initial `dynamicTools` list of `{name,description,inputSchema,outputSchema?}[]`. Core persists the definitions; the tool host can update them between turns. After recording call intent, Core sends the request to the bound connection:
 
 ```json
 {"id":"REQUEST_ID","method":"item/tool/call","params":{"threadId":"THREAD_ID","turnId":"TURN_ID","callId":"CALL_ID","tool":"lookup","arguments":{"key":"answer"}}}
@@ -290,6 +291,16 @@ The client echoes the request id:
 success/contentItems are required. Successful structured output is checked against outputSchema; see [desktop API](desktop.en.md) for media extensions. success=false is confirmed failure. RPC errors, invalid/oversized results, disconnects, timeouts and cancellation become UNKNOWN without retry. areal/tool/cancelled is best-effort and does not guarantee rollback.
 
 Restored definitions have no host binding. A callback-capable client may take over through resume when the old host is disconnected and Thread idle. Execution-host disconnection stops the affected Turn. TUI/Web return method-not-found for arbitrary callbacks. See [tools](../guides/tools.en.md) for registration limits.
+
+**Switch tools within a Thread.** Check for `areal/thread/tools/set` in `areal/capabilities.methods`. After the previous turn ends, read `toolsetRevision` (defaults to 0) and `dynamicTools` (defaults to empty) from `thread/read`. After a reconnect, use `thread/resume` without a `mode` to rebind and read those fields. If a `mode:"conversation"` display snapshot contains `deferredDynamicToolCount`, fetch the full list with `thread/read`. If the list differs, submit the complete desired list. Start the next turn once the update succeeds and the new callbacks are ready. For example, to replace the old tool with `lookup`:
+
+```json
+{"id":7,"method":"areal/thread/tools/set","params":{"threadId":"THREAD_ID","expectedToolsetRevision":0,"dynamicTools":[{"name":"lookup","description":"Look up a record","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}]}}
+```
+
+Success returns `{threadId,toolsetRevision}`. A tool can keep its name while changing its description or input/output schema. An empty array clears business tools. Changes in content or order advance the revision and publish the **full list** to subscribers via `areal/thread/tools/attached`. History, configuration, and inspection requirements for existing `UNKNOWN` outcomes are preserved. The next turn uses the new definitions. The desktop `browser_v1` dispatcher must be attached through its fixed bundle and preserved during business tool updates. Definitions that Core retires on recovery cannot be registered either.
+
+The caller needs `interact`, `tools`, access to the target Thread, and the bound host connection. When the list is empty and no live host owns it, the first addition may claim it. Active, compacting, queued, archived, Task-owned, and child conversations cannot be updated. A stale revision or host conflict returns `-32009`. An invalid schema or duplicate name rejects the entire list. `thread/resume` never changes definitions. On a lost response or conflict, read the current revision and full list with `thread/read` before deciding whether another update is needed. If Core reports a storage error, the new version may already be on disk. Restart Core, rebind, and verify the tool list before continuing. The host must still enforce the current authorization for every callback.
 
 ## Native file tool permissions
 

@@ -100,7 +100,7 @@ fn entry(thread: &Thread, turn: &Turn, item: &Item) -> Value {
         "sourceTurnStatus":turn.status,"turn":presentation,"item":item})
 }
 fn projected(
-    mut template: Option<Value>,
+    template: Option<&Value>,
     empty_active_turn: Option<&Turn>,
     snapshot: &str,
     newest_first: &[Value],
@@ -108,7 +108,7 @@ fn projected(
 ) -> Value {
     let mut data: Vec<Value> = newest_first.iter().rev().cloned().collect();
     let window = json!({"snapshotId":snapshot,"nextCursor":next,"complete":next.is_none()});
-    if let Some(ref mut result) = template {
+    if let Some(mut result) = template.cloned() {
         let mut turns: Vec<Value> = Vec::new();
         for entry in data {
             if turns
@@ -135,7 +135,7 @@ fn projected(
         }
         result["thread"]["turns"] = json!(turns);
         result["history"] = window;
-        template.unwrap()
+        result
     } else {
         let mut previous_turn = None;
         for entry in &mut data {
@@ -300,8 +300,8 @@ pub(crate) fn page(
             conversation,
         }
     };
-    let snapshot = cursor.snapshot();
     if cursor.item.is_some() {
+        let snapshot = cursor.snapshot();
         let mut selected = None;
         walk(root, thread, |turn, item, _| {
             if cursor.item.as_deref() == Some(item.id()) {
@@ -337,6 +337,56 @@ pub(crate) fn page(
         return super::super::fit_history_fragment(remaining, max_bytes, fragment_page)
             .ok_or_else(|| failure(thread, "HISTORY_BUDGET_TOO_SMALL", None));
     }
+    let assemble = |head: Option<&Value>| {
+        assemble_page(
+            root,
+            thread,
+            &cursor,
+            max_bytes,
+            head,
+            empty_active_turn.as_ref(),
+        )
+    };
+    let Some(mut head) = template else {
+        return assemble(None);
+    };
+    let Some(count) = head["thread"]["dynamicTools"]
+        .as_array()
+        .map(Vec::len)
+        .filter(|&count| conversation && count > 0)
+    else {
+        return assemble(Some(&head));
+    };
+    // 单是元数据已超限时不必用整表反复试排历史。原本放得下的阅读页仍给出完整定义。
+    if bytes(&head) <= max_bytes {
+        let result = assemble(Some(&head));
+        if !matches!(
+            result,
+            Err(crate::Error::HistoryRead {
+                reason: "HISTORY_BUDGET_TOO_SMALL",
+                ..
+            })
+        ) {
+            return result;
+        }
+    }
+    head["thread"]
+        .as_object_mut()
+        .unwrap()
+        .remove("dynamicTools");
+    head["thread"]["deferredDynamicToolCount"] = json!(count);
+    assemble(Some(&head))
+}
+
+fn assemble_page(
+    root: &Path,
+    thread: &Thread,
+    cursor: &Cursor,
+    max_bytes: usize,
+    template: Option<&Value>,
+    empty_active_turn: Option<&Turn>,
+) -> crate::Result<Value> {
+    let snapshot = cursor.snapshot();
     let observing = template.is_some();
     let mut data = Vec::new();
     let mut checkpoints = Vec::new();
@@ -371,8 +421,8 @@ pub(crate) fn page(
                 _ => {
                     let item = value["item"].take();
                     let single = projected(
-                        template.clone(),
-                        empty_active_turn.as_ref(),
+                        template,
+                        empty_active_turn,
                         &snapshot,
                         std::slice::from_ref(&value),
                         candidate_next.clone(),
@@ -386,8 +436,8 @@ pub(crate) fn page(
             overhead + bytes(&value["item"]) + cursor_bytes
         } else {
             bytes(&projected(
-                template.clone(),
-                empty_active_turn.as_ref(),
+                template,
+                empty_active_turn,
                 &snapshot,
                 std::slice::from_ref(&value),
                 candidate_next.clone(),
@@ -478,8 +528,8 @@ pub(crate) fn page(
         }
         let fits = |count: usize| {
             bytes(&projected(
-                template.clone(),
-                empty_active_turn.as_ref(),
+                template,
+                empty_active_turn,
                 &snapshot,
                 &data[..count],
                 checkpoints[count - 1].0.clone(),
@@ -533,7 +583,7 @@ pub(crate) fn page(
     } else {
         next = None;
     }
-    let result = projected(template, empty_active_turn.as_ref(), &snapshot, &data, next);
+    let result = projected(template, empty_active_turn, &snapshot, &data, next);
     if bytes(&result) > max_bytes {
         return Err(failure(thread, "HISTORY_BUDGET_TOO_SMALL", None));
     }

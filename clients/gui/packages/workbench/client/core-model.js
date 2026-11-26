@@ -39,12 +39,26 @@ export class CoreTaskModel {
   /** @param {CoreThread} thread @param {{queue?:CoreQueue,interactions?:CoreInteractions}} [metadata] */
   replace(thread, { queue, interactions } = {}) {
     const old = this.state.threads[thread.id];
-    // A snapshot requested before an attachment may arrive after its committed event.
+    // 换表前发出的快照可能晚到，不能恢复已撤下的工具或提示词建议。
     const currentRevision = old?.toolsetRevision ?? 0;
     const incomingRevision = thread.toolsetRevision ?? 0;
+    const stale = currentRevision > incomingRevision;
+    const keepFullToolset =
+      currentRevision === incomingRevision &&
+      thread.deferredDynamicToolCount !== undefined &&
+      old?.dynamicTools?.length === thread.deferredDynamicToolCount;
     const value =
-      currentRevision > incomingRevision
-        ? { ...thread, dynamicTools: old.dynamicTools, toolsetRevision: currentRevision }
+      stale || keepFullToolset
+        ? {
+            ...thread,
+            dynamicTools: old.dynamicTools,
+            deferredDynamicToolCount: old.deferredDynamicToolCount,
+            toolsetRevision: currentRevision,
+            ...(stale &&
+              thread.desktop && {
+                desktop: { ...thread.desktop, promptPrediction: old.desktop?.promptPrediction },
+              }),
+          }
         : thread;
     this.publish({
       threads: { ...this.state.threads, [thread.id]: value },
@@ -192,18 +206,22 @@ export class CoreTaskModel {
       return;
     }
     if (method === "areal/thread/tools/attached") {
+      const currentRevision = thread.toolsetRevision ?? 0;
       if (
         typeof params.toolsetRevision !== "number" ||
         !Number.isSafeInteger(params.toolsetRevision) ||
         params.toolsetRevision < 0 ||
         !Array.isArray(params.dynamicTools) ||
-        params.toolsetRevision <= (thread.toolsetRevision ?? 0)
+        params.toolsetRevision < currentRevision ||
+        (params.toolsetRevision === currentRevision &&
+          thread.deferredDynamicToolCount === undefined)
       )
         return;
       this.replace({
         ...thread,
         toolsetRevision: params.toolsetRevision,
         dynamicTools: params.dynamicTools,
+        deferredDynamicToolCount: undefined,
       });
       return;
     }

@@ -112,7 +112,7 @@ This is the project’s target matrix, not a vendor feature inventory.
 
 Use a fixed versioned Browser Dispatcher with runtime capability documentation and strict per-operation validation; unknown parameters are never evaluated as code. Reads and mutations check resource and control generations. For an action, Core records intent, requests a read-only host prepare, persists the actual plan, obtains approval and only then executes. The host revalidates the authorized target immediately before input. Human input uses the human-control path, not a fabricated agent call.
 
-Register the dispatcher at new Thread creation. Existing tool definitions are immutable: use a bounded idle-time append-only attachment mechanism, preserving prior definitions and history, as specified in [ADR-0007](../adr/0007-browser-tool-compatibility.en.md). Unsupported versions disable the feature rather than duplicate the chat or edit storage manually.
+Register the dispatcher at new Thread creation. To add it to an existing Thread, [attach the fixed bundle while idle](../adr/0007-browser-tool-compatibility.en.md), preserving prior tools and history. [Business tool updates](../api/core.en.md#dynamic-tools) must also preserve an attached Browser Dispatcher. Unsupported versions disable the feature rather than duplicate the chat or edit storage manually.
 
 Map known rejection, non-dispatch and ambiguous dispatch to existing Core outcomes. UNKNOWN acknowledgement only appends inspection evidence. Resume is explicit authorization and continuation, never implicit retry.
 

@@ -10,7 +10,7 @@
 /** @typedef {{threadId:string,requestId:string,[key:string]:unknown}} CoreInteraction */
 /** @typedef {{revision:number,data:CoreInteraction[],[key:string]:unknown}} CoreInteractions */
 /** @typedef {CoreNode & {revision:number,channelSequence?:number}} CoreTask */
-/** @typedef {CoreNode & {turns?:CoreTurn[]|null,toolsetRevision?:number,dynamicTools?:unknown[],goals?:CoreGoals,desktop?:({plan?:CorePlan|null,[key:string]:unknown})|null,conversation?:({kind?:string,[key:string]:unknown})|null}} CoreThread */
+/** @typedef {CoreNode & {turns?:CoreTurn[]|null,toolsetRevision?:number,dynamicTools?:unknown[],deferredDynamicToolCount?:number,goals?:CoreGoals,desktop?:({plan?:CorePlan|null,[key:string]:unknown})|null,conversation?:({kind?:string,[key:string]:unknown})|null}} CoreThread */
 /** @typedef {{connected:boolean,error:string|null,threads:Record<string,CoreThread>,interactions:Record<string,CoreInteractions>,queues:Record<string,CoreQueue>,tasks?:Record<string,CoreTask>}} CoreModelState */
 
 /** @param {unknown} value @returns {value is Record<string,unknown>} */
@@ -123,6 +123,10 @@ export function isCoreThread(value) {
     (value.turns == null || (Array.isArray(value.turns) && value.turns.every(isCoreTurn))) &&
     (value.toolsetRevision === undefined || revision(value.toolsetRevision)) &&
     (value.dynamicTools === undefined || Array.isArray(value.dynamicTools)) &&
+    (value.deferredDynamicToolCount === undefined ||
+      (revision(value.deferredDynamicToolCount) &&
+        value.deferredDynamicToolCount > 0 &&
+        value.dynamicTools === undefined)) &&
     (value.goals === undefined || isCoreGoals(value.goals)) &&
     (value.desktop == null ||
       (modelRecord(value.desktop) &&

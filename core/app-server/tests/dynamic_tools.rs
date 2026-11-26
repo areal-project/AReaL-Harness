@@ -74,7 +74,17 @@ async fn call(socket: &mut Socket, method: &str, params: Value) -> Value {
     }
 }
 async fn connected(url: &str) -> Socket {
-    let (mut socket, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+    connected_with(url, None).await
+}
+async fn connected_with(url: &str, token: Option<&str>) -> Socket {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    let mut request = url.into_client_request().unwrap();
+    if let Some(token) = token {
+        request
+            .headers_mut()
+            .insert("authorization", format!("Bearer {token}").parse().unwrap());
+    }
+    let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
     assert!(
         call(
             &mut socket,
@@ -136,10 +146,25 @@ async fn serve(
     CancellationToken,
     tokio::task::JoinHandle<anyhow::Result<()>>,
 ) {
+    serve_with_auth(engine, None).await
+}
+async fn serve_with_auth(
+    engine: Arc<Engine>,
+    auth: Option<areal_app_server::auth::Authentication>,
+) -> (
+    String,
+    CancellationToken,
+    tokio::task::JoinHandle<anyhow::Result<()>>,
+) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
     let stop = CancellationToken::new();
-    let task = tokio::spawn(areal_app_server::serve(listener, engine, stop.clone()));
+    let task = tokio::spawn(areal_app_server::serve_authenticated(
+        listener,
+        engine,
+        stop.clone(),
+        auth,
+    ));
     (url, stop, task)
 }
 async fn settled(engine: &Engine, id: &str) -> areal_protocol::Thread {
@@ -345,3 +370,6 @@ async fn cancellation_notifies_client_and_does_not_claim_remote_cleanup() {
     stop.cancel();
     server.await.unwrap().unwrap();
 }
+
+#[path = "dynamic_tools/update.rs"]
+mod update;

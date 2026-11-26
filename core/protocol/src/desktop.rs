@@ -90,6 +90,7 @@ crate::method_catalog! {
     "areal/host/status" => Read;
     "areal/subscription/remove" => Subscription;
     "areal/thread/tools/attach" => Mutation, Thread;
+    "areal/thread/tools/set" => Mutation;
     "areal/agent/spawn" => Mutation;
     "areal/agent/delegate" => Mutation;
     "areal/execution/list" => Read;
@@ -183,6 +184,21 @@ pub struct AttachBrowserTools {
     pub thread_id: String,
     pub expected_toolset_revision: u64,
     pub bundle_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetThreadTools {
+    pub thread_id: String,
+    pub expected_toolset_revision: u64,
+    pub dynamic_tools: Vec<super::ToolDefinition>,
+}
+
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadToolsetVersion {
+    pub thread_id: String,
+    pub toolset_revision: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]

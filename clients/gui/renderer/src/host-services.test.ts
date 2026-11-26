@@ -1995,6 +1995,42 @@ describe("Host renderer read authority", () => {
         "child-turn",
       ]);
       expect(paged.thread.turns.map((turn: { id: string }) => turn.id)).toEqual(["latest-turn"]);
+      const childUpdate = (sequence: number, turns: unknown[]) =>
+        wire.send({
+          ...identity,
+          event: "session.updated",
+          subscriptionId: "child-sub",
+          threadId: "child",
+          sequence,
+          patch: {
+            head: {
+              ...child,
+              history: { ...child.history, snapshotId: `child-history-${sequence}` },
+            },
+            turns,
+          },
+        });
+      childUpdate(1, [
+        { id: "next", head: { id: "next", status: "inProgress" }, order: [], items: [] },
+      ]);
+      const updated = (await services.snapshot()).projects[0].state.threads.child;
+      expect(updated.turns.at(-1).id).toBe("next");
+      expect(updated.turns[0].items[0]).toMatchObject({
+        type: "dynamicToolCall",
+        arguments: { path: "child" },
+      });
+      childUpdate(2, [
+        {
+          id: "child-turn",
+          items: [{ id: "tool", value: { ...child.thread.turns[0].items[0], version: "v2" } }],
+        },
+      ]);
+      expect(
+        (await services.snapshot()).projects[0].state.threads.child.turns[0].items[0],
+      ).toMatchObject({
+        type: "historyDeferred",
+        version: "v2",
+      });
       holdHistory = true;
       const pending = services.reads!.loadItem("tool", { projectId: "alias", threadId: "child" });
       await vi.waitFor(() => expect(releaseHistory).toBeDefined());

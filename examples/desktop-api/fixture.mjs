@@ -369,6 +369,28 @@ export async function fixture() {
       if (first === "native" && result.length === 0) tool = ["native_write", {}];
       if (first === "native" && result.length)
         assert.match(JSON.stringify(result), /native broker/);
+      if (["fixture_lookup_a", "fixture_lookup_b", "fixture_lookup_clear"].includes(first)) {
+        const names = request.tools
+          .map((t) => t.function.name)
+          .filter((n) => n.startsWith("fixture_lookup_"));
+        const cleared = first === "fixture_lookup_clear";
+        assert.deepEqual(names, cleared ? [] : [first]);
+        if (first !== "fixture_lookup_a") {
+          assert(
+            request.messages.some(
+              (m) =>
+                m.role === "tool" &&
+                JSON.stringify(m.content).includes("host receipt for fixture_lookup_a"),
+            ),
+          );
+        }
+        if (!cleared && result.length === 0) tool = [first, { key: "seven" }];
+        else {
+          if (!cleared)
+            assert(JSON.stringify(result[0].content).includes(`host receipt for ${first}`));
+          reply = `finished ${first}`;
+        }
+      }
       if (first === "mcp" && result.length === 0)
         tool = ["mcp__fixture__echo", { value: "managed" }];
       if (first === "mcp" && result.length) assert.match(JSON.stringify(result), /managed/);

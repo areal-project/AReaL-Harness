@@ -11,6 +11,17 @@ export type MethodSemantics = {
   effect: "read" | "subscription" | "mutation";
   receipt?: "thread" | "task" | "management";
 };
+export type SetThreadToolsParams = {
+  threadId: string;
+  expectedToolsetRevision: number;
+  dynamicTools: {
+    name: string;
+    description: string;
+    inputSchema: { type: "object"; [keyword: string]: unknown };
+    outputSchema?: boolean | Record<string, unknown>;
+  }[];
+};
+export type ThreadToolsetVersion = { threadId: string; toolsetRevision: number };
 export const MAX_RESPONSE_BYTES: number;
 export class CoreRpcError extends Error {
   constructor(
@@ -72,6 +83,10 @@ export class CoreClient {
   closeFailure: CoreRpcError | null;
   capabilities?: import("./capabilities.js").CoreCapabilities;
   connect(): Promise<NonNullable<CoreClient["capabilities"]>>;
+  request(
+    method: "areal/thread/tools/set",
+    params: SetThreadToolsParams,
+  ): Promise<ThreadToolsetVersion>;
   request<Result>(
     method: string,
     params: object | undefined,

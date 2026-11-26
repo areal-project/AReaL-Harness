@@ -869,6 +869,80 @@ async fn workbench_attach_waits_for_original_project_startup_before_leasing_shar
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn workbench_forwards_toolset_replacements_and_denies_observer_and_terminal_leases() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
+            let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+            {
+                let mut slots = host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                slot.writer = Some(writer);
+                slot.lifetime = Some(Rc::new(lifetime));
+            }
+            const SET: &str = "areal/thread/tools/set";
+            let input = json!({"threadId":"thread","expectedToolsetRevision":6,"dynamicTools":[]});
+            let expected = input.clone();
+            let server = tokio::task::spawn_local(async move {
+                for writable in [false, false, true] {
+                    let (stream, _) = listener.accept().await.unwrap();
+                    let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders)
+                        .await
+                        .unwrap();
+                    let mut updates = 0;
+                    while let Some(Ok(Message::Text(text))) = socket.next().await {
+                        let call: Value = serde_json::from_str(&text).unwrap();
+                        let result = match call["method"].as_str().unwrap() {
+                            "initialize" => json!({}),
+                            "initialized" => continue,
+                            "areal/capabilities" => {
+                                json!({"methods":[SET],"features":{"connectionProcesses":true}})
+                            }
+                            SET => {
+                                assert!(writable);
+                                assert_eq!(call["params"], expected);
+                                updates += 1;
+                                json!({"threadId":"thread","toolsetRevision":7})
+                            }
+                            other => panic!("unexpected request {other}"),
+                        };
+                        send(&mut socket, json!({"id":call["id"],"result":result})).await;
+                    }
+                    assert_eq!(updates, usize::from(writable));
+                }
+            });
+            let connections = &host.schedules.connections;
+            for scope in [Some("observer"), Some("terminal"), None] {
+                let attached = match scope {
+                    Some(_) => connections.workbench_attach(&host, "project", scope).await,
+                    None => connections.workbench_desktop_attach(&host, "project").await,
+                }
+                .unwrap();
+                let lease = attached["lease"].as_str().unwrap();
+                let reply = connections
+                    .workbench_request(&host, "project", lease, SET, input.clone())
+                    .await;
+                if scope.is_some() {
+                    assert_eq!(reply.unwrap_err().to_string(), "FORBIDDEN");
+                } else {
+                    assert_eq!(
+                        reply.unwrap()["result"],
+                        json!({"threadId":"thread","toolsetRevision":7})
+                    );
+                }
+                connections
+                    .workbench_detach(&host, "project", lease)
+                    .unwrap();
+            }
+            server.await.unwrap();
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn terminal_detach_closes_only_its_original_core_socket() {
     tokio::task::LocalSet::new()
         .run_until(async {

@@ -4,7 +4,7 @@
 
 **状态：accepted；固定 Browser v1 工具包追加与观察订阅已实现。**
 
-既有 Thread 的动态工具定义保持不变，thread/resume 同时涉及宿主绑定。为避免复制旧聊天或让 CLI 抢走 GUI 宿主，使用限定 Browser v1 工具包的空闲时追加操作，以及不重绑 ToolHost 的原子观察订阅。GUI 在用户向空闲旧聊天发送新消息时按 capability 追加固定工具包；这不读取页面，也不恢复旧请求。首次实际 Browser 调用经 Core 审批后才认领页面。已有工具定义绝不替换；新的 Browser Dispatcher 外形固定，实际操作受 capability 与严格二级 schema 约束。
+为既有 Thread 接入浏览器时，保留原有工具定义；thread/resume 同时涉及宿主绑定。为避免复制旧聊天或让 CLI 抢走 GUI 宿主，使用限定 Browser v1 工具包的空闲时追加操作，以及不重绑 ToolHost 的原子观察订阅。GUI 在用户向空闲旧聊天发送新消息时按 capability 追加固定工具包；这不读取页面，也不恢复旧请求。首次实际 Browser 调用经 Core 审批后才认领页面。追加操作绝不替换已有工具；Browser Dispatcher 外形固定，实际操作受 capability 与严格二级 schema 约束。[业务工具更新接口](../api/core.md#dynamic-tools)也不能替换它。
 
 ## 考虑的方案
 
