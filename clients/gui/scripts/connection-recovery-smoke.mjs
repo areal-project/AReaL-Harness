@@ -864,6 +864,43 @@ try {
   await page.getByTestId("chat-input").first().waitFor({ timeout: 60000 });
   await pass(stage, { held, loading }, ["loading.png", "loading-observation.json"]);
 
+  stage = "prerequisites";
+  // 输入框可能先显示另一客户端的就绪目录。切走前等网页自己的草稿完成绑定，
+  // 否则自然回收无法区分未绑定目录与有待处理调度的目录。
+  const draftProject = await until(async () => {
+    const alias = await page.evaluate(() =>
+      localStorage.getItem("areal-gui:draft:projectless:new:project"),
+    );
+    if (!alias) return false;
+    const { projects } = await host.status();
+    const project = projects.find(
+      ({ registration: { source } }) =>
+        source.kind === "gui" &&
+        source.profile === env.AREAL_GUI_USER_DATA &&
+        source.legacyProjectId === alias,
+    );
+    return project?.state === "ready" && snapshotProject(project).serviceGeneration && project;
+  }, "The browser's own initial draft is ready before switching workspaces");
+  const { workspace, dataDir } = draftProject.registration;
+  const { stdout: published } = await execute(
+    coreBin,
+    ["service", "task-catalog", "--workspace", workspace, "--data-dir", dataDir, "--json"],
+    { env, timeout: 20000 },
+  );
+  const { source, target, catalog } = JSON.parse(published);
+  assert.equal(source, "published");
+  assert.equal(target.workspace, workspace);
+  assert.equal(target.dataDir, dataDir);
+  assert.ok(
+    catalog.kind === "empty" ||
+      (catalog.kind === "snapshot" && catalog.hasMore === false && catalog.data.length === 0),
+    "The isolated draft has a readable, empty schedule catalog",
+  );
+  await persist("browser-draft-prerequisite.json", {
+    ...snapshotProject(draftProject),
+    catalogKind: catalog.kind,
+  });
+
   stage = explorationMode ? "prerequisites" : "automaticRecovery";
   page.once("dialog", (dialog) => dialog.accept(scene.project));
   const categories = page.locator('button[aria-label="项目分类"]');
