@@ -501,6 +501,10 @@ fn desktop_schema() -> Value {
     let mut output = json!({"apiVersion":API_VERSION,"requests":methods,"thread":schemars::schema_for!(areal_protocol::Thread),"turn":schemars::schema_for!(areal_protocol::Turn),"profile":schemars::schema_for!(AgentProfile),"interaction":schemars::schema_for!(Interaction),"queue":schemars::schema_for!(Queue),"process":schemars::schema_for!(ManagedProcess),"provider":schemars::schema_for!(Provider),"workflow":schemars::schema_for!(areal_engine::desktop::Workflow),"effectiveConfig":schemars::schema_for!(EffectiveConfig),"media":schemars::schema_for!(areal_protocol::MediaRef)});
     let (responses, notifications) = schema::projections();
     output["responses"] = responses;
+    output["responses"]["initialize"]["properties"]["toolCallbackItemId"] =
+        json!({"type":"boolean"});
+    output["clientNotifications"] =
+        json!({"initialized":object(json!({"toolCallbackItemId":{"type":"boolean"}}),vec![])});
     output["notifications"] = notifications;
     schema::plugins::codex_management(&mut output);
     let requests = output["requests"].as_object().unwrap();
@@ -546,7 +550,12 @@ fn desktop_schema() -> Value {
     for (name, value) in output.as_object_mut().unwrap() {
         match name.as_str() {
             "apiVersion" => {}
-            "requests" | "responses" | "notifications" | "serverRequests" | "serverResponses" => {
+            "requests"
+            | "responses"
+            | "notifications"
+            | "clientNotifications"
+            | "serverRequests"
+            | "serverResponses" => {
                 for schema in value.as_object_mut().unwrap().values_mut() {
                     schema::standalone::normalize(schema);
                 }

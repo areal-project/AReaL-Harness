@@ -37,7 +37,7 @@ GUI 默认开启，可在“预测下一条提示词”设置中关闭。关闭�
 
 ## 传输与会话
 
-每个 WebSocket 文本消息承载一条请求、响应或通知。Core 入站消息和帧上限为 4 MiB，出站完整 JSON 消息上限为 64 MiB，按编码后的 UTF-8 字节计量。`areal/capabilities` 的 `limits.frameBytes` 和 `limits.responseBytes` 分别报告这两个上限。请求 `{id,method,params}`，id 为字符串或整数，params 为对象；可省略 jsonrpc，响应 result/error 二选一，不支持批处理。先请求 initialize，再发送 initialized 通知。
+每个 WebSocket 文本消息承载一条请求、响应或通知。Core 入站消息和帧上限为 4 MiB，出站完整 JSON 消息上限为 64 MiB，按编码后的 UTF-8 字节计量。`areal/capabilities` 的 `limits.frameBytes` 和 `limits.responseBytes` 分别报告这两个上限。请求 `{id,method,params}`，id 为字符串或整数，params 为对象；可省略 jsonrpc，响应 result/error 二选一，不支持批处理。先请求 initialize，再发送 initialized 通知。若响应带有 `toolCallbackItemId:true`，接受账本项身份的客户端在首次 `initialized.params` 中回显该字段。仅此连接的工具调用与浏览器准备回调会附带 `itemId`；省略时保留原回调格式，重复通知不改变协商结果。
 
 响应超限时，Core 返回相同 RPC ID 的 `-32001` 错误，data 为 `{reason:"RESPONSE_TOO_LARGE",limitBytes:67108864,retryable:false,delivery:"resultUnavailable"}`，连接继续可用。`thread/resume` 或 `areal/thread/observe` 的基线超限时，同一订阅停止转发，已排队的后续事件也不送达。该错误只表示结果无法送达，不表示命令未执行；变更请求沿用原 requestId 查询回执，不自动重放。通知或服务端请求超限时，Core 以关闭码 1009 和固定原因 `RESPONSE_TOO_LARGE` 断连，不丢弃消息后继续提供不完整投影。单次发送仍有 5 秒期限。
 

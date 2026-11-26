@@ -1,5 +1,17 @@
 {
   "apiVersion": "areal.core.v1",
+  "clientNotifications": {
+    "initialized": {
+      "additionalProperties": false,
+      "properties": {
+        "toolCallbackItemId": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    }
+  },
   "effectiveConfig": {
     "$defs": {
       "AgentProfile": {
@@ -135637,6 +135649,9 @@
         },
         "platformOs": {
           "type": "string"
+        },
+        "toolCallbackItemId": {
+          "type": "boolean"
         },
         "userAgent": {
           "type": "string"

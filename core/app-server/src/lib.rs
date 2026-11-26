@@ -509,9 +509,11 @@ async fn connection(
         }
         let method = request["method"].as_str().unwrap();
         if id.is_none() {
-            if method == "initialized" && conn.initialized {
-                if !conn.ready
-                    && conn.principal.thread_ids.is_none()
+            if method == "initialized" && conn.initialized && !conn.ready {
+                if request["params"]["toolCallbackItemId"] == true {
+                    conn.tool_host.enable_callback_item_id();
+                }
+                if conn.principal.thread_ids.is_none()
                     && conn.principal.allows(auth::Permission::Observe)
                 {
                     conn.forward("model-catalog", engine.subscribe_model_catalog());
@@ -1091,7 +1093,7 @@ impl Connection {
             self.initialized = true;
             return Ok(
                 json!({"userAgent": "areal-core/0.1.0", "platformFamily": std::env::consts::FAMILY,
-                "platformOs": std::env::consts::OS, "codexHome": engine.data_dir()}),
+                "platformOs": std::env::consts::OS, "codexHome": engine.data_dir(), "toolCallbackItemId":true}),
             );
         }
         if !self.ready {

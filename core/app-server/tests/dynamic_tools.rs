@@ -77,6 +77,9 @@ async fn connected(url: &str) -> Socket {
     connected_with(url, None).await
 }
 async fn connected_with(url: &str, token: Option<&str>) -> Socket {
+    connected_with_item_ids(url, token, false).await
+}
+async fn connected_with_item_ids(url: &str, token: Option<&str>, accept: bool) -> Socket {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     let mut request = url.into_client_request().unwrap();
     if let Some(token) = token {
@@ -85,17 +88,18 @@ async fn connected_with(url: &str, token: Option<&str>) -> Socket {
             .insert("authorization", format!("Bearer {token}").parse().unwrap());
     }
     let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
-    assert!(
-        call(
-            &mut socket,
-            "initialize",
-            json!({"clientInfo":{"name":"fixture","version":"1"}})
-        )
-        .await
-        .get("result")
-        .is_some()
-    );
-    send(&mut socket, json!({"method":"initialized"})).await;
+    let offer = call(
+        &mut socket,
+        "initialize",
+        json!({"clientInfo":{"name":"fixture","version":"1"}}),
+    )
+    .await;
+    assert_eq!(offer["result"]["toolCallbackItemId"], true);
+    let mut ready = json!({"method":"initialized"});
+    if accept {
+        ready["params"] = json!({"toolCallbackItemId":true});
+    }
+    send(&mut socket, ready).await;
     socket
 }
 
@@ -172,6 +176,58 @@ async fn settled(engine: &Engine, id: &str) -> areal_protocol::Thread {
         .await
         .unwrap()
         .unwrap()
+}
+
+#[tokio::test]
+async fn callback_item_id_is_negotiated_once_per_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(FixtureModel), Limits::default()).unwrap();
+    let (url, stop, server) = serve(engine.clone()).await;
+    for accept in [true, false] {
+        let mut owner = connected_with_item_ids(&url, None, accept).await;
+        send(
+            &mut owner,
+            json!({"method":"initialized","params":{"toolCallbackItemId":!accept}}),
+        )
+        .await;
+        let thread = start(&mut owner).await;
+        engine
+            .start(&thread, vec![Input::text("lookup")])
+            .await
+            .unwrap();
+        let request = tool_request(&mut owner).await;
+        let params = &request["params"];
+        assert_eq!(params["callId"], "call-1");
+        send(&mut owner, json!({"id":request["id"],"result":result()})).await;
+        let done = settled(&engine, &thread).await;
+        assert_eq!(done.turns[0].status, TurnStatus::Completed);
+        let item = done.turns[0]
+            .items
+            .iter()
+            .find(|i| matches!(i, Item::DynamicToolCall { .. }))
+            .unwrap();
+        if accept {
+            assert_eq!(params["itemId"], item.id());
+        } else {
+            // 已发行的严格客户端拒绝六个已知字段之外的任何字段。
+            let fields = params.as_object().unwrap();
+            assert_eq!(fields.len(), 6);
+            assert!(
+                [
+                    "threadId",
+                    "turnId",
+                    "callId",
+                    "tool",
+                    "arguments",
+                    "hostGeneration"
+                ]
+                .iter()
+                .all(|k| fields.contains_key(*k))
+            );
+        }
+    }
+    stop.cancel();
+    server.await.unwrap().unwrap();
 }
 
 #[tokio::test]
