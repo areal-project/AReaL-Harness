@@ -206,6 +206,7 @@ impl Engine {
         &self,
         cell: &Cell,
         mut definitions: Vec<Value>,
+        menu: &ToolMenu,
     ) -> Vec<Value> {
         if !definitions
             .iter()
@@ -228,22 +229,22 @@ impl Engine {
         if catalog.is_empty() {
             definitions.retain(|d| d["function"]["name"] != "tool_program");
             // 没有可调用子工具时，原生搜索也不能声称此入口已展示。
-            if self.extensions.policy.compact_tools
+            if menu.compact
                 && let Some(active) = cell.state.lock().await.active.as_mut()
             {
                 active.native_tool_exposure.remove_common("tool_program");
             }
             return definitions;
         }
-        let direct = &self.extensions.policy.programmatic_direct_tools;
+        let direct = &menu.direct;
         let retained = |name: &Value| name.as_str().is_some_and(|n| direct.iter().any(|d| d == n));
-        if self.extensions.policy.programmatic_tools_only {
+        if menu.program_only {
             definitions.retain(|d| {
                 retained(&d["function"]["name"])
                     || !catalog.iter().any(|c| c["name"] == d["function"]["name"])
             });
         }
-        let catalog_description = if self.extensions.policy.programmatic_tools_only {
+        let catalog_description = if menu.program_only {
             // 直达工具只引用已展示 schema，避免程序目录再次携带整份定义。
             let inline: Vec<_> = catalog.iter().filter(|c| !retained(&c["name"])).collect();
             let names: Vec<_> = catalog
@@ -321,7 +322,7 @@ impl Engine {
                     "code and JSON input must fit 64 KiB; input must be an object",
                 ));
             }
-            let (config, thread) = {
+            let (config, thread, menu) = {
                 let state = invocation.cell.state.lock().await;
                 (
                     state
@@ -331,12 +332,22 @@ impl Engine {
                         .and_then(|t| t.configuration.clone())
                         .unwrap_or_default(),
                     state.thread.clone(),
+                    self.extensions
+                        .tool_menu(state.active.as_ref().map(|a| a.model.as_ref())),
                 )
             };
             let visible = self
-                .visible_tools(invocation.cell, &config, thread.desktop.is_some(), &thread)
+                .visible_tools_for_menu(
+                    invocation.cell,
+                    &config,
+                    thread.desktop.is_some(),
+                    &thread,
+                    menu.compact,
+                )
                 .await;
-            let visible = self.project_native_tools(invocation.cell, visible).await;
+            let visible = self
+                .project_native_tools(invocation.cell, visible, &menu)
+                .await;
             let allowed: std::collections::HashSet<String> = {
                 let bindings = invocation.cell.bindings.read().await;
                 visible

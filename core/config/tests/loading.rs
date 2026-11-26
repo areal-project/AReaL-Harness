@@ -1818,3 +1818,105 @@ fn provider_catalog_can_clear_and_restore_the_default_model() {
     assert_eq!(restored.default_model.unwrap().model_id, "fixture");
     assert_eq!(load_config(&i).unwrap().model.name, "fixture");
 }
+
+#[test]
+fn tool_presentation_matches_only_the_exact_configured_route_and_scene() {
+    use areal_config::tool_presentation::PresentationRoute;
+    let root = tempfile::tempdir().unwrap();
+    let mut i = inputs(root.path());
+    let file = r#"schema_version=2
+[tools.presentation]
+scene="coding"
+[tools.presentation.custom]
+reader=["read_file"]
+[[tools.presentation.defaults]]
+provider="route-a"
+model="fixture"
+protocol="responses"
+reasoning_effort="max"
+scene="coding"
+profile="reader"
+"#;
+    write(&mut i, file);
+    let config = load_config(&i).unwrap();
+    let profile = &config.tool_presentation;
+    let route = PresentationRoute {
+        provider: "route-a",
+        model: "fixture",
+        protocol: ModelProtocolConfig::Responses,
+        reasoning_effort: Some("max"),
+    };
+    assert_eq!(profile.selected(Some(route)), Some("reader"));
+    assert_eq!(profile.custom["reader"], ["read_file"]);
+    for other in [
+        PresentationRoute {
+            provider: "other",
+            ..route
+        },
+        PresentationRoute {
+            model: "fixture-v2",
+            ..route
+        },
+        PresentationRoute {
+            reasoning_effort: None,
+            ..route
+        },
+        PresentationRoute {
+            protocol: ModelProtocolConfig::ChatCompletions,
+            ..route
+        },
+    ] {
+        assert_eq!(profile.selected(Some(other)), None);
+    }
+    assert_eq!(profile.selected(None), None);
+    let mut other_scene = profile.clone();
+    other_scene.scene = Some("review".into());
+    assert_eq!(other_scene.selected(Some(route)), None);
+    write(
+        &mut i,
+        &file.replacen(
+            "[tools.presentation]",
+            "[tools.presentation]\nprofile=\"reader\"",
+            1,
+        ),
+    );
+    assert_eq!(
+        load_config(&i).unwrap().tool_presentation.selected(None),
+        Some("reader")
+    );
+    set(&mut i, "AREAL_HARNESS_TOOL_PROFILE", "wide");
+    let overridden = load_config(&i).unwrap();
+    assert_eq!(
+        overridden.tool_presentation.selected(Some(route)),
+        Some("wide")
+    );
+    assert_eq!(
+        overridden.diagnostic(false)["tools"]["presentation"]["profile"],
+        "wide"
+    );
+    set(&mut i, "AREAL_HARNESS_TOOL_PROFILE", "unknown");
+    assert!(load_config(&i).is_err());
+}
+
+#[test]
+fn tool_presentation_rejects_ambiguous_rules_and_invalid_custom_profiles() {
+    let root = tempfile::tempdir().unwrap();
+    let mut i = inputs(root.path());
+    let rule = "\n[[tools.presentation.defaults]]\nprovider='arena'\nmodel='fixture'\nprotocol='responses'\nscene='coding'\nprofile='compact-3'\n";
+    for invalid in [
+        format!("{rule}{rule}"),
+        rule.replace("fixture", "fixture*"),
+        rule.replace("compact-3", "unavailable"),
+        rule.replace(
+            "protocol='responses'",
+            "protocol='responses'\nunknown_field=true",
+        ),
+        "[tools.presentation.custom]\nwide=['read_file']".into(),
+        "[tools.presentation.custom]\nreader=['../read_file']".into(),
+        "[tools.presentation.custom]\nreader=['read_file','read_file']".into(),
+        "tools.presentation=1".into(),
+    ] {
+        write(&mut i, &format!("schema_version=2\n{invalid}"));
+        assert_eq!(failure(&i).field, "tools.presentation");
+    }
+}

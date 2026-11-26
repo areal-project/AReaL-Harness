@@ -19,6 +19,20 @@ pub fn emit(value: &Value) -> Result<()> {
     out.flush()?;
     Ok(())
 }
+fn inspection_tool_names(inspection: &Value) -> Result<Vec<String>> {
+    inspection["tools"]
+        .as_array()
+        .context("missing tools")?
+        .iter()
+        .map(|tool| {
+            tool["function"]["name"]
+                .as_str()
+                .map(str::to_owned)
+                .context("invalid inspected tool name")
+        })
+        .collect()
+}
+
 fn names(values: &[String]) -> Vec<String> {
     values
         .iter()
@@ -170,7 +184,10 @@ pub async fn execute(args: &Cli) -> Result<i32> {
     );
     if let Some(effort) = &args.effort {
         ensure!(
-            ["none", "minimal", "low", "medium", "high", "xhigh"].contains(&effort.as_str()),
+            [
+                "default", "none", "minimal", "low", "medium", "high", "xhigh", "max"
+            ]
+            .contains(&effort.as_str()),
             "unsupported effort"
         );
     }
@@ -255,14 +272,31 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
     let thread = if let Some(id) = &args.resume {
         // 旧 Core 通过 turn/start 订阅事件；只读恢复避免接管桌面工具宿主。
         let method = resume_method(&capabilities);
-        rpc.call(method, json!({"threadId":id})).await?
+        rpc.call(method, json!({"threadId":id})).await
     } else {
         rpc.call(
             "areal/thread/start",
             // 显式模型参与创建预检，不能先依赖可能尚未装配的默认供应商。
             json!({"requestId":key(),"agentProfile":profile,"model":model_reference}),
         )
-        .await?
+        .await
+    };
+    let thread = match thread {
+        Ok(value) => value,
+        Err(cause) => {
+            // 配置拒绝使服务仍可读历史，但可能缺少执行用 Profile；此时优先报告既有的拒绝原因。
+            if let Ok(Ok(status)) = tokio::time::timeout(
+                Duration::from_secs(2),
+                rpc.call("areal/server/status", json!({})),
+            )
+            .await
+                && status["executionReady"] == false
+                && let Some(reason) = status["configuration"]["error"].as_str()
+            {
+                return Err(cause.context(format!("Core execution unavailable: {reason}")));
+            }
+            return Err(cause);
+        }
     };
     let session = thread["thread"]["id"]
         .as_str()
@@ -278,12 +312,32 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
     let inspection = rpc
         .call("areal/thread/inspect", json!({"threadId":session}))
         .await?;
-    let mut available: Vec<String> = inspection["tools"]
-        .as_array()
-        .context("missing tools")?
-        .iter()
-        .filter_map(|t| t["function"]["name"].as_str().map(str::to_owned))
-        .collect();
+    // 新 Core 区分授权目录与模型展示。旧 Core 只能沿用其既有 inspect 结果，不能猜测更多权限。
+    let inventory = inspection
+        .get("authorizedToolNames")
+        .map(|names| {
+            serde_json::from_value::<Vec<String>>(names.clone())
+                .context("invalid authorized tool names")
+        })
+        .transpose()?;
+    let legacy = inventory.is_none();
+    let previous_allowlist = config
+        .get("toolAllowlist")
+        .filter(|value| !value.is_null())
+        .or_else(|| {
+            config["options"]
+                .get("toolAllowlist")
+                .filter(|value| !value.is_null())
+        })
+        .map(|value| serde_json::from_value::<Vec<String>>(value.clone()))
+        .transpose()?;
+    let mut available = match inventory {
+        Some(names) => names,
+        None => inspection_tool_names(&inspection)?,
+    };
+    if let Some(previous) = previous_allowlist.as_ref() {
+        available.retain(|name| previous.contains(name));
+    }
     available.sort();
     available.dedup();
     let denied = names(&args.disallowed_tools);
@@ -324,13 +378,53 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
     } else {
         args.append_system_prompt.clone().unwrap_or_default()
     };
-    let mut configure = json!({"threadId":session,"expectedRevision":config["revision"].as_u64().unwrap_or(1),"options":{"readOnly":args.permission_mode=="plan","systemPrompt":system,"appendInstructions":append,"toolAllowlist":visible,"approvalTools":approvals,"preapprovedTools":approved,"maxModelRounds":args.max_turns}});
-    // options 是完整替换；恢复时须保留既有选择，不能因省略 CLI 开关重新启用。
-    if args.no_session_name {
-        configure["options"]["automaticSessionName"] = json!(false);
-    } else if let Some(enabled) = config["options"]["automaticSessionName"].as_bool() {
-        configure["options"]["automaticSessionName"] = json!(enabled);
+    let explicit_filter =
+        args.tools.as_deref().is_some_and(|t| t != "default") || !denied.is_empty();
+    let tool_allowlist = if legacy || explicit_filter {
+        Some(visible)
+    } else {
+        previous_allowlist
+    };
+    let resumed = args.resume.is_some();
+    let mut options = if resumed && config["options"].is_object() {
+        config["options"].clone()
+    } else {
+        json!({})
+    };
+    options["toolAllowlist"] = json!(tool_allowlist);
+    options["readOnly"] = json!(
+        args.permission_mode == "plan"
+            || (resumed && (config["readOnly"] == true || options["readOnly"] == true))
+    );
+    if !resumed || system.is_some() {
+        options["systemPrompt"] = json!(system);
     }
+    if !resumed || args.append_system_prompt.is_some() || args.append_system_prompt_file.is_some() {
+        options["appendInstructions"] = json!(append);
+    }
+    if !resumed || args.max_turns.is_some() {
+        options["maxModelRounds"] = json!(args.max_turns);
+    }
+    if !resumed || bypass || args.permission_mode != "inherit" {
+        options["approvalTools"] = json!(approvals);
+        options["preapprovedTools"] = json!(approved);
+    } else if !approved.is_empty() {
+        let old = options["preapprovedTools"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str);
+        approved.extend(old.map(str::to_owned));
+        approved.sort();
+        approved.dedup();
+        options["preapprovedTools"] = json!(approved);
+    }
+    if args.no_session_name {
+        options["automaticSessionName"] = json!(false);
+    } else if let Some(enabled) = config["options"]["automaticSessionName"].as_bool() {
+        options["automaticSessionName"] = json!(enabled);
+    }
+    let mut configure = json!({"threadId":session,"expectedRevision":config["revision"].as_u64().unwrap_or(1),"options":options});
     if local.profile.is_some() {
         configure["agentProfile"] = local.profile.clone().unwrap();
     }
@@ -360,6 +454,13 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
             .to_owned()
     };
     if args.output_format == "stream-json" {
+        // --model / --effort 的修改已生效；启动事件不能继续报告旧模型的可见能力。
+        let updated = rpc
+            .call("areal/thread/inspect", json!({"threadId":session}))
+            .await?;
+        let mut visible = inspection_tool_names(&updated)?;
+        visible.sort();
+        visible.dedup();
         emit(
             &json!({"type":"system","subtype":"init","session_id":session,"uuid":key(),"cwd":thread["thread"]["cwd"],"model":model,"tools":visible,"permissionMode":if args.dangerously_skip_permissions{"bypassPermissions"}else if args.permission_mode=="inherit" {thread["permissionMode"].as_str().unwrap_or("YOLO")} else{args.permission_mode.as_str()}}),
         )?;

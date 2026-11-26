@@ -729,3 +729,121 @@ async fn common_search_direct_edit_preserves_program_surface() {
 async fn common_search_does_not_disclose_allowlist_denied_tool() {
     common_search(false, false, true).await;
 }
+
+struct MenuProbe {
+    provider: &'static str,
+    seen: Mutex<Vec<Vec<Value>>>,
+}
+
+#[async_trait]
+impl Model for MenuProbe {
+    fn name(&self) -> &str {
+        "shared-name"
+    }
+    fn presentation_route(&self) -> Option<areal_config::tool_presentation::PresentationRoute<'_>> {
+        Some(areal_config::tool_presentation::PresentationRoute {
+            provider: self.provider,
+            model: self.name(),
+            protocol: areal_config::ModelProtocolConfig::Responses,
+            reasoning_effort: Some("max"),
+        })
+    }
+    async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+        unreachable!()
+    }
+    async fn chat(&self, _: Vec<Message>, tools: Vec<Value>) -> anyhow::Result<ModelStream> {
+        self.seen.lock().await.push(tools);
+        Ok(Box::pin(futures_util::stream::iter([Ok(
+            ModelEvent::text("done"),
+        )])))
+    }
+}
+
+#[tokio::test]
+async fn presentation_follows_each_actual_model_and_intersects_custom_names_with_its_allowlist() {
+    use areal_engine::tools::ToolExtensions;
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    let (client, runtime) = runtime(&workspace, Arc::new(Mutex::new(vec![]))).await;
+    let first = Arc::new(MenuProbe {
+        provider: "validated",
+        seen: Default::default(),
+    });
+    let other = Arc::new(MenuProbe {
+        provider: "other",
+        seen: Default::default(),
+    });
+    let extensions = ToolExtensions { presentation: serde_json::from_value(json!({
+        "scene":"coding","custom":{"reader":["read_history", "edit_files", "not_registered"]},
+        "defaults":[{"provider":"validated","model":"shared-name","protocol":"responses","reasoning_effort":"max","scene":"coding","profile":"reader"}]
+    })).unwrap(), ..Default::default() };
+    let engine = Engine::open_with_extensions(
+        &dir.path().join("data"),
+        first.clone(),
+        Limits::default(),
+        Some(RuntimeConfig {
+            client: client.clone(),
+            workspace: workspace.clone(),
+            writable: true,
+            command_scope: None,
+            command_scratch: None,
+        }),
+        extensions,
+    )
+    .unwrap();
+    let deployment = dir.path().join("deployment.json");
+    std::fs::write(&deployment, json!({"profiles":[{"id":"restricted","revision":"v1","displayName":"Restricted","instructions":"","toolAllowlist":["tool_search","tool_program","read_file","read_history"]}]}).to_string()).unwrap();
+    engine.install_deployment(&deployment).unwrap();
+    for (id, model) in [("v1", &first), ("v2", &other)] {
+        engine.register_default_model(id.into(), model.clone(), true);
+        let thread = engine
+            .create(workspace.to_str().unwrap().into())
+            .await
+            .unwrap();
+        engine.configure_thread(serde_json::from_value(json!({"threadId":thread.id,"expectedRevision":1,"agentProfile":{"id":"restricted","revision":"v1"}})).unwrap()).await.unwrap();
+        engine
+            .start(
+                &thread.id,
+                vec![Input::text("Inspect available operations")],
+            )
+            .await
+            .unwrap();
+        let thread = tokio::time::timeout(Duration::from_secs(10), engine.wait(&thread.id))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            thread.turns[0].status,
+            TurnStatus::Completed,
+            "{:?}",
+            thread.turns[0].error
+        );
+        let seen = model.seen.lock().await;
+        assert_eq!(seen.len(), 1);
+        let tools = &seen[0];
+        let mut names: Vec<_> = tools
+            .iter()
+            .map(|t| t["function"]["name"].as_str().unwrap())
+            .collect();
+        names.sort_unstable();
+        let program = tools
+            .iter()
+            .find(|t| t["function"]["name"] == "tool_program")
+            .unwrap()["function"]["description"]
+            .as_str()
+            .unwrap();
+        if id == "v1" {
+            assert_eq!(names, ["read_history", "tool_program", "tool_search"]);
+            assert!(program.contains("### tools.read_file\n"));
+            // 自定义的非常用 read_history 可以直达，因此程序目录不能再内联它的 schema。
+            assert!(!program.contains("### tools.read_history\n"));
+        } else {
+            assert_eq!(names, ["read_file", "read_history", "tool_program"]);
+        }
+        assert!(!program.contains("### tools.edit_files\n"));
+    }
+    engine.shutdown().await;
+    client.shutdown().await.unwrap();
+    runtime.await.unwrap();
+}

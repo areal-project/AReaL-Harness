@@ -131,6 +131,9 @@ pub struct ToolExtensions {
     /// Opt-in native research agents; budgets are shared by this Engine.
     pub agents: Option<AgentToolsConfig>,
     pub policy: ToolPolicy,
+    /// 由可信 Core 部署配置装配；外部扩展 JSON 不能注入模型默认。
+    #[serde(skip)]
+    pub presentation: areal_config::tool_presentation::ToolPresentation,
     pub tools: Vec<CommandTool>,
     pub hooks: Vec<HookDefinition>,
     pub mcp_servers: BTreeMap<String, areal_mcp::ServerConfig>,
@@ -318,17 +321,25 @@ impl Registry {
             !extensions.policy.programmatic_tools_only || extensions.policy.programmatic_tools,
             "programmaticToolsOnly requires programmaticTools"
         );
+        extensions
+            .presentation
+            .validate(&areal_config::ConfigSource::Default)?;
+        anyhow::ensure!(
+            extensions.policy.programmatic_tools
+                || extensions
+                    .presentation
+                    .profile
+                    .as_deref()
+                    .is_none_or(|p| p == "wide"),
+            super::DisabledProgrammaticPresentation
+        );
         let direct = &extensions.policy.programmatic_direct_tools;
         anyhow::ensure!(
             direct.is_empty() || extensions.policy.programmatic_tools_only,
             "programmaticDirectTools requires programmaticToolsOnly"
         );
         anyhow::ensure!(
-            direct.len() <= 16
-                && direct.iter().collect::<HashSet<_>>().len() == direct.len()
-                && direct.iter().all(|name| !name.is_empty()
-                    && name.len() <= 64
-                    && name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')),
+            areal_config::tool_presentation::valid_native_direct_tools(direct),
             "programmaticDirectTools requires up to 16 distinct native tool names"
         );
         anyhow::ensure!(

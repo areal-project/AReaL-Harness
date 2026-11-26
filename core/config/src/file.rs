@@ -20,6 +20,46 @@ pub(crate) struct FileLayer {
     pub loaded: bool,
     pub text: String,
     pub catalog: Vec<crate::models::ProviderConfig>,
+    pub presentation: crate::tool_presentation::ToolPresentation,
+}
+
+pub(crate) fn json_value(item: &Item, normalize: fn(&str) -> &str) -> Option<serde_json::Value> {
+    use serde_json::{Value, json};
+    if let Some(table) = item.as_table_like() {
+        let mut object = serde_json::Map::new();
+        for (key, value) in table.iter() {
+            let key = normalize(key);
+            object.insert(key.to_owned(), json_value(value, normalize)?);
+        }
+        return Some(Value::Object(object));
+    }
+    if let Some(values) = item.as_array_of_tables() {
+        return values
+            .iter()
+            .map(|table| json_value(&Item::Table(table.clone()), normalize))
+            .collect::<Option<Vec<_>>>()
+            .map(Value::Array);
+    }
+    if let Some(values) = item.as_array() {
+        return values
+            .iter()
+            .map(|value| json_value(&Item::Value(value.clone()), normalize))
+            .collect::<Option<Vec<_>>>()
+            .map(Value::Array);
+    }
+    if let Some(value) = item.as_str() {
+        return Some(json!(value));
+    }
+    if let Some(value) = item.as_bool() {
+        return Some(json!(value));
+    }
+    if let Some(value) = item.as_integer() {
+        return Some(json!(value));
+    }
+    if let Some(value) = item.as_float().filter(|value| value.is_finite()) {
+        return Some(json!(value));
+    }
+    None
 }
 
 pub(crate) fn source(path: &Path, text: &str, offset: usize) -> ConfigSource {
@@ -148,6 +188,34 @@ fn walk(
     let names: Vec<&str> = parts.iter().map(String::as_str).collect();
     let key = parts.join(".");
     let at = source(path, text, item.span().map_or(0, |v| v.start));
+    if names.as_slice() == ["tools", "presentation"] {
+        layer.presentation = json_value(item, |key| key)
+            .filter(|v| {
+                v.is_object()
+                    && v.get("defaults")
+                        .and_then(serde_json::Value::as_array)
+                        .is_none_or(|rules| rules.iter().all(serde_json::Value::is_object))
+            })
+            .and_then(|value| serde_json::from_value(value).ok())
+            .ok_or_else(|| {
+                error(
+                    Kind::InvalidValue,
+                    &key,
+                    &at,
+                    "invalid tool presentation fields or types",
+                )
+            })?;
+        if let Some(profile) = &layer.presentation.profile {
+            layer.values.insert(
+                "tools.presentation.profile".into(),
+                Entry {
+                    value: profile.clone(),
+                    source: at.clone(),
+                },
+            );
+        }
+        return layer.presentation.validate(&at);
+    }
     // Definitions and review state are owned by the hook loader; this projection
     // never imports them as model, sandbox, account or permission settings.
     if names.as_slice() == ["hooks"] {

@@ -264,54 +264,6 @@ fn validate(data: &[ProviderConfig], default: Option<&ModelRef>, at: &ConfigSour
     Ok(())
 }
 
-fn json_value(item: &Item, at: &ConfigSource) -> Result<Value> {
-    if let Some(table) = item.as_table_like() {
-        let mut object = serde_json::Map::new();
-        for (key, value) in table.iter() {
-            let key = match key {
-                "display_name" => "displayName",
-                "api_key_env" => "apiKeyEnv",
-                "max_output_tokens" => "maxOutputTokens",
-                "context_window_tokens" => "contextWindowTokens",
-                "reported_context_window_tokens" => "reportedContextWindowTokens",
-                "reasoning_effort" => "reasoningEffort",
-                "service_tier" => "serviceTier",
-                "reasoning_effort_options" => "reasoningEffortOptions",
-                value => value,
-            };
-            object.insert(key.to_owned(), json_value(value, at)?);
-        }
-        return Ok(Value::Object(object));
-    }
-    if let Some(values) = item.as_array_of_tables() {
-        return values
-            .iter()
-            .map(|table| json_value(&Item::Table(table.clone()), at))
-            .collect::<Result<Vec<_>>>()
-            .map(Value::Array);
-    }
-    if let Some(values) = item.as_array() {
-        return values
-            .iter()
-            .map(|value| json_value(&Item::Value(value.clone()), at))
-            .collect::<Result<Vec<_>>>()
-            .map(Value::Array);
-    }
-    if let Some(value) = item.as_str() {
-        return Ok(json!(value));
-    }
-    if let Some(value) = item.as_bool() {
-        return Ok(json!(value));
-    }
-    if let Some(value) = item.as_integer() {
-        return Ok(json!(value));
-    }
-    if let Some(value) = item.as_float().filter(|value| value.is_finite()) {
-        return Ok(json!(value));
-    }
-    Err(invalid(at, "unsupported model configuration value"))
-}
-
 pub(crate) fn parse_catalog(
     doc: &Document<&str>,
     path: &Path,
@@ -331,7 +283,18 @@ pub(crate) fn parse_catalog(
     let mut data = Vec::new();
     for (id, item) in providers.iter() {
         let at = file::source(path, text, item.span().map_or(0, |v| v.start));
-        let mut raw = json_value(item, &at)?;
+        let mut raw = file::json_value(item, |key| match key {
+            "display_name" => "displayName",
+            "api_key_env" => "apiKeyEnv",
+            "max_output_tokens" => "maxOutputTokens",
+            "context_window_tokens" => "contextWindowTokens",
+            "reported_context_window_tokens" => "reportedContextWindowTokens",
+            "reasoning_effort" => "reasoningEffort",
+            "service_tier" => "serviceTier",
+            "reasoning_effort_options" => "reasoningEffortOptions",
+            value => value,
+        })
+        .ok_or_else(|| invalid(&at, "unsupported model configuration value"))?;
         let object = raw
             .as_object_mut()
             .ok_or_else(|| invalid(&at, "expected provider table"))?;

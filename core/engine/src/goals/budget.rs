@@ -555,6 +555,9 @@ impl Model for MeteredModel {
     fn name(&self) -> &str {
         self.inner.name()
     }
+    fn presentation_route(&self) -> Option<areal_config::tool_presentation::PresentationRoute<'_>> {
+        self.inner.presentation_route()
+    }
     fn provider(&self) -> &str {
         self.inner.provider()
     }

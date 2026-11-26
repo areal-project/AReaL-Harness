@@ -48,6 +48,7 @@ pub fn model(
                 ModelProtocolConfig::Responses => ModelProtocol::Responses,
             },
         )?
+        .with_presentation_provider(config.provider.clone())
         .with_audit_directory(data.join("model-requests"))
         .with_options(ModelOptions {
             capabilities: config.capabilities.as_ref().map(super::model_capabilities),

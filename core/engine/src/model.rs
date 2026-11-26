@@ -661,6 +661,10 @@ pub trait Model: Send + Sync {
         inner
     }
     fn name(&self) -> &str;
+    /// 仅可信装配的真实路由可采用呈现默认；适配器名称或端点均不是路由 ID。
+    fn presentation_route(&self) -> Option<areal_config::tool_presentation::PresentationRoute<'_>> {
+        None
+    }
     fn load(&self) -> Option<ModelLoad> {
         None
     }
@@ -758,6 +762,7 @@ impl ModelProtocol {
 pub struct HttpModel {
     client: reqwest::Client,
     network_route: Option<&'static str>,
+    presentation_provider: Option<String>,
     endpoint: String,
     name: String,
     key: Option<String>,
@@ -942,6 +947,7 @@ impl HttpModelFactory {
         Ok(HttpModel {
             client,
             network_route,
+            presentation_provider: None,
             endpoint,
             name,
             key,
@@ -968,6 +974,11 @@ impl HttpModel {
         protocol: ModelProtocol,
     ) -> Result<Self> {
         HttpModelFactory::default().build(endpoint, name, key, protocol)
+    }
+
+    pub fn with_presentation_provider(mut self, id: String) -> Self {
+        self.presentation_provider = Some(id);
+        self
     }
 
     /// The trusted host selects the audit directory. No headers, URLs or prompts
@@ -1110,6 +1121,23 @@ impl HttpModel {
 
 #[async_trait]
 impl Model for HttpModel {
+    fn presentation_route(&self) -> Option<areal_config::tool_presentation::PresentationRoute<'_>> {
+        Some(areal_config::tool_presentation::PresentationRoute {
+            provider: self.presentation_provider.as_deref()?,
+            model: &self.name,
+            protocol: match self.protocol {
+                ModelProtocol::Responses => areal_config::ModelProtocolConfig::Responses,
+                ModelProtocol::ChatCompletions => {
+                    areal_config::ModelProtocolConfig::ChatCompletions
+                }
+            },
+            reasoning_effort: self
+                .options
+                .reasoning_effort
+                .as_deref()
+                .filter(|effort| *effort != "default"),
+        })
+    }
     fn supports_quoted_summary_retry(&self) -> bool {
         self.options.summary_quoted_retry.unwrap_or(false)
     }

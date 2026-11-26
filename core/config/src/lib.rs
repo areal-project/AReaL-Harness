@@ -5,6 +5,7 @@ pub mod models;
 pub mod proxy;
 mod resolve;
 pub mod skills;
+pub mod tool_presentation;
 mod trajectory;
 mod trajectory_control;
 
@@ -232,7 +233,7 @@ impl fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {}
 pub type Result<T> = std::result::Result<T, ConfigError>;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ModelProtocolConfig {
     ChatCompletions,
@@ -384,6 +385,7 @@ pub struct ResolvedCoreConfig {
     pub listen: SocketAddr,
     pub data_dir: PathBuf,
     pub tool_extensions_file: Option<PathBuf>,
+    pub tool_presentation: tool_presentation::ToolPresentation,
     pub model: SelectedModelConfig,
     pub model_concurrency: usize,
     pub max_threads: usize,
@@ -496,6 +498,9 @@ impl ResolvedCoreConfig {
         result["limits"]["max_goal_report_rounds"] = serde_json::json!(self.max_goal_report_rounds);
         result["limits"]["goal_recover_unknown_model_usage"] =
             serde_json::json!(self.goal_recover_unknown_model_usage);
+        if self.tool_presentation != tool_presentation::ToolPresentation::default() {
+            result["tools"]["presentation"] = serde_json::json!(self.tool_presentation);
+        }
         if sources {
             result["sources"] = serde_json::json!(self.sources);
         }
