@@ -19,7 +19,7 @@ pub(crate) struct ToolMenu {
 }
 
 impl ToolMenu {
-    fn legacy(policy: &ToolPolicy) -> Self {
+    fn from_policy(policy: &ToolPolicy) -> Self {
         Self {
             compact: policy.compact_tools,
             program_only: policy.programmatic_tools_only,
@@ -32,13 +32,13 @@ impl ToolMenu {
 impl ToolExtensions {
     pub(crate) fn tool_menu(&self, model: Option<&dyn Model>) -> ToolMenu {
         if !self.policy.programmatic_tools && self.presentation.profile.is_none() {
-            return ToolMenu::legacy(&self.policy);
+            return ToolMenu::from_policy(&self.policy);
         }
         let selected = self
             .presentation
             .selected(model.and_then(Model::presentation_route));
         let (direct, custom_direct) = match selected {
-            None => return ToolMenu::legacy(&self.policy),
+            None => return ToolMenu::from_policy(&self.policy),
             Some("wide") => {
                 return ToolMenu {
                     compact: false,

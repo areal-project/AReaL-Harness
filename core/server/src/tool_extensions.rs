@@ -51,7 +51,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn explicit_legacy_display_wins_over_rules_but_other_extension_settings_do_not() {
+    fn explicit_extension_menu_wins_over_rules_but_other_extension_settings_do_not() {
         let mut presentation: ToolPresentation = serde_json::from_value(json!({
             "scene":"coding","defaults":[{"scene":"coding","model":"test","provider":"arena","protocol":"responses","profile":"compact-3"}]
         })).unwrap();

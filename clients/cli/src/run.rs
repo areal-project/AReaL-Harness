@@ -320,7 +320,8 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
                 .context("invalid authorized tool names")
         })
         .transpose()?;
-    let legacy = inventory.is_none();
+    // 过渡：到 0.2.0 删仅凭旧 Core 的 tools 视图推导授权名的分支。
+    let needs_inspected_allowlist = inventory.is_none();
     let previous_allowlist = config
         .get("toolAllowlist")
         .filter(|value| !value.is_null())
@@ -380,7 +381,7 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
     };
     let explicit_filter =
         args.tools.as_deref().is_some_and(|t| t != "default") || !denied.is_empty();
-    let tool_allowlist = if legacy || explicit_filter {
+    let tool_allowlist = if needs_inspected_allowlist || explicit_filter {
         Some(visible)
     } else {
         previous_allowlist
