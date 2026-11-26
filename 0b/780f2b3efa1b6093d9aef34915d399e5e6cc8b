@@ -1,0 +1,28 @@
+core/engine/tests/task_modes.rs
+  s_f68a001160e642::t_01110f78c95f5a 236-240,245-247,249-253,255-262,264-278,280-285
+  s_f68a001160e642::t_b9d041e2111163 108-125,228-235,241-244,248,254,263,279,286-288
+  s_f68a001160e642::t_eb319d39642561 289-290
+docs/api/tasks.md
+  s_f68a001160e642::t_e64d3022c43de6 135-136
+docs/api/tasks.en.md
+  s_f68a001160e642::t_e64d3022c43de6 89-90
+core/engine/src/task_mode/channel.rs
+  s_f68a001160e642::t_651f1f0858c265 4-11,15-18,51-53,136-140,364-365,437-438
+  s_f68a001160e642::t_712f6668b7a22e 12-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0b780f2b3efa1b6093d9aef34915d399e5e6cc8b",
+  "prompts": {},
+  "sessions": {
+    "s_f68a001160e642": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a21705-30ec-7eb1-9cae-6b24288c0779",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
