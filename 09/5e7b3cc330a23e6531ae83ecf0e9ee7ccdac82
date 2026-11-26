@@ -1,0 +1,115 @@
+core/engine/src/tools.rs
+  s_9b36f1138b8feb::t_4056576e78b5d2 371,374
+  s_9b36f1138b8feb::t_257eb2e58657e7 373
+core/engine/src/sessions.rs
+  s_9b36f1138b8feb::t_2d609989f5b0a8 676
+core/server/src/reload.rs
+  s_9b36f1138b8feb::t_4056576e78b5d2 51
+docs/api/core.en.md
+  s_9b36f1138b8feb::t_18d592fcb04c1c 469-470
+docs/api/claude-cli.md
+  s_9b36f1138b8feb::t_ca83137d66b96e 39-40
+docs/guides/configuration.en.md
+  s_9b36f1138b8feb::t_6b1b46ab19c375 657-689
+core/server/src/workgroup.rs
+  s_9b36f1138b8feb::t_4056576e78b5d2 171
+core/engine/src/tools/program.rs
+  s_9b36f1138b8feb::t_f2f6fc1dc2b7d4 209,232,239,241,247,325
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 335-336,340-349
+core/server/src/lib.rs
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 289-292
+  s_9b36f1138b8feb::t_257eb2e58657e7 294,296-304,734
+core/config/tests/loading.rs
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 1843-1848,1852-1867,1875-1886,1889-1896,1910-1913
+  s_9b36f1138b8feb::t_b3739f62c4384c 1821-1842,1849-1851,1868-1874,1887-1888,1897-1909,1914-1922
+core/engine/src/tools/registry.rs
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 324-326,328-333
+  s_9b36f1138b8feb::t_257eb2e58657e7 334
+  s_9b36f1138b8feb::t_4056576e78b5d2 134-136,327,335,342
+core/engine/src/desktop/state.rs
+  s_9b36f1138b8feb::t_f2f6fc1dc2b7d4 1138,1141-1150
+  s_9b36f1138b8feb::t_2d609989f5b0a8 1156-1157,1165-1174,1244,1345,1367,1384
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 1139-1140
+  s_9b36f1138b8feb::t_91805fd0521a81 1137,1151-1155,1158-1164,1175-1179,1360-1366,1369
+docs/api/core.md
+  s_9b36f1138b8feb::t_aea14f792ed678 478-479
+docs/api/claude-cli.en.md
+  s_9b36f1138b8feb::t_6ad9cd8b8266ca 39-40
+core/config/src/lib.rs
+  s_9b36f1138b8feb::t_321c37214505eb 501-503
+  s_9b36f1138b8feb::t_6a420fcf965661 8,236,388
+docs/guides/programmatic-tools.md
+  s_9b36f1138b8feb::t_0cac6b81575423 60
+  s_9b36f1138b8feb::t_bd27525b08abfa 59
+core/engine/src/model.rs
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 1130-1132,1134-1138
+  s_9b36f1138b8feb::t_4056576e78b5d2 664-667,765,950,979-983,1124-1129,1133,1139-1140
+core/engine/src/desktop/mcp_tools.rs
+  s_9b36f1138b8feb::t_f2f6fc1dc2b7d4 117,119,211-212
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 152-155,206-210
+core/config/src/models.rs
+  s_9b36f1138b8feb::t_321c37214505eb 286
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 287-297
+core/config/src/resolve.rs
+  s_9b36f1138b8feb::t_321c37214505eb 1093-1097,1099
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 60-64
+core/server/src/tool_extensions.rs
+  s_9b36f1138b8feb::t_f2f6fc1dc2b7d4 2,6,24,26-29,40-43
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 8-11,30-39,61-65,71-78,80-84
+  s_9b36f1138b8feb::t_b3739f62c4384c 47-60,66-70,79,85-93
+core/engine/src/tools/presentation.rs
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 24-27,37-39,42-49,51-56,59-64,74-75
+  s_9b36f1138b8feb::t_f2f6fc1dc2b7d4 34-36
+  s_9b36f1138b8feb::t_257eb2e58657e7 6-12
+  s_9b36f1138b8feb::t_4056576e78b5d2 1-5,13-23,28-33,40-41,50,57-58,65-73,76-78
+core/engine/src/goals/budget.rs
+  s_9b36f1138b8feb::t_4056576e78b5d2 558-560
+core/config/src/file.rs
+  s_9b36f1138b8feb::t_91805fd0521a81 193-198
+  s_9b36f1138b8feb::t_321c37214505eb 23-26,28-62,191-192,199,208,216-218
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 27,200-207,209-215
+clients/cli/src/run.rs
+  s_9b36f1138b8feb::t_257eb2e58657e7 275,282-299
+  s_9b36f1138b8feb::t_91805fd0521a81 22-35,187-190,315-340,381-421,423,425,427,457-463
+core/engine/src/desktop/skill_loading.rs
+  s_9b36f1138b8feb::t_2d609989f5b0a8 25
+core/config/src/tool_presentation.rs
+  s_9b36f1138b8feb::t_6a420fcf965661 1-34,40-42,50-55,64,68-69,76-77,80-83,111-120,130-133
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 35-39,43-49,56-63,65-67,70-75,78-79,84-110,121-129
+core/config/examples/config.toml
+  s_9b36f1138b8feb::t_b3739f62c4384c 107-120
+core/engine/tests/operation_composition.rs
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 745-747,751-753,756-758,769-776,781-794,800-803,805-821,825-828,830-835,837,842
+  s_9b36f1138b8feb::t_7842519e1f18a6 732-744,748-750,754-755,759-768,777-780,795-799,804,822-824,829,836,838-841,843-849
+core/engine/src/workgroup/native.rs
+  s_9b36f1138b8feb::t_f2f6fc1dc2b7d4 911
+  s_9b36f1138b8feb::t_4056576e78b5d2 238-240,559-561
+docs/guides/programmatic-tools.en.md
+  s_9b36f1138b8feb::t_ae91b743c565a2 59
+  s_9b36f1138b8feb::t_fa145b2ba2849e 60
+core/engine/src/desktop/catalog.rs
+  s_9b36f1138b8feb::t_4056576e78b5d2 547
+core/engine/src/generation.rs
+  s_9b36f1138b8feb::t_f7ef0d73c42ea5 386-392,395-400
+  s_9b36f1138b8feb::t_f2f6fc1dc2b7d4 256
+docs/guides/configuration.md
+  s_9b36f1138b8feb::t_8a876e31c23105 657-689
+core/engine/src/task_mode/workers.rs
+  s_9b36f1138b8feb::t_2d609989f5b0a8 73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "095e7b3cc330a23e6531ae83ecf0e9ee7ccdac82",
+  "prompts": {},
+  "sessions": {
+    "s_9b36f1138b8feb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a20b9c-6040-7a01-bd2e-30eb8ddd1094",
+        "model": "gpt-6.2-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
