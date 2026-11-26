@@ -520,6 +520,28 @@ async fn task_worker_survives_coordinator_turn_and_shares_budget() {
     let waiting = until(&e, &id, RunStatus::WaitingForAgents).await;
     assert_eq!(m.root_calls.load(Ordering::SeqCst), 2);
     let worker = &waiting.runs[0].workers[0];
+    let view = e.inspect(&worker.thread_id).await.unwrap();
+    let allowed = view["configuration"]["toolAllowlist"].as_array().unwrap();
+    assert!(allowed.contains(&json!("tool_search")));
+    assert!(
+        [
+            "task_spawn",
+            "task_wait",
+            "goal_update",
+            "agent_spawn",
+            "agent_spawn_configured",
+            "delegate_tasks"
+        ]
+        .iter()
+        .all(|name| !allowed.contains(&json!(name)))
+    );
+    assert!(
+        !view["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool["function"]["name"] == "tool_search")
+    );
     assert!(
         e.start(
             &worker.thread_id,

@@ -104,6 +104,20 @@ upload_interval_ms = 1000
 # [tools]
 # extensions_file = "tools.json"
 
+# 可选：单次启动可用 AREAL_HARNESS_TOOL_PROFILE=wide 回退。没有内置模型默认映射。
+# [tools.presentation]
+# profile = "compact-3"  # wide、compact-3、compact-6 或下方自定义名
+# scene = "coding"
+# [tools.presentation.custom]
+# reader = ["edit_files", "read_file"]
+# [[tools.presentation.defaults]]
+# provider = "my_provider"
+# model = "my-model"
+# protocol = "responses"
+# reasoning_effort = "high"
+# scene = "coding"
+# profile = "reader"
+
 # Goal 执行限制；客户端用 /goal 创建目标，无需功能开关。
 [goals]
 max_turns = 0

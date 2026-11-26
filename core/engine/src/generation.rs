@@ -253,6 +253,7 @@ impl Engine {
             .clone();
         // Goal 请求已经持久预留消费；steer 不能丢弃仍在途的请求而制造 UNKNOWN。
         // 新输入先入历史/邮箱，在完整结算后于工具派发之前接续。取消与 idle 期限仍有效。
+        let menu = self.extensions.tool_menu(Some(model.as_ref()));
         let interrupt_for_steer = model.goal_id().is_none();
         let mut text_output_bytes = 0;
         let mut media_output_bytes = 0;
@@ -382,11 +383,21 @@ impl Engine {
             }
             // 工具声明参与缓存前缀；收尾轮仅禁用调用，不移除 schema。
             let tool_definitions = self
-                .visible_tools(cell, &configuration, thread.desktop.is_some(), &thread)
+                .visible_tools_for_menu(
+                    cell,
+                    &configuration,
+                    thread.desktop.is_some(),
+                    &thread,
+                    menu.compact,
+                )
                 .await;
             let tool_definitions = self.project_mcp_tools(cell, tool_definitions).await;
-            let tool_definitions = self.project_native_tools(cell, tool_definitions).await;
-            let mut tool_definitions = self.project_program_tools(cell, tool_definitions).await;
+            let tool_definitions = self
+                .project_native_tools(cell, tool_definitions, &menu)
+                .await;
+            let mut tool_definitions = self
+                .project_program_tools(cell, tool_definitions, &menu)
+                .await;
             if goal_report_only {
                 let name = if thread.goals.goal.as_ref().is_some_and(|g| g.limits_pending) {
                     "goal_set_limits"

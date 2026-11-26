@@ -22,9 +22,7 @@ impl Engine {
         bindings: &Bindings,
         mut definitions: Vec<Value>,
     ) -> Vec<Value> {
-        if !self.extensions.policy.compact_tools
-            || !self.effective_skill_refs(config, true).is_empty()
-        {
+        if !self.effective_skill_refs(config, true).is_empty() {
             return definitions;
         }
         // 只省略当前冻结选择不可用的 Core 入口；不改注册、授权或外部同名工具。

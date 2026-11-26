@@ -1135,6 +1135,49 @@ impl Engine {
         desktop_enabled: bool,
         thread: &Thread,
     ) -> Vec<Value> {
+        let compact = self.configuration_tool_menu(config).compact;
+        self.visible_tools_for_menu(cell, config, desktop_enabled, thread, compact)
+            .await
+    }
+
+    pub(crate) async fn visible_tools_for_menu(
+        &self,
+        cell: &Cell,
+        config: &EffectiveConfig,
+        desktop_enabled: bool,
+        thread: &Thread,
+        compact: bool,
+    ) -> Vec<Value> {
+        let definitions = self
+            .authorized_tools(cell, config, desktop_enabled, thread)
+            .await;
+        self.apply_menu_visibility(cell, config, definitions, compact)
+            .await
+    }
+
+    async fn apply_menu_visibility(
+        &self,
+        cell: &Cell,
+        config: &EffectiveConfig,
+        mut definitions: Vec<Value>,
+        compact: bool,
+    ) -> Vec<Value> {
+        if !compact {
+            definitions.retain(|d| d["function"]["name"] != "tool_search");
+            return definitions;
+        }
+        let bindings = cell.bindings.read().await;
+        self.project_skill_tools(config, &bindings, definitions)
+    }
+
+    /// 部署、模型能力、线程角色、授权列表与运行时边界仍然生效。呈现策略不得反向决定权限。
+    pub(crate) async fn authorized_tools(
+        &self,
+        cell: &Cell,
+        config: &EffectiveConfig,
+        desktop_enabled: bool,
+        thread: &Thread,
+    ) -> Vec<Value> {
         let declared = match (&config.model, &config.provider) {
             (Some(model), Some(provider)) => {
                 provider.model_capabilities.get(&model.model_id).cloned()
@@ -1198,8 +1241,7 @@ impl Engine {
             {
                 return false;
             }
-            (name != "tool_search" || self.extensions.policy.compact_tools)
-                && (name != "mcp_tool_search" || self.extensions.policy.lazy_mcp_schemas)
+            (name != "mcp_tool_search" || self.extensions.policy.lazy_mcp_schemas)
                 && (!name.starts_with("scheduled_task_") || schedules_available)
                 && (!matches!(name, "task_spawn" | "task_wait" | "task_channel_read") || goal_enabled)
                 && (!matches!(name, "task_spawn" | "task_wait")
@@ -1300,7 +1342,7 @@ impl Engine {
                 }
             }
         }
-        self.project_skill_tools(config, &bindings, definitions)
+        definitions
     }
     pub async fn inspect(&self, thread_id: &str) -> Result<Value> {
         let cell = self.cell(thread_id).await?;
@@ -1315,8 +1357,16 @@ impl Engine {
         let thread = state.thread.clone();
         let active_turn_id = state.active.as_ref().map(|active| active.id.clone());
         drop(state);
+        let definitions = self
+            .authorized_tools(&cell, &config, thread.desktop.is_some(), &thread)
+            .await;
+        let authorized_names: Vec<_> = definitions
+            .iter()
+            .filter_map(|d| d["function"]["name"].as_str().map(str::to_owned))
+            .collect();
+        let compact = self.configuration_tool_menu(&config).compact;
         let tools = self
-            .visible_tools(&cell, &config, thread.desktop.is_some(), &thread)
+            .apply_menu_visibility(&cell, &config, definitions, compact)
             .await;
         let model_metadata = config
             .model
@@ -1331,7 +1381,7 @@ impl Engine {
         Ok(
             json!({"modelName":model_metadata.as_ref().map(|(name, _)| name),"resolvedParameters":model_metadata.map(|(_, parameters)| super::catalog::merge_model_parameters(config.parameters.clone(), parameters)),"threadId":thread_id,"sessionId":thread.session_id,"parentThreadId":thread.parent_thread_id,
             "activeTurnId":active_turn_id,"configuration":config,
-            "instructionSnapshot":thread.turns.last().and_then(|t|t.instruction_snapshot.as_ref()),"instructionSources":["runtime/defaultOrClientSystem","profile","childTask","clientAppend","workspace/AGENTS.md"],"tools":tools,"loadedSkills":thread.desktop.as_ref().map(|d| &d.loaded_skills),
+            "instructionSnapshot":thread.turns.last().and_then(|t|t.instruction_snapshot.as_ref()),"instructionSources":["runtime/defaultOrClientSystem","profile","childTask","clientAppend","workspace/AGENTS.md"],"tools":tools,"authorizedToolNames":authorized_names,"loadedSkills":thread.desktop.as_ref().map(|d| &d.loaded_skills),
             "contextCheckpoint":thread.context_checkpoint,"usage":thread.turns.last().and_then(|t| t.usage.as_ref()),
             "usageKnown":thread.turns.last().is_some_and(|t| t.usage.is_some()),
             "limits":{"historyBytes":self.limits.max_history_bytes,"contextBytes":self.limits.context_window_bytes},

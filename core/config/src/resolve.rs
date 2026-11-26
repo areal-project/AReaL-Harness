@@ -57,6 +57,11 @@ const ENV: &[(&str, &str, &str)] = &[
     ("AREAL_HARNESS_LISTEN", "", "server.listen"),
     ("AREAL_HARNESS_DATA_DIR", "", "server.data_dir"),
     ("AREAL_HARNESS_TOOL_EXTENSIONS", "", "tools.extensions_file"),
+    (
+        "AREAL_HARNESS_TOOL_PROFILE",
+        "",
+        "tools.presentation.profile",
+    ),
     ("AREAL_HARNESS_MODEL", "AREAL_MODEL", "model.name"),
     ("AREAL_HARNESS_MODEL_PROVIDER", "", "model.provider"),
     (
@@ -1085,7 +1090,13 @@ pub(crate) fn load_mode(
         .collect();
     sources.insert("home".into(), home_source);
     sources.insert("config_file".into(), selected_source);
+    let mut tool_presentation = file.presentation;
+    if let Some(entry) = values.get("tools.presentation.profile") {
+        tool_presentation.profile = Some(entry.value.clone());
+        tool_presentation.validate(&entry.source)?;
+    }
     let result = ResolvedCoreConfig {
+        tool_presentation,
         inspection_permissions: match values["delegation.inspection_permissions"].value.as_str() {
             "inherit" => InspectionPermissions::Inherit,
             _ => InspectionPermissions::ReadOnly,
